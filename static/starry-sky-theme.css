@@ -1,0 +1,910 @@
+/* 
+ * DataMind AI - 宇宙空间主题 v2.0
+ * 三层粒子系统 + 银河带 + 宇宙传送门 + 卡片外发光 + KPI脉冲
+ */
+
+/* ==================== CSS 变量 ==================== */
+:root {
+  --cosmic-deep: #020617;
+  --cosmic-space: #0f172a;
+  --cosmic-starlight: #38bdf8;
+  --cosmic-galaxy: #8b5cf6;
+  --cosmic-moon: #f8fafc;
+  --cosmic-aurora: #22d3ee;
+  --glass-bg: rgba(15, 23, 42, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+}
+
+/* ==================== 动画定义 ==================== */
+@keyframes starTwinkle {
+  0%, 100% { opacity: 0.4; }
+  25% { opacity: 1; }
+  50% { opacity: 0.6; }
+  75% { opacity: 0.9; }
+}
+
+@keyframes starTwinkleSlow {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes nebulaDrift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(10px, -8px) scale(1.05); }
+  66% { transform: translate(-5px, 12px) scale(0.95); }
+}
+
+@keyframes nebulaDrift2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-12px, 5px) scale(1.03); }
+  66% { transform: translate(8px, -10px) scale(0.97); }
+}
+
+@keyframes meteor1 {
+  0% { transform: translate(0, 0) scale(1); opacity: 0; }
+  2% { opacity: 1; }
+  8% { opacity: 1; }
+  10% { transform: translate(600px, 400px) scale(0.3); opacity: 0; }
+  100% { transform: translate(600px, 400px) scale(0.3); opacity: 0; }
+}
+
+@keyframes meteor2 {
+  0% { transform: translate(0, 0) scale(1); opacity: 0; }
+  2% { opacity: 1; }
+  8% { opacity: 1; }
+  10% { transform: translate(-500px, 350px) scale(0.2); opacity: 0; }
+  100% { transform: translate(-500px, 350px) scale(0.2); opacity: 0; }
+}
+
+@keyframes meteorTail1 {
+  0% { transform: translate(0, 0); opacity: 0; }
+  3% { opacity: 0.6; }
+  10% { opacity: 0; }
+  100% { transform: translate(600px, 400px); opacity: 0; }
+}
+
+@keyframes meteorTail2 {
+  0% { transform: translate(0, 0); opacity: 0; }
+  3% { opacity: 0.6; }
+  10% { opacity: 0; }
+  100% { transform: translate(-500px, 350px); opacity: 0; }
+}
+
+@keyframes galaxyShift {
+  0%, 100% { transform: rotate(135deg) translateX(0); opacity: 0.07; }
+  50% { transform: rotate(135deg) translateX(20px); opacity: 0.1; }
+}
+
+@keyframes auraBreath {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.05); }
+}
+
+@keyframes portalRingOuter {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes portalRingMid {
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes portalRingInner {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(-360deg); }
+}
+
+@keyframes portalCorePulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.4), 0 0 60px rgba(56, 189, 248, 0.2); }
+  50% { box-shadow: 0 0 40px rgba(139, 92, 246, 0.7), 0 0 100px rgba(56, 189, 248, 0.4); }
+}
+
+@keyframes portalOrbit1 {
+  0% { transform: rotate(0deg) translateX(150px) rotate(0deg); }
+  100% { transform: rotate(360deg) translateX(150px) rotate(-360deg); }
+}
+
+@keyframes portalOrbit2 {
+  0% { transform: rotate(60deg) translateX(150px) rotate(-60deg); }
+  100% { transform: rotate(420deg) translateX(150px) rotate(-420deg); }
+}
+
+@keyframes portalOrbit3 {
+  0% { transform: rotate(120deg) translateX(150px) rotate(-120deg); }
+  100% { transform: rotate(480deg) translateX(150px) rotate(-480deg); }
+}
+
+@keyframes portalOrbit4 {
+  0% { transform: rotate(180deg) translateX(150px) rotate(-180deg); }
+  100% { transform: rotate(540deg) translateX(150px) rotate(-540deg); }
+}
+
+@keyframes portalOrbit5 {
+  0% { transform: rotate(240deg) translateX(150px) rotate(-240deg); }
+  100% { transform: rotate(600deg) translateX(150px) rotate(-600deg); }
+}
+
+@keyframes portalOrbit6 {
+  0% { transform: rotate(300deg) translateX(150px) rotate(-300deg); }
+  100% { transform: rotate(660deg) translateX(150px) rotate(-660deg); }
+}
+
+@keyframes kpiGlowPulse {
+  0%, 100% { text-shadow: 0 0 8px rgba(56, 189, 248, 0.3); }
+  50% { text-shadow: 0 0 20px rgba(139, 92, 246, 0.6), 0 0 40px rgba(56, 189, 248, 0.3); }
+}
+
+@keyframes cardGlowHover {
+  0% { box-shadow: 0 0 15px rgba(100, 180, 255, 0.15); }
+  100% { box-shadow: 0 0 25px rgba(100, 180, 255, 0.35); transform: translateY(-2px); }
+}
+
+@keyframes uploadBorderGlow {
+  0%, 100% { border-color: rgba(139, 92, 246, 0.3); box-shadow: 0 0 30px rgba(139, 92, 246, 0.1); }
+  50% { border-color: rgba(56, 189, 248, 0.5); box-shadow: 0 0 50px rgba(56, 189, 248, 0.2); }
+}
+
+@keyframes uploadBorderGlowActive {
+  0%, 100% { border-color: rgba(34, 211, 238, 0.6); box-shadow: 0 0 50px rgba(34, 211, 238, 0.3); }
+  50% { border-color: rgba(139, 92, 246, 0.8); box-shadow: 0 0 80px rgba(139, 92, 246, 0.4); }
+}
+
+/* ==================== 全局强制深色背景 ==================== */
+html, body {
+  background: var(--cosmic-deep) !important;
+}
+
+.stApp {
+  background: var(--cosmic-deep) !important;
+  position: relative;
+}
+
+/* ==================== 背景呼吸光晕层 ==================== */
+.stApp::before {
+  content: '';
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 120%;
+  height: 120%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    ellipse 60% 50% at 50% 50%,
+    rgba(56, 189, 248, 0.04) 0%,
+    rgba(139, 92, 246, 0.02) 30%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 0;
+  animation: auraBreath 12s ease-in-out infinite;
+}
+
+/* ==================== 银河带 - 斜跨页面 ==================== */
+/* 使用额外伪元素实现银河带 */
+.stApp > div:first-of-type::before {
+  content: '';
+  position: fixed;
+  top: -20%;
+  left: -10%;
+  width: 140%;
+  height: 140%;
+  background: linear-gradient(
+    135deg,
+    transparent 25%,
+    rgba(139, 92, 246, 0.03) 35%,
+    rgba(56, 189, 248, 0.05) 40%,
+    rgba(139, 92, 246, 0.06) 45%,
+    rgba(56, 189, 248, 0.04) 50%,
+    rgba(139, 92, 246, 0.03) 55%,
+    transparent 65%
+  );
+  pointer-events: none;
+  z-index: 0;
+  animation: galaxyShift 25s ease-in-out infinite;
+}
+
+/* 第二层银河带 */
+.stApp > div:first-of-type::after {
+  content: '';
+  position: fixed;
+  top: -20%;
+  left: -10%;
+  width: 140%;
+  height: 140%;
+  background: linear-gradient(
+    135deg,
+    transparent 30%,
+    rgba(34, 211, 238, 0.02) 38%,
+    rgba(139, 92, 246, 0.04) 42%,
+    rgba(56, 189, 248, 0.03) 46%,
+    transparent 55%
+  );
+  filter: blur(30px);
+  pointer-events: none;
+  z-index: 0;
+  animation: galaxyShift 20s ease-in-out infinite reverse;
+}
+
+/* ==================== 远景恒星层：200+ 小星点 ==================== */
+#star-layer-far,
+.starry-bg-far {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+
+#star-layer-far::before,
+.starry-bg-far::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    /* 白色小星 - 200+ */
+    radial-gradient(1.5px 1.5px at 3% 5%, rgba(248,250,252,0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 7% 12%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 12% 8%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 18% 3%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 23% 15%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 28% 7%, rgba(248,250,252,0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 33% 11%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 38% 18%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 42% 5%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 47% 14%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 52% 9%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 57% 3%, rgba(248,250,252,0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 62% 16%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 68% 8%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 73% 12%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 78% 6%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 83% 17%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 88% 4%, rgba(248,250,252,0.7) 0%, transparent 100%),
+    radial-gradient(1px 1px at 93% 13%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 97% 9%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 5% 25%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 15% 30%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 25% 22%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 35% 28%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 45% 33%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 55% 25%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 65% 30%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 75% 35%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 85% 22%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 95% 28%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 8% 42%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 18% 48%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 28% 38%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 38% 45%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 48% 50%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 58% 42%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 68% 48%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 78% 38%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 88% 45%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 2% 55%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 12% 62%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 22% 58%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 32% 65%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 42% 55%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 52% 62%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 62% 58%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 72% 65%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 82% 55%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 92% 62%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 5% 75%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 15% 82%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 25% 72%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 35% 78%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 45% 85%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 55% 75%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 65% 82%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 75% 72%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 85% 78%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1px 1px at 95% 85%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 10% 92%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 20% 88%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 30% 95%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 40% 90%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 50% 93%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 60% 88%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 70% 95%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 80% 90%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 90% 93%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    /* 蓝色恒星 */
+    radial-gradient(2px 2px at 15% 20%, rgba(56,189,248,0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 35% 15%, rgba(56,189,248,0.7) 0%, transparent 100%),
+    radial-gradient(2px 2px at 55% 20%, rgba(56,189,248,0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 75% 15%, rgba(56,189,248,0.7) 0%, transparent 100%),
+    radial-gradient(2px 2px at 95% 20%, rgba(56,189,248,0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 10% 60%, rgba(56,189,248,0.7) 0%, transparent 100%),
+    radial-gradient(2px 2px at 30% 70%, rgba(56,189,248,0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 50% 60%, rgba(56,189,248,0.7) 0%, transparent 100%),
+    radial-gradient(2px 2px at 70% 70%, rgba(56,189,248,0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 90% 60%, rgba(56,189,248,0.7) 0%, transparent 100%),
+    /* 紫色恒星 */
+    radial-gradient(2px 2px at 25% 40%, rgba(139,92,246,0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 45% 30%, rgba(139,92,246,0.7) 0%, transparent 100%),
+    radial-gradient(2px 2px at 65% 40%, rgba(139,92,246,0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 85% 35%, rgba(139,92,246,0.7) 0%, transparent 100%),
+    radial-gradient(2px 2px at 5% 50%, rgba(139,92,246,0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 40% 80%, rgba(139,92,246,0.7) 0%, transparent 100%),
+    radial-gradient(2px 2px at 60% 75%, rgba(139,92,246,0.8) 0%, transparent 100%),
+    radial-gradient(2px 2px at 80% 85%, rgba(139,92,246,0.7) 0%, transparent 100%);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  animation: starTwinkleSlow 12s ease-in-out infinite;
+}
+
+#star-layer-far::after,
+.starry-bg-far::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 11% 35%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 21% 45%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 31% 32%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 41% 42%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 51% 35%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 61% 45%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 71% 32%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 81% 42%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 91% 35%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 6% 68%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 16% 78%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 26% 65%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 36% 75%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 46% 68%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 56% 78%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 66% 65%, rgba(248,250,252,0.6) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 76% 75%, rgba(248,250,252,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 86% 68%, rgba(248,250,252,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 96% 78%, rgba(248,250,252,0.6) 0%, transparent 100%);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  animation: starTwinkleSlow 15s ease-in-out infinite reverse;
+}
+
+/* ==================== 中景星云层：50-80 发光粒子 ==================== */
+#nebula-layer-mid,
+.starry-nebula-mid {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+}
+
+#nebula-layer-mid::before,
+.starry-nebula-mid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    /* 大星云团 - 蓝紫 */
+    radial-gradient(ellipse 200px 150px at 20% 30%, rgba(56,189,248,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 180px 120px at 75% 25%, rgba(139,92,246,0.05) 0%, transparent 70%),
+    radial-gradient(ellipse 220px 160px at 60% 65%, rgba(56,189,248,0.04) 0%, transparent 70%),
+    radial-gradient(ellipse 160px 130px at 35% 70%, rgba(139,92,246,0.05) 0%, transparent 70%),
+    radial-gradient(ellipse 200px 140px at 85% 60%, rgba(34,211,238,0.03) 0%, transparent 70%),
+    /* 发光粒子 - 50+ */
+    radial-gradient(3px 3px at 12% 22%, rgba(56,189,248,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 28% 18%, rgba(139,92,246,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 45% 25%, rgba(56,189,248,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 62% 20%, rgba(34,211,238,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 78% 28%, rgba(139,92,246,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 88% 22%, rgba(56,189,248,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 8% 45%, rgba(139,92,246,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 22% 50%, rgba(56,189,248,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 38% 42%, rgba(34,211,238,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 52% 48%, rgba(139,92,246,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 68% 45%, rgba(56,189,248,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 82% 50%, rgba(34,211,238,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 92% 42%, rgba(139,92,246,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 15% 65%, rgba(56,189,248,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 30% 72%, rgba(34,211,238,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 48% 68%, rgba(139,92,246,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 65% 75%, rgba(56,189,248,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 78% 65%, rgba(34,211,238,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 88% 72%, rgba(139,92,246,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 10% 80%, rgba(56,189,248,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 25% 88%, rgba(34,211,238,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 42% 82%, rgba(139,92,246,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 58% 88%, rgba(56,189,248,0.4) 0%, transparent 100%),
+    radial-gradient(3px 3px at 72% 82%, rgba(34,211,238,0.5) 0%, transparent 100%),
+    radial-gradient(3px 3px at 85% 88%, rgba(139,92,246,0.4) 0%, transparent 100%);
+  animation: nebulaDrift 18s ease-in-out infinite;
+}
+
+#nebula-layer-mid::after,
+.starry-nebula-mid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(4px 4px at 18% 35%, rgba(56,189,248,0.4) 0%, transparent 100%),
+    radial-gradient(4px 4px at 35% 28%, rgba(139,92,246,0.4) 0%, transparent 100%),
+    radial-gradient(4px 4px at 55% 35%, rgba(56,189,248,0.3) 0%, transparent 100%),
+    radial-gradient(4px 4px at 72% 30%, rgba(34,211,238,0.4) 0%, transparent 100%),
+    radial-gradient(4px 4px at 85% 38%, rgba(139,92,246,0.3) 0%, transparent 100%),
+    radial-gradient(4px 4px at 12% 55%, rgba(56,189,248,0.4) 0%, transparent 100%),
+    radial-gradient(4px 4px at 28% 60%, rgba(34,211,238,0.3) 0%, transparent 100%),
+    radial-gradient(4px 4px at 45% 52%, rgba(139,92,246,0.4) 0%, transparent 100%),
+    radial-gradient(4px 4px at 62% 58%, rgba(56,189,248,0.3) 0%, transparent 100%),
+    radial-gradient(4px 4px at 78% 55%, rgba(34,211,238,0.4) 0%, transparent 100%),
+    radial-gradient(4px 4px at 92% 60%, rgba(139,92,246,0.3) 0%, transparent 100%),
+    radial-gradient(4px 4px at 8% 72%, rgba(56,189,248,0.4) 0%, transparent 100%),
+    radial-gradient(4px 4px at 22% 78%, rgba(34,211,238,0.3) 0%, transparent 100%),
+    radial-gradient(4px 4px at 38% 75%, rgba(139,92,246,0.4) 0%, transparent 100%),
+    radial-gradient(4px 4px at 55% 82%, rgba(56,189,248,0.3) 0%, transparent 100%),
+    radial-gradient(4px 4px at 68% 78%, rgba(34,211,238,0.4) 0%, transparent 100%),
+    radial-gradient(4px 4px at 82% 75%, rgba(139,92,246,0.3) 0%, transparent 100%),
+    radial-gradient(4px 4px at 95% 82%, rgba(56,189,248,0.4) 0%, transparent 100%);
+  animation: nebulaDrift2 20s ease-in-out infinite;
+}
+
+/* ==================== 前景流星层 ==================== */
+#meteor-layer,
+.starry-meteors {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  overflow: hidden;
+}
+
+/* 流星1 - 每18秒 */
+#meteor-layer::before,
+.starry-meteors::before {
+  content: '';
+  position: absolute;
+  top: 15%;
+  left: 10%;
+  width: 3px;
+  height: 3px;
+  background: rgba(248,250,252,0.9);
+  border-radius: 50%;
+  box-shadow: 0 0 6px 2px rgba(56,189,248,0.8), 0 0 12px 4px rgba(139,92,246,0.4);
+  animation: meteor1 18s linear infinite;
+}
+
+/* 流星1 拖尾 */
+#meteor-layer > *:first-child::before,
+.starry-meteors > *:first-child::before,
+#meteor-layer::after,
+.starry-meteors::after {
+  content: '';
+  position: absolute;
+  top: 15%;
+  left: 10%;
+  width: 120px;
+  height: 2px;
+  background: linear-gradient(to left, rgba(56,189,248,0.8), rgba(139,92,246,0.4), transparent);
+  border-radius: 1px;
+  animation: meteorTail1 18s linear infinite;
+  transform-origin: right center;
+}
+
+/* 流星2 - 每22秒 */
+/* 用额外元素模拟第二颗流星 */
+.stApp > div > div::before {
+  content: '';
+  position: fixed;
+  top: 25%;
+  right: 15%;
+  width: 2px;
+  height: 2px;
+  background: rgba(248,250,252,0.8);
+  border-radius: 50%;
+  box-shadow: 0 0 5px 2px rgba(34,211,238,0.7), 0 0 10px 3px rgba(56,189,248,0.3);
+  pointer-events: none;
+  z-index: 3;
+  animation: meteor2 22s linear infinite;
+}
+
+/* ==================== 顶部 Header 深色 ==================== */
+header[data-testid="stHeader"],
+.stApp > header {
+  background: var(--cosmic-deep) !important;
+  background-color: var(--cosmic-deep) !important;
+  border-bottom: 1px solid var(--glass-border) !important;
+}
+
+header[data-testid="stHeader"] > div,
+header[data-testid="stHeader"] button,
+header[data-testid="stHeader"] a,
+header[data-testid="stHeader"] span {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+/* ==================== 侧边栏 ==================== */
+[data-testid="stSidebar"] {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(20px) !important;
+  border-right: 1px solid var(--glass-border) !important;
+}
+
+[data-testid="stSidebar"] > div {
+  background: transparent !important;
+}
+
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid var(--glass-border) !important;
+}
+
+[data-testid="stSidebar"] * {
+  color: var(--text-secondary) !important;
+}
+
+[data-testid="stSidebar"] hr {
+  border-color: var(--glass-border) !important;
+}
+
+[data-testid="stSidebar"] button {
+  background: rgba(139, 92, 246, 0.15) !important;
+  border: 1px solid var(--glass-border) !important;
+  color: var(--text-secondary) !important;
+}
+
+[data-testid="stSidebar"] button:hover {
+  background: rgba(139, 92, 246, 0.25) !important;
+  color: var(--text-primary) !important;
+}
+
+/* ==================== 宇宙传送门 - 文件上传区域 ==================== */
+/* 上传区域整体容器 */
+.stFileUploader {
+  position: relative !important;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+/* 上传区域核心 - 六边形/圆形能量舱 */
+.stFileUploader > div,
+.stFileUploader section {
+  background: var(--glass-bg) !important;
+  background-color: var(--glass-bg) !important;
+  border: 2px solid rgba(139, 92, 246, 0.3) !important;
+  border-radius: 24px !important;
+  min-height: 260px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  position: relative !important;
+  overflow: visible !important;
+  animation: uploadBorderGlow 4s ease-in-out infinite;
+  transition: all 0.4s ease;
+  box-shadow: 
+    0 0 30px rgba(139, 92, 246, 0.1),
+    0 0 60px rgba(56, 189, 248, 0.05),
+    inset 0 0 30px rgba(139, 92, 246, 0.03) !important;
+}
+
+.stFileUploader > div:hover,
+.stFileUploader section:hover {
+  border-color: rgba(56, 189, 248, 0.5) !important;
+  box-shadow:
+    0 0 40px rgba(139, 92, 246, 0.2),
+    0 0 80px rgba(56, 189, 248, 0.1),
+    inset 0 0 40px rgba(139, 92, 246, 0.05) !important;
+}
+
+/* 拖拽激活状态 */
+.stFileUploader > div:active,
+.stFileUploader section[data-testid="stFileUploaderDropzone"] {
+  border-color: rgba(34, 211, 238, 0.6) !important;
+  animation: uploadBorderGlowActive 2s ease-in-out infinite;
+  box-shadow:
+    0 0 60px rgba(139, 92, 246, 0.3),
+    0 0 120px rgba(56, 189, 248, 0.15),
+    inset 0 0 50px rgba(34, 211, 238, 0.08) !important;
+}
+
+/* 上传区域内的按钮 - 能量核心 */
+.stFileUploader button,
+.stFileUploader [data-testid="baseButton-secondary"],
+.stFileUploader [data-testid="baseButton-primary"] {
+  background: linear-gradient(135deg, #8b5cf6, #38bdf8) !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-radius: 50px !important;
+  color: var(--cosmic-moon) !important;
+  padding: 12px 32px !important;
+  font-weight: 600 !important;
+  font-size: 1rem !important;
+  letter-spacing: 0.5px !important;
+  animation: portalCorePulse 4s ease-in-out infinite;
+  transition: all 0.3s ease;
+  position: relative !important;
+  z-index: 5 !important;
+}
+
+.stFileUploader button:hover {
+  box-shadow: 0 0 50px rgba(139, 92, 246, 0.6), 0 0 80px rgba(56, 189, 248, 0.3) !important;
+  transform: scale(1.05);
+}
+
+/* 上传区域文字 */
+.stFileUploader span,
+.stFileUploader p,
+.stFileUploader small,
+.stFileUploader label {
+  color: var(--text-secondary) !important;
+  position: relative !important;
+  z-index: 5 !important;
+}
+
+.stFileUploader small {
+  color: var(--text-muted) !important;
+}
+
+/* 上传区域 - 用伪元素添加旋转光圈效果 */
+.stFileUploader > div::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200px;
+  height: 200px;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 50%;
+  animation: portalRingOuter 12s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.stFileUploader > div::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 160px;
+  height: 160px;
+  transform: translate(-50%, -50%);
+  border: 1px dashed rgba(56, 189, 248, 0.3);
+  border-radius: 50%;
+  animation: portalRingMid 8s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 已上传文件列表 */
+.stFileUploader [data-testid="stFileUploaderFileList"] {
+  background: rgba(10, 15, 30, 0.6) !important;
+  border-radius: 12px !important;
+  border: 1px solid var(--glass-border) !important;
+}
+
+/* ==================== 输入框 ==================== */
+.stTextInput > div,
+.stTextInput > div > div,
+.stTextInput input,
+.stSelectbox > div,
+.stSelectbox > div > div,
+.stSelectbox > div > div > div,
+.stTextArea > div,
+.stTextArea > div > div,
+.stTextArea textarea {
+  background: var(--glass-bg) !important;
+  background-color: var(--glass-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--glass-border) !important;
+}
+
+.stTextInput input:focus,
+.stSelectbox > div > div > div:focus,
+.stTextArea textarea:focus {
+  border-color: rgba(139, 92, 246, 0.5) !important;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.1) !important;
+}
+
+.stTextInput button[data-testid="baseButton-secondary"],
+.stTextInput button[data-testid="baseButton-primary"] {
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-muted) !important;
+}
+
+div[data-baseweb="popover"] {
+  background: var(--cosmic-deep) !important;
+  border: 1px solid var(--glass-border) !important;
+}
+
+div[data-baseweb="popover"] li,
+div[data-baseweb="popover"] div[role="option"] {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+/* ==================== 卡片 - 宇宙舱室外发光 ==================== */
+[data-testid="stMetric"],
+[data-testid="stDataFrame"],
+.element-container > div[data-testid="stVerticalBlock"] {
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 0 15px rgba(100, 180, 255, 0.15) !important;
+  transition: all 0.4s ease !important;
+}
+
+[data-testid="stMetric"]:hover,
+[data-testid="stDataFrame"]:hover {
+  box-shadow: 0 0 25px rgba(100, 180, 255, 0.35) !important;
+  transform: translateY(-2px);
+  border-color: rgba(139, 92, 246, 0.2) !important;
+}
+
+/* ==================== KPI 数字脉冲发光 ==================== */
+[data-testid="stMetric"] label {
+  color: var(--text-muted) !important;
+  font-size: 0.85rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+}
+
+[data-testid="stMetric"] [data-testid="stMetricValue"] {
+  color: var(--cosmic-moon) !important;
+  font-weight: 700 !important;
+  animation: kpiGlowPulse 8s ease-in-out infinite;
+}
+
+/* 自定义 metric-card 类 */
+.metric-card {
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 12px !important;
+  padding: 1.5rem !important;
+  text-align: center !important;
+  box-shadow: 0 0 15px rgba(100, 180, 255, 0.15) !important;
+  transition: all 0.4s ease !important;
+}
+
+.metric-card:hover {
+  box-shadow: 0 0 25px rgba(100, 180, 255, 0.35) !important;
+  transform: translateY(-2px);
+  border-color: rgba(139, 92, 246, 0.2) !important;
+}
+
+.metric-card h1,
+.metric-card h2,
+.metric-card h3 {
+  color: var(--cosmic-moon) !important;
+  animation: kpiGlowPulse 8s ease-in-out infinite;
+}
+
+.metric-card h4 {
+  color: var(--text-muted) !important;
+  font-size: 0.85rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  margin-bottom: 0.5rem !important;
+}
+
+/* ==================== 警告/提示框 ==================== */
+.stAlert,
+.stSuccess,
+.stWarning,
+.stError,
+.stInfo {
+  background: var(--glass-bg) !important;
+  background-color: var(--glass-bg) !important;
+  color: var(--text-secondary) !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: 0 0 15px rgba(100, 180, 255, 0.1) !important;
+}
+
+.stAlert > div,
+.stSuccess > div,
+.stWarning > div,
+.stError > div {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+/* ==================== 按钮 ==================== */
+.stButton > button[kind="primary"] {
+  background: linear-gradient(135deg, #8b5cf6, #06b6d4) !important;
+  color: white !important;
+  border: none !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  transition: all 0.3s ease !important;
+}
+
+.stButton > button[kind="primary"]:hover {
+  box-shadow: 0 0 25px rgba(139, 92, 246, 0.4) !important;
+  transform: translateY(-1px);
+}
+
+/* ==================== Tab ==================== */
+[data-testid="stTabs"] {
+  border-bottom: 1px solid var(--glass-border) !important;
+}
+
+[data-testid="stTabs"] button {
+  color: var(--text-muted) !important;
+  background: transparent !important;
+}
+
+[data-testid="stTabs"] button[aria-selected="true"] {
+  color: var(--cosmic-moon) !important;
+  border-bottom-color: #8b5cf6 !important;
+}
+
+/* ==================== Expander ==================== */
+[data-testid="stExpander"] {
+  background: var(--glass-bg) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 0 15px rgba(100, 180, 255, 0.1) !important;
+}
+
+/* ==================== 标题 ==================== */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--cosmic-moon) !important;
+}
+
+/* ==================== 主内容区 z-index ==================== */
+[data-testid="stAppViewContainer"] {
+  z-index: 10;
+  position: relative;
+}
+
+.block-container {
+  position: relative;
+  z-index: 10;
+}
+
+/* ==================== 滚动条 ==================== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { 
+  background: rgba(139, 92, 246, 0.3); 
+  border-radius: 3px; 
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(139, 92, 246, 0.5);
+}
+::-webkit-scrollbar-track {
+  background: var(--cosmic-deep);
+}
+
+/* ==================== 表格样式 ==================== */
+[data-testid="stDataFrame"] td,
+[data-testid="stDataFrame"] th {
+  color: var(--text-secondary) !important;
+  border-color: var(--glass-border) !important;
+}
+
+[data-testid="stDataFrame"] th {
+  color: var(--cosmic-moon) !important;
+  font-weight: 600 !important;
+}
+
+/* ==================== Radio 按钮 ==================== */
+.stRadio [data-testid="stMarkdownContainer"] {
+  color: var(--text-secondary) !important;
+}
+
+/* ==================== 确保深色主题下图表背景透明 ==================== */
+.js-plotly-plot,
+.plot-container {
+  background: transparent !important;
+}
+
+/* ==================== Spinner 加载动画 ==================== */
+.stSpinner > div {
+  border-color: rgba(139, 92, 246, 0.3) !important;
+  border-top-color: #8b5cf6 !important;
+}

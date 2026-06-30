@@ -1,0 +1,7 @@
+[     634ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-WRD5HZVH.js?v=8163beba:21550
+[    1755ms] [VERBOSE] [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) %o @ http://localhost:5173/upload:0
+[  157320ms] [LOG] [ECharts Dashboard] response: {success: true, charts: Array(11)} @ http://localhost:5173/src/pages/DashboardPage.tsx?t=1782059824756:81
+[  157320ms] [LOG] [ECharts Dashboard] chart count: 11 @ http://localhost:5173/src/pages/DashboardPage.tsx?t=1782059824756:83
+[  157614ms] [LOG] [ECharts Dashboard] response: {success: true, charts: Array(11)} @ http://localhost:5173/src/pages/DashboardPage.tsx?t=1782059824756:81
+[  157614ms] [LOG] [ECharts Dashboard] chart count: 11 @ http://localhost:5173/src/pages/DashboardPage.tsx?t=1782059824756:83
+[  409900ms] [LOG] [EChartView] click: 产品A seriesType: bar seriesName: 销量 name: 产品A @ http://localhost:5173/src/components/EChartView.tsx?t=1782059824756:526

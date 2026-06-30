@@ -1,0 +1,95 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DataMind AI" [level=1] [ref=e6]
+        - paragraph [ref=e7]: 数据分析智能体
+      - navigation [ref=e8]:
+        - button "数据上传" [ref=e9] [cursor=pointer]:
+          - img [ref=e10]
+          - generic [ref=e13]: 数据上传
+        - button "数据清洗" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+          - generic [ref=e19]: 数据清洗
+        - button "分析可视化" [ref=e20] [cursor=pointer]:
+          - img [ref=e21]
+          - generic [ref=e22]: 分析可视化
+        - button "仪表盘" [ref=e23] [cursor=pointer]:
+          - img [ref=e24]
+          - generic [ref=e26]: 仪表盘
+      - generic [ref=e27]:
+        - generic [ref=e28]: AI 模型
+        - combobox [ref=e29]:
+          - option "DeepSeek" [selected]
+          - option "阿里云通义千问"
+          - option "智谱 GLM"
+          - option "Moonshot / Kimi"
+          - option "OpenAI"
+        - generic [ref=e30]: API Key
+        - textbox "输入 API Key..." [ref=e31]
+        - paragraph [ref=e32]: 选择模型后输入对应服务商的 API Key 即可使用
+      - generic [ref=e54]:
+        - paragraph [ref=e55]: test_data.csv
+        - paragraph [ref=e56]: 5 行 · 6 列
+    - main [ref=e33]:
+      - generic [ref=e427]:
+        - generic [ref=e428]:
+          - generic [ref=e430]:
+            - button "经典网格" [ref=e431] [cursor=pointer]:
+              - img [ref=e432]
+              - text: 经典网格
+            - button "左中右" [ref=e437] [cursor=pointer]:
+              - img [ref=e438]
+              - text: 左中右
+            - button "全屏沉浸" [ref=e440] [cursor=pointer]:
+              - img [ref=e441]
+              - text: 全屏沉浸
+          - generic [ref=e443]:
+            - button "AI 生成大屏" [ref=e445] [cursor=pointer]:
+              - img [ref=e446]
+              - text: AI 生成大屏
+            - generic [ref=e448]:
+              - button "Plotly" [ref=e449] [cursor=pointer]
+              - button "ECharts" [active] [ref=e450] [cursor=pointer]
+            - button "📊 标题已隐藏" [ref=e451] [cursor=pointer]
+            - button "报告" [ref=e452] [cursor=pointer]:
+              - img [ref=e453]
+              - text: 报告
+            - button "PNG截图" [ref=e456] [cursor=pointer]:
+              - img [ref=e457]
+              - text: PNG截图
+            - button "📄 HTML" [ref=e460] [cursor=pointer]
+        - generic [ref=e462]:
+          - generic [ref=e463]:
+            - heading "数据分析大屏" [level=1] [ref=e466]
+            - generic [ref=e467]:
+              - generic [ref=e468]: 实时数据
+              - generic [ref=e470]: 2026/6/22 00:52:26
+              - generic [ref=e471]: ECharts
+          - generic [ref=e472]:
+            - generic [ref=e473]:
+              - generic [ref=e474]: 📊
+              - generic [ref=e475]:
+                - paragraph [ref=e476]: 总记录数
+                - paragraph [ref=e477]: "5"
+            - generic [ref=e478]:
+              - generic [ref=e479]: 📋
+              - generic [ref=e480]:
+                - paragraph [ref=e481]: 字段数
+                - paragraph [ref=e482]: "6"
+            - generic [ref=e483]:
+              - generic [ref=e484]: 📈
+              - generic [ref=e485]:
+                - paragraph [ref=e486]: 销量 平均值
+                - paragraph [ref=e487]: "1260.00"
+            - generic [ref=e488]:
+              - generic [ref=e489]: 💰
+              - generic [ref=e490]:
+                - paragraph [ref=e491]: 销量 总和
+                - paragraph [ref=e492]: 6,300
+            - generic [ref=e493]:
+              - generic [ref=e494]: 🏷️
+              - generic [ref=e495]:
+                - paragraph [ref=e496]: 产品 唯一值个数
+                - paragraph [ref=e497]: "5"
+  - img [ref=e348]

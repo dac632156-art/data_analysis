@@ -1,0 +1,519 @@
+/* 
+ * DataMind AI - 专业数据分析界面设计系统
+ * 融合 Impeccable + Taste Skill + UI/UX PRO MAX + Awesome Claude Design
+ * 设计风格：Carbon Design System (IBM) + 现代数据可视化最佳实践
+ */
+
+/* ==================== 设计令牌（Design Tokens）==================== */
+:root {
+    /* 品牌色 - 专业蓝绿配色 */
+    --color-brand-primary: #0F62FE;      /* IBM Blue 60 */
+    --color-brand-secondary: #0043CE;    /* IBM Blue 70 */
+    --color-brand-tertiary: #6930D5;    /* 紫色点缀 */
+    
+    /* 功能色 */
+    --color-success: #24A148;             /* Green 50 */
+    --color-warning: #F1C21B;           /* Yellow 30 */
+    --color-error: #DA1E28;             /* Red 50 */
+    --color-info: #0F62FE;              /* Blue 60 */
+    
+    /* 中性色 - 浅色主题 */
+    --color-bg-primary: #F4F7F6;        /* 主背景 - 浅灰绿 */
+    --color-bg-secondary: #FFFFFF;        /* 次背景 - 纯白 */
+    --color-bg-tertiary: #F9FAFA;       /* 第三背景 - 极浅灰 */
+    --color-bg-hover: #E8F7D9;          /* Hover 背景 - 浅薄荷 */
+    
+    --color-border-subtle: #E0E0E0;     /* 细微边框 */
+    --color-border-moderate: #C7C7C7;   /* 中等边框 */
+    --color-border-strong: #A8A8A8;     /* 强边框 */
+    
+    --color-text-primary: #161616;       /* 主文字 - 近黑 */
+    --color-text-secondary: #525252;      /* 次文字 - 深灰 */
+    --color-text-placeholder: #A8A8A8;  /* 占位文字 */
+    --color-text-inverse: #FFFFFF;        /* 反色文字 */
+    
+    /* 数据可视化配色方案 */
+    --color-data-1: #0F62FE;           /* 蓝色 */
+    --color-data-2: #6929D1;           /* 紫色 */
+    --color-data-3: #1192E8;           /* 天蓝 */
+    --color-data-4: #005D5D;           /* 深青 */
+    --color-data-5: #FA4D56;           /* 红色 */
+    --color-data-6: #570408;           /* 深红 */
+    --color-data-7: #198038;           /* 绿色 */
+    --color-data-8: #FF7EB6;           /* 粉色 */
+    
+    /* 间距比例尺 - Carbon Design System (4px 基准) */
+    --space-1: 0.25rem;    /* 4px */
+    --space-2: 0.5rem;     /* 8px */
+    --space-3: 0.75rem;    /* 12px */
+    --space-4: 1rem;        /* 16px */
+    --space-5: 1.5rem;     /* 24px */
+    --space-6: 2rem;       /* 32px */
+    --space-7: 3rem;       /* 48px */
+    --space-8: 4rem;       /* 64px */
+    --space-9: 6rem;       /* 96px */
+    
+    /* 字体 */
+    --font-family-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-family-mono: 'IBM Plex Mono', 'SF Mono', 'Fira Code', monospace;
+    --font-family-chinese: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    
+    --font-size-xs: 0.75rem;    /* 12px */
+    --font-size-sm: 0.875rem;   /* 14px */
+    --font-size-md: 1rem;       /* 16px */
+    --font-size-lg: 1.25rem;    /* 20px */
+    --font-size-xl: 1.5rem;    /* 24px */
+    --font-size-2xl: 2rem;      /* 32px */
+    --font-size-3xl: 2.5rem;   /* 40px */
+    
+    --font-weight-regular: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+    
+    --line-height-tight: 1.25;
+    --line-height-normal: 1.5;
+    --line-height-relaxed: 1.75;
+    
+    /* 圆角 */
+    --radius-sm: 2px;   /* Carbon 风格：小圆角 */
+    --radius-md: 4px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    
+    /* 阴影 */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 8px 24px rgba(0, 0, 0, 0.15);
+    
+    /* 过渡动画 */
+    --transition-fast: 70ms cubic-bezier(0.2, 0, 0.38, 0.9);
+    --transition-normal: 110ms cubic-bezier(0.2, 0, 0.38, 0.9);
+    --transition-slow: 240ms cubic-bezier(0.2, 0, 0.38, 0.9);
+    
+    /* Z-index 层级 */
+    --z-dropdown: 1000;
+    --z-sticky: 1020;
+    --z-fixed: 1030;
+    --z-modal: 1040;
+    --z-tooltip: 1050;
+}
+
+/* ==================== 全局样式 ==================== */
+.stApp {
+    background: var(--color-bg-primary) !important;
+    color: var(--color-text-primary) !important;
+    font-family: var(--font-family-sans), var(--font-family-chinese) !important;
+    font-size: var(--font-size-md) !important;
+    line-height: var(--line-height-normal) !important;
+}
+
+/* ==================== 侧边栏设计 ==================== */
+[data-testid="stSidebar"] {
+    background: var(--color-bg-secondary) !important;
+    border-right: 1px solid var(--color-border-subtle) !important;
+    box-shadow: var(--shadow-md) !important;
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    background: transparent !important;
+    padding: var(--space-4) var(--space-3) !important;
+}
+
+/* 侧边栏标题 */
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 {
+    color: var(--color-text-primary) !important;
+    font-weight: var(--font-weight-semibold) !important;
+    margin-bottom: var(--space-4) !important;
+    padding-bottom: var(--space-3) !important;
+    border-bottom: 1px solid var(--color-border-subtle) !important;
+}
+
+/* 侧边栏分割线 */
+[data-testid="stSidebar"] hr {
+    margin: var(--space-5) 0 !important;
+    border-color: var(--color-border-subtle) !important;
+}
+
+/* ==================== 按钮系统 ==================== */
+/* 主按钮 - Carbon Primary */
+.stButton > button[kind="primary"] {
+    background: var(--color-brand-primary) !important;
+    color: var(--color-text-inverse) !important;
+    border: none !important;
+    border-radius: var(--radius-sm) !important;
+    padding: var(--space-3) var(--space-5) !important;
+    font-weight: var(--font-weight-medium) !important;
+    font-size: var(--font-size-md) !important;
+    line-height: 1.25rem !important;
+    transition: all var(--transition-fast) !important;
+    cursor: pointer !important;
+}
+
+.stButton > button[kind="primary"]:hover {
+    background: var(--color-brand-secondary) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.stButton > button[kind="primary"]:active {
+    background: #002D9C !important;  /* Blue 80 */
+    transform: translateY(1px) !important;
+}
+
+/* 次按钮 - Carbon Secondary */
+.stButton > button[kind="secondary"] {
+    background: transparent !important;
+    color: var(--color-brand-primary) !important;
+    border: 1px solid var(--color-brand-primary) !important;
+    border-radius: var(--radius-sm) !important;
+    padding: calc(var(--space-3) - 1px) calc(var(--space-5) - 1px) !important;
+    font-weight: var(--font-weight-medium) !important;
+    transition: all var(--transition-fast) !important;
+    cursor: pointer !important;
+}
+
+.stButton > button[kind="secondary"]:hover {
+    background: rgba(15, 98, 254, 0.1) !important;
+    border-color: var(--color-brand-secondary) !important;
+}
+
+/* 危险按钮 */
+.stButton > button[kind="danger"] {
+    background: var(--color-error) !important;
+    color: var(--color-text-inverse) !important;
+    border: none !important;
+    border-radius: var(--radius-sm) !important;
+    padding: var(--space-3) var(--space-5) !important;
+    font-weight: var(--font-weight-medium) !important;
+    transition: all var(--transition-fast) !important;
+}
+
+.stButton > button[kind="danger"]:hover {
+    background: #BA1B23 !important;  /* Red 60 */
+}
+
+/* ==================== 输入框系统 ==================== */
+.stTextInput > div > div > input,
+.stSelectbox > div > div > div,
+.stTextArea > div > div > textarea {
+    background: var(--color-bg-secondary) !important;
+    color: var(--color-text-primary) !important;
+    border: 1px solid var(--color-border-moderate) !important;
+    border-radius: var(--radius-sm) !important;
+    padding: var(--space-3) var(--space-4) !important;
+    font-size: var(--font-size-md) !important;
+    transition: all var(--transition-fast) !important;
+}
+
+.stTextInput > div > div > input:focus,
+.stSelectbox > div > div > div:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: var(--color-brand-primary) !important;
+    box-shadow: 0 0 0 2px rgba(15, 98, 254, 0.3) !important;
+    outline: none !important;
+}
+
+/* 占位符 */
+.stTextInput > div > div > input::placeholder,
+.stTextArea > div > div > textarea::placeholder {
+    color: var(--color-text-placeholder) !important;
+}
+
+/* ==================== 卡片系统 ==================== */
+[data-testid="stMetric"],
+.element-container > .stDataFrame,
+.element-container > .stPlotlyChart {
+    background: var(--color-bg-secondary) !important;
+    border: 1px solid var(--color-border-subtle) !important;
+    border-radius: var(--radius-md) !important;
+    padding: var(--space-5) !important;
+    margin-bottom: var(--space-4) !important;
+    transition: all var(--transition-normal) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+[data-testid="stMetric"]:hover,
+.element-container > .stDataFrame:hover,
+.element-container > .stPlotlyChart:hover {
+    box-shadow: var(--shadow-md) !important;
+    transform: translateY(-2px) !important;
+}
+
+/* 指标卡片特殊样式 */
+[data-testid="stMetric"] label {
+    color: var(--color-text-secondary) !important;
+    font-size: var(--font-size-sm) !important;
+    font-weight: var(--font-weight-medium) !important;
+    margin-bottom: var(--space-2) !important;
+}
+
+[data-testid="stMetric"] [data-testid="stMetricValue"] {
+    color: var(--color-text-primary) !important;
+    font-size: var(--font-size-2xl) !important;
+    font-weight: var(--font-weight-bold) !important;
+    line-height: var(--line-height-tight) !important;
+}
+
+[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+    font-size: var(--font-size-sm) !important;
+    font-weight: var(--font-weight-medium) !important;
+}
+
+/* ==================== 数据表格 ==================== */
+[data-testid="stDataFrame"] {
+    background: var(--color-bg-secondary) !important;
+    border: 1px solid var(--color-border-subtle) !important;
+    border-radius: var(--radius-md) !important;
+    overflow: hidden !important;
+}
+
+[data-testid="stDataFrame"] table {
+    color: var(--color-text-primary) !important;
+    font-size: var(--font-size-sm) !important;
+}
+
+[data-testid="stDataFrame"] thead th {
+    background: var(--color-bg-tertiary) !important;
+    color: var(--color-text-primary) !important;
+    font-weight: var(--font-weight-semibold) !important;
+    padding: var(--space-3) var(--space-4) !important;
+    border-bottom: 2px solid var(--color-border-subtle) !important;
+    text-align: left !important;
+}
+
+[data-testid="stDataFrame"] tbody tr:hover {
+    background: var(--color-bg-hover) !important;
+}
+
+[data-testid="stDataFrame"] tbody td {
+    padding: var(--space-3) var(--space-4) !important;
+    border-bottom: 1px solid var(--color-border-subtle) !important;
+}
+
+/* ==================== Tab 系统 ==================== */
+[data-testid="stTabs"] {
+    gap: var(--space-1) !important;
+    border-bottom: 1px solid var(--color-border-subtle) !important;
+    margin-bottom: var(--space-5) !important;
+}
+
+[data-testid="stTabs"] button {
+    color: var(--color-text-secondary) !important;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    padding: var(--space-3) var(--space-4) !important;
+    font-weight: var(--font-weight-medium) !important;
+    font-size: var(--font-size-md) !important;
+    transition: all var(--transition-fast) !important;
+    cursor: pointer !important;
+}
+
+[data-testid="stTabs"] button:hover {
+    color: var(--color-brand-primary) !important;
+    background: rgba(15, 98, 254, 0.05) !important;
+}
+
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: var(--color-brand-primary) !important;
+    border-bottom-color: var(--color-brand-primary) !important;
+    font-weight: var(--font-weight-semibold) !important;
+}
+
+/* ==================== 提示消息系统 ==================== */
+.stSuccess,
+.stWarning,
+.stError,
+.stInfo {
+    background: var(--color-bg-secondary) !important;
+    border-left: 3px solid !important;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0 !important;
+    padding: var(--space-4) var(--space-5) !important;
+    margin-bottom: var(--space-4) !important;
+    box-shadow: var(--shadow-sm) !important;
+}
+
+.stSuccess {
+    border-left-color: var(--color-success) !important;
+}
+
+.stWarning {
+    border-left-color: var(--color-warning) !important;
+}
+
+.stError {
+    border-left-color: var(--color-error) !important;
+}
+
+.stInfo {
+    border-left-color: var(--color-info) !important;
+}
+
+.stSuccess > div,
+.stWarning > div,
+.stError > div,
+.stInfo > div {
+    color: var(--color-text-primary) !important;
+}
+
+/* ==================== 文件上传器 ==================== */
+.stFileUploader {
+    background: var(--color-bg-secondary) !important;
+    border: 2px dashed var(--color-border-moderate) !important;
+    border-radius: var(--radius-md) !important;
+    padding: var(--space-7) var(--space-5) !important;
+    text-align: center !important;
+    transition: all var(--transition-normal) !important;
+}
+
+.stFileUploader:hover {
+    border-color: var(--color-brand-primary) !important;
+    background: rgba(15, 98, 254, 0.02) !important;
+}
+
+/* ==================== 标题系统 ==================== */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--color-text-primary) !important;
+    font-weight: var(--font-weight-semibold) !important;
+    line-height: var(--line-height-tight) !important;
+    margin-top: var(--space-6) !important;
+    margin-bottom: var(--space-4) !important;
+}
+
+h1 {
+    font-size: var(--font-size-3xl) !important;
+    margin-top: 0 !important;
+}
+
+h2 {
+    font-size: var(--font-size-2xl) !important;
+}
+
+h3 {
+    font-size: var(--font-size-xl) !important;
+}
+
+h4 {
+    font-size: var(--font-size-lg) !important;
+}
+
+/* ==================== 滚动条 ==================== */
+::-webkit-scrollbar {
+    width: 8px !important;
+    height: 8px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-bg-tertiary) !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-border-moderate) !important;
+    border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-border-strong) !important;
+}
+
+/* ==================== 加载动画 ==================== */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.stApp > div {
+    animation: fadeIn var(--transition-slow) !important;
+}
+
+[data-testid="stSidebar"] {
+    animation: slideIn var(--transition-slow) !important;
+}
+
+/* ==================== 响应式设计 ==================== */
+@media (max-width: 768px) {
+    :root {
+        --font-size-3xl: 2rem;
+        --font-size-2xl: 1.5rem;
+        --font-size-xl: 1.25rem;
+    }
+    
+    [data-testid="stSidebar"] > div:first-child {
+        padding: var(--space-3) var(--space-2) !important;
+    }
+    
+    [data-testid="stMetric"],
+    .element-container > .stDataFrame,
+    .element-container > .stPlotlyChart {
+        padding: var(--space-4) !important;
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+    :root {
+        --space-9: 4rem;
+    }
+}
+
+/* ==================== 无障碍增强 ==================== */
+/* 焦点可见性 */
+*:focus {
+    outline: 2px solid var(--color-brand-primary) !important;
+    outline-offset: 2px !important;
+}
+
+/* 减少动效（用户偏好） */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* 高对比度模式 */
+@media (prefers-contrast: high) {
+    :root {
+        --color-border-subtle: #000000;
+        --color-text-secondary: #000000;
+    }
+}
+
+/* ==================== 打印样式 ==================== */
+@media print {
+    .stApp {
+        background: white !important;
+    }
+    
+    [data-testid="stSidebar"] {
+        display: none !important;
+    }
+    
+    [data-testid="stMetric"],
+    .element-container > .stDataFrame,
+    .element-container > .stPlotlyChart {
+        break-inside: avoid !important;
+        box-shadow: none !important;
+        border: 1px solid #000000 !important;
+    }
+}

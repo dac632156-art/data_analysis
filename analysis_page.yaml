@@ -1,0 +1,274 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DataMind AI" [level=1] [ref=e6]
+        - paragraph [ref=e7]: 数据分析智能体
+      - navigation [ref=e8]:
+        - button "数据上传" [ref=e9] [cursor=pointer]:
+          - img [ref=e10]
+          - generic [ref=e13]: 数据上传
+        - button "数据清洗" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+          - generic [ref=e19]: 数据清洗
+        - button "分析可视化" [active] [ref=e20] [cursor=pointer]:
+          - img [ref=e21]
+          - generic [ref=e22]: 分析可视化
+        - button "仪表盘" [ref=e23] [cursor=pointer]:
+          - img [ref=e24]
+          - generic [ref=e26]: 仪表盘
+      - generic [ref=e27]:
+        - generic [ref=e28]: AI 模型
+        - combobox [ref=e29]:
+          - option "DeepSeek" [selected]
+          - option "阿里云通义千问"
+          - option "智谱 GLM"
+          - option "Moonshot / Kimi"
+          - option "OpenAI"
+        - generic [ref=e30]: API Key
+        - textbox "输入 API Key..." [ref=e31]
+        - paragraph [ref=e32]: 选择模型后输入对应服务商的 API Key 即可使用
+      - generic [ref=e54]:
+        - paragraph [ref=e55]: test_data.csv
+        - paragraph [ref=e56]: 5 行 · 6 列
+    - main [ref=e33]:
+      - generic [ref=e191]:
+        - heading "分析可视化" [level=1] [ref=e192]
+        - generic [ref=e193]:
+          - button "统计分析" [ref=e194] [cursor=pointer]:
+            - img [ref=e195]
+            - text: 统计分析
+          - button "智能绘图" [ref=e198] [cursor=pointer]:
+            - img [ref=e199]
+            - text: 智能绘图
+          - button "AI 对话" [ref=e200] [cursor=pointer]:
+            - img [ref=e201]
+            - text: AI 对话
+        - generic [ref=e203]:
+          - generic [ref=e204]:
+            - heading "描述性统计" [level=2] [ref=e205]
+            - table [ref=e208]:
+              - rowgroup [ref=e209]:
+                - row "# 列名 总数 平均值 标准差 最小值 25%分位 中位数 75%分位 最大值 缺失值 缺失率 唯一值数" [ref=e210]:
+                  - columnheader "#" [ref=e211]
+                  - columnheader "列名" [ref=e212]
+                  - columnheader "总数" [ref=e213]
+                  - columnheader "平均值" [ref=e214]
+                  - columnheader "标准差" [ref=e215]
+                  - columnheader "最小值" [ref=e216]
+                  - columnheader "25%分位" [ref=e217]
+                  - columnheader "中位数" [ref=e218]
+                  - columnheader "75%分位" [ref=e219]
+                  - columnheader "最大值" [ref=e220]
+                  - columnheader "缺失值" [ref=e221]
+                  - columnheader "缺失率" [ref=e222]
+                  - columnheader "唯一值数" [ref=e223]
+              - rowgroup [ref=e224]:
+                - row "1 销量 5 1,260 630.8724 600 800 1,200 1,500 2,200 0 0.0% 5" [ref=e225]:
+                  - cell "1" [ref=e226]
+                  - cell "销量" [ref=e227]
+                  - cell "5" [ref=e228]
+                  - cell "1,260" [ref=e229]
+                  - cell "630.8724" [ref=e230]
+                  - cell "600" [ref=e231]
+                  - cell "800" [ref=e232]
+                  - cell "1,200" [ref=e233]
+                  - cell "1,500" [ref=e234]
+                  - cell "2,200" [ref=e235]
+                  - cell "0" [ref=e236]
+                  - cell "0.0%" [ref=e237]
+                  - cell "5" [ref=e238]
+                - row "2 价格 5 66.1600 33.8224 35 42.3000 58.5000 75 120 0 0.0% 5" [ref=e239]:
+                  - cell "2" [ref=e240]
+                  - cell "价格" [ref=e241]
+                  - cell "5" [ref=e242]
+                  - cell "66.1600" [ref=e243]
+                  - cell "33.8224" [ref=e244]
+                  - cell "35" [ref=e245]
+                  - cell "42.3000" [ref=e246]
+                  - cell "58.5000" [ref=e247]
+                  - cell "75" [ref=e248]
+                  - cell "120" [ref=e249]
+                  - cell "0" [ref=e250]
+                  - cell "0.0%" [ref=e251]
+                  - cell "5" [ref=e252]
+                - row "3 评分 5 4.1600 0.5225 3.5000 3.8000 4.2000 4.5000 4.8000 0 0.0% 5" [ref=e253]:
+                  - cell "3" [ref=e254]
+                  - cell "评分" [ref=e255]
+                  - cell "5" [ref=e256]
+                  - cell "4.1600" [ref=e257]
+                  - cell "0.5225" [ref=e258]
+                  - cell "3.5000" [ref=e259]
+                  - cell "3.8000" [ref=e260]
+                  - cell "4.2000" [ref=e261]
+                  - cell "4.5000" [ref=e262]
+                  - cell "4.8000" [ref=e263]
+                  - cell "0" [ref=e264]
+                  - cell "0.0%" [ref=e265]
+                  - cell "5" [ref=e266]
+                - row "4 库存 5 3,860 2801.4282 800 2,000 3,500 5,000 8,000 0 0.0% 5" [ref=e267]:
+                  - cell "4" [ref=e268]
+                  - cell "库存" [ref=e269]
+                  - cell "5" [ref=e270]
+                  - cell "3,860" [ref=e271]
+                  - cell "2801.4282" [ref=e272]
+                  - cell "800" [ref=e273]
+                  - cell "2,000" [ref=e274]
+                  - cell "3,500" [ref=e275]
+                  - cell "5,000" [ref=e276]
+                  - cell "8,000" [ref=e277]
+                  - cell "0" [ref=e278]
+                  - cell "0.0%" [ref=e279]
+                  - cell "5" [ref=e280]
+                - row "5 利润率 5 0.2640 0.1282 0.1200 0.1800 0.2500 0.3200 0.4500 0 0.0% 5" [ref=e281]:
+                  - cell "5" [ref=e282]
+                  - cell "利润率" [ref=e283]
+                  - cell "5" [ref=e284]
+                  - cell "0.2640" [ref=e285]
+                  - cell "0.1282" [ref=e286]
+                  - cell "0.1200" [ref=e287]
+                  - cell "0.1800" [ref=e288]
+                  - cell "0.2500" [ref=e289]
+                  - cell "0.3200" [ref=e290]
+                  - cell "0.4500" [ref=e291]
+                  - cell "0" [ref=e292]
+                  - cell "0.0%" [ref=e293]
+                  - cell "5" [ref=e294]
+          - generic [ref=e295]:
+            - heading "相关性热力图" [level=2] [ref=e296]
+            - generic [ref=e297]:
+              - heading "相关性热力图" [level=3] [ref=e298]
+              - generic [ref=e301]:
+                - img:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - generic: "1.00"
+                              - generic:
+                                - generic: "-0.87"
+                              - generic:
+                                - generic: "0.97"
+                              - generic:
+                                - generic: "1.00"
+                              - generic:
+                                - generic: "-0.94"
+                              - generic:
+                                - generic: "-0.87"
+                              - generic:
+                                - generic: "1.00"
+                              - generic:
+                                - generic: "-0.95"
+                              - generic:
+                                - generic: "-0.88"
+                              - generic:
+                                - generic: "0.99"
+                              - generic:
+                                - generic: "0.97"
+                              - generic:
+                                - generic: "-0.95"
+                              - generic:
+                                - generic: "1.00"
+                              - generic:
+                                - generic: "0.98"
+                              - generic:
+                                - generic: "-0.99"
+                              - generic:
+                                - generic: "1.00"
+                              - generic:
+                                - generic: "-0.88"
+                              - generic:
+                                - generic: "0.98"
+                              - generic:
+                                - generic: "1.00"
+                              - generic:
+                                - generic: "-0.95"
+                              - generic:
+                                - generic: "-0.94"
+                              - generic:
+                                - generic: "0.99"
+                              - generic:
+                                - generic: "-0.99"
+                              - generic:
+                                - generic: "-0.95"
+                              - generic:
+                                - generic: "1.00"
+                      - generic:
+                        - generic:
+                          - generic: 销量
+                        - generic:
+                          - generic: 价格
+                        - generic:
+                          - generic: 评分
+                        - generic:
+                          - generic: 库存
+                        - generic:
+                          - generic: 利润率
+                      - generic:
+                        - generic:
+                          - generic: 利润率
+                        - generic:
+                          - generic: 库存
+                        - generic:
+                          - generic: 评分
+                        - generic:
+                          - generic: 价格
+                        - generic:
+                          - generic: 销量
+                - img:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic: −0.8
+                        - generic:
+                          - generic: −0.6
+                        - generic:
+                          - generic: −0.4
+                        - generic:
+                          - generic: −0.2
+                        - generic:
+                          - generic: "0"
+                        - generic:
+                          - generic: "0.2"
+                        - generic:
+                          - generic: "0.4"
+                        - generic:
+                          - generic: "0.6"
+                        - generic:
+                          - generic: "0.8"
+                        - generic:
+                          - generic: "1"
+                    - generic:
+                      - generic: 相关性热力图
+                - toolbar [ref=e315]:
+                  - generic [ref=e316]:
+                    - button "Zoom" [ref=e317] [cursor=pointer]:
+                      - img [ref=e318]
+                    - button "Pan" [ref=e320] [cursor=pointer]:
+                      - img [ref=e321]
+                  - generic [ref=e323]:
+                    - button "Zoom in" [ref=e324] [cursor=pointer]:
+                      - img [ref=e325]
+                    - button "Zoom out" [ref=e327] [cursor=pointer]:
+                      - img [ref=e328]
+                    - button "Autoscale" [ref=e330] [cursor=pointer]:
+                      - img [ref=e331]
+                    - button "Reset axes" [ref=e333] [cursor=pointer]:
+                      - img [ref=e334]
+                - img
+          - generic [ref=e336]:
+            - heading "📋 快速概览" [level=2] [ref=e337]
+            - list [ref=e339]:
+              - listitem [ref=e340]: 数据集包含 5 行 x 6 列
+              - listitem [ref=e341]: 包含 5 个数值型字段，适合进行统计分析
+              - listitem [ref=e342]: 包含 1 个文本/分类字段，适合进行分组分析
+          - generic [ref=e343]:
+            - generic [ref=e344]:
+              - heading "🤖 AI 深度洞察（需配置 API Key）" [level=2] [ref=e345]
+              - button "生成洞察" [ref=e346] [cursor=pointer]
+            - generic [ref=e347]: 💡 在左侧边栏选择 AI 模型并输入 API Key 后，可使用 AI 对数据进行深度分析。
+  - img [ref=e348]

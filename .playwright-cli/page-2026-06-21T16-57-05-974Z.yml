@@ -1,0 +1,33 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - heading "DataMind AI" [level=1] [ref=e6]
+      - paragraph [ref=e7]: 数据分析智能体
+    - navigation [ref=e8]:
+      - button "数据上传" [ref=e9] [cursor=pointer]:
+        - img [ref=e10]
+        - generic [ref=e13]: 数据上传
+      - button "数据清洗" [ref=e14] [cursor=pointer]:
+        - img [ref=e15]
+        - generic [ref=e19]: 数据清洗
+      - button "分析可视化" [ref=e20] [cursor=pointer]:
+        - img [ref=e21]
+        - generic [ref=e22]: 分析可视化
+      - button "仪表盘" [ref=e23] [cursor=pointer]:
+        - img [ref=e24]
+        - generic [ref=e26]: 仪表盘
+    - generic [ref=e27]:
+      - generic [ref=e28]: AI 模型
+      - combobox [ref=e29]:
+        - option "DeepSeek" [selected]
+        - option "阿里云通义千问"
+        - option "智谱 GLM"
+        - option "Moonshot / Kimi"
+        - option "OpenAI"
+      - generic [ref=e30]: API Key
+      - textbox "输入 API Key..." [ref=e31]
+      - paragraph [ref=e32]: 选择模型后输入对应服务商的 API Key 即可使用
+  - main [ref=e33]:
+    - generic [ref=e35]:
+      - heading "分析可视化" [level=1] [ref=e36]
+      - generic [ref=e37]: 请先在「数据上传」页面上传数据

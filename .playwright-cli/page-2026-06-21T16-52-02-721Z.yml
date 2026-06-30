@@ -1,0 +1,161 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DataMind AI" [level=1] [ref=e6]
+        - paragraph [ref=e7]: 数据分析智能体
+      - navigation [ref=e8]:
+        - button "数据上传" [ref=e9] [cursor=pointer]:
+          - img [ref=e10]
+          - generic [ref=e13]: 数据上传
+        - button "数据清洗" [ref=e14] [cursor=pointer]:
+          - img [ref=e15]
+          - generic [ref=e19]: 数据清洗
+        - button "分析可视化" [ref=e20] [cursor=pointer]:
+          - img [ref=e21]
+          - generic [ref=e22]: 分析可视化
+        - button "仪表盘" [ref=e23] [cursor=pointer]:
+          - img [ref=e24]
+          - generic [ref=e26]: 仪表盘
+      - generic [ref=e27]:
+        - generic [ref=e28]: AI 模型
+        - combobox [ref=e29]:
+          - option "DeepSeek" [selected]
+          - option "阿里云通义千问"
+          - option "智谱 GLM"
+          - option "Moonshot / Kimi"
+          - option "OpenAI"
+        - generic [ref=e30]: API Key
+        - textbox "输入 API Key..." [ref=e31]
+        - paragraph [ref=e32]: 选择模型后输入对应服务商的 API Key 即可使用
+      - generic [ref=e54]:
+        - paragraph [ref=e55]: test_data.csv
+        - paragraph [ref=e56]: 5 行 · 6 列
+    - main [ref=e33]:
+      - generic [ref=e191]:
+        - heading "分析可视化" [level=1] [ref=e192]
+        - generic [ref=e193]:
+          - button "统计分析" [ref=e194] [cursor=pointer]:
+            - img [ref=e195]
+            - text: 统计分析
+          - button "智能绘图" [ref=e198] [cursor=pointer]:
+            - img [ref=e199]
+            - text: 智能绘图
+          - button "AI 对话" [ref=e200] [cursor=pointer]:
+            - img [ref=e201]
+            - text: AI 对话
+        - generic [ref=e350]:
+          - generic [ref=e351]:
+            - generic [ref=e352]:
+              - heading "AI 数据计算" [level=3] [ref=e353]:
+                - img [ref=e354]
+                - text: AI 数据计算
+              - paragraph [ref=e356]: 输入计算需求，AI 自动生成同比/环比/占比等计算列
+              - textbox "如：计算 age 的均值、总和、同比增长..." [ref=e357]
+              - button "⚡ 执行计算" [disabled] [ref=e358]
+              - generic [ref=e359]:
+                - paragraph [ref=e360]: 试试这些：
+                - paragraph [ref=e361]: · 计算各城市薪资的平均值和总和
+                - paragraph [ref=e362]: · 按部门计算薪资排名
+                - paragraph [ref=e363]: · 计算每个部门薪资的占比
+                - paragraph [ref=e364]: · 计算薪资的累计和移动平均
+              - button "刷新列列表" [ref=e365] [cursor=pointer]:
+                - img [ref=e366]
+                - text: 刷新列列表
+            - generic [ref=e367]:
+              - heading "图表配置" [level=3] [ref=e368]
+              - generic [ref=e369]:
+                - generic [ref=e370]:
+                  - generic [ref=e371]: 图表类型
+                  - combobox [ref=e372]:
+                    - option "柱状图" [selected]
+                    - option "堆叠柱状图"
+                    - option "折线图"
+                    - option "面积图"
+                    - option "散点图"
+                    - option "气泡图"
+                    - option "饼图"
+                    - option "直方图"
+                    - option "箱线图"
+                    - option "热力图"
+                    - option "雷达图"
+                    - option "瀑布图"
+                    - option "树状图"
+                    - option "词云图"
+                - generic [ref=e373]:
+                  - generic [ref=e374]: X 轴
+                  - combobox [ref=e375]:
+                    - option "选择列..."
+                    - option "产品" [selected]
+                    - option "销量"
+                    - option "价格"
+                    - option "评分"
+                    - option "库存"
+                    - option "利润率"
+                - generic [ref=e376]:
+                  - generic [ref=e377]: Y 轴（可选）
+                  - combobox [ref=e378]:
+                    - option "选择列..."
+                    - option "销量" [selected]
+                    - option "价格"
+                    - option "评分"
+                    - option "库存"
+                    - option "利润率"
+                - button "生成图表" [ref=e379] [cursor=pointer]
+          - generic [ref=e382]:
+            - heading "柱状图" [level=3] [ref=e383]
+            - generic [ref=e386]:
+              - img:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic:
+                        - generic: 产品A
+                      - generic:
+                        - generic: 产品B
+                      - generic:
+                        - generic: 产品C
+                      - generic:
+                        - generic: 产品D
+                      - generic:
+                        - generic: 产品E
+                    - generic:
+                      - generic:
+                        - generic: "0"
+                      - generic:
+                        - generic: "500"
+                      - generic:
+                        - generic: "1000"
+                      - generic:
+                        - generic: "1500"
+                      - generic:
+                        - generic: "2000"
+              - img:
+                - generic:
+                  - generic:
+                    - generic: 柱状图
+                  - generic:
+                    - generic: 产品
+                  - generic:
+                    - generic: 销量
+              - toolbar [ref=e400]:
+                - generic [ref=e401]:
+                  - button "Zoom" [ref=e402] [cursor=pointer]:
+                    - img [ref=e403]
+                  - button "Pan" [ref=e405] [cursor=pointer]:
+                    - img [ref=e406]
+                  - button "Box Select" [ref=e408] [cursor=pointer]:
+                    - img [ref=e409]
+                  - button "Lasso Select" [ref=e411] [cursor=pointer]:
+                    - img [ref=e412]
+                - generic [ref=e414]:
+                  - button "Zoom in" [ref=e415] [cursor=pointer]:
+                    - img [ref=e416]
+                  - button "Zoom out" [ref=e418] [cursor=pointer]:
+                    - img [ref=e419]
+                  - button "Autoscale" [ref=e421] [cursor=pointer]:
+                    - img [ref=e422]
+                  - button "Reset axes" [ref=e424] [cursor=pointer]:
+                    - img [ref=e425]
+              - img
+  - img [ref=e348]

@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>数据分析大屏 - 数据大屏</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+  background: #050816;
+  color: #e2e8f0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+.js-plotly-plot .plotly .modebar { opacity: 0.3; transition: opacity 0.2s; }
+.js-plotly-plot .plotly .modebar:hover { opacity: 1; }
+.chart-selected { border-color: rgba(34,211,238,0.6) !important; box-shadow: 0 0 30px rgba(34,211,238,0.3) !important; }
+</style>
+</head>
+<body style="min-height:100vh;background:linear-gradient(135deg,#050816 0%,#0a0e27 50%,#0f0d1f 100%);">
+
+<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:2px solid rgba(139,92,246,0.15);">
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div style="width:8px;height:32px;background:linear-gradient(180deg,#8b5cf6,#22d3ee);border-radius:4px;"></div>
+    <h1 style="font-size:28px;font-weight:700;letter-spacing:0.05em;text-shadow:0 0 25px rgba(139,92,246,0.5);">数据分析大屏</h1>
+  </div>
+  <div style="display:flex;align-items:center;gap:24px;font-size:13px;color:#94a3b8;">
+    <span style="display:flex;align-items:center;gap:8px;">
+      <span style="width:8px;height:8px;border-radius:50%;background:#4ade80;animation:pulse 2s infinite;"></span>
+      实时数据
+    </span>
+    <span style="font-family:monospace;">2026/6/22 01:36:25</span>
+  </div>
+</div>
+<style>@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }</style>
+
+<div style="display:flex;gap:16px;padding:20px 32px;border-bottom:1px solid rgba(139,92,246,0.08);flex-wrap:wrap;">
+  
+<div style="flex:1;min-width:0;padding:16px;border-radius:12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.15);">
+  <div style="font-size:24px;margin-bottom:4px;">📊</div>
+  <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">总记录数</p>
+  <p style="font-size:22px;font-weight:700;color:#E8833A;text-shadow:0 0 10px #E8833A40;">5</p>
+</div>
+  
+<div style="flex:1;min-width:0;padding:16px;border-radius:12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.15);">
+  <div style="font-size:24px;margin-bottom:4px;">📋</div>
+  <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">字段数</p>
+  <p style="font-size:22px;font-weight:700;color:#F4A261;text-shadow:0 0 10px #F4A26140;">6</p>
+</div>
+  
+<div style="flex:1;min-width:0;padding:16px;border-radius:12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.15);">
+  <div style="font-size:24px;margin-bottom:4px;">📈</div>
+  <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">销量 平均值</p>
+  <p style="font-size:22px;font-weight:700;color:#E76F51;text-shadow:0 0 10px #E76F5140;">1260.00</p>
+</div>
+  
+<div style="flex:1;min-width:0;padding:16px;border-radius:12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.15);">
+  <div style="font-size:24px;margin-bottom:4px;">💰</div>
+  <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">销量 总和</p>
+  <p style="font-size:22px;font-weight:700;color:#D4825A;text-shadow:0 0 10px #D4825A40;">6,300</p>
+</div>
+  
+<div style="flex:1;min-width:0;padding:16px;border-radius:12px;background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.15);">
+  <div style="font-size:24px;margin-bottom:4px;">🏷️</div>
+  <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">产品 唯一值个数</p>
+  <p style="font-size:22px;font-weight:700;color:#8B6F47;text-shadow:0 0 10px #8B6F4740;">5</p>
+</div>
+</div>
+
+<div style="padding:60px;text-align:center;color:#64748b;font-size:18px;">暂无图表</div>
+
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+  (function() {
+    var charts = [];
+
+    // 确保容器有有效尺寸
+    function ensureSize(el) {
+      if (el.offsetWidth > 0 && el.offsetHeight > 0) return;
+      var parent = el.parentElement;
+      if (!parent) return;
+      var pw = parent.offsetWidth, ph = parent.offsetHeight;
+      if (pw > 0 && ph > 0) {
+        el.style.width = pw + 'px';
+        el.style.height = ph + 'px';
+      } else {
+        el.style.width = '100%';
+        el.style.height = '400px';
+      }
+    }
+
+    // 点击图表 → 高亮外框 + 跨图表联动
+    var selectedIdx = -1;
+    var highlightLabel = null;
+    var lastClickTime = 0;
+
+    // 从鼠标坐标计算雷达图维度扇区（不依赖 plotly_hover）
+    function getRadarDimensionFromPosition(clientX, clientY, chartDiv, thetaVals, margins) {
+      var n = thetaVals.length;
+      if (n === 0) return null;
+      var rect = chartDiv.getBoundingClientRect();
+      var plotW = rect.width - margins.l - margins.r;
+      var plotH = rect.height - margins.t - margins.b;
+      var cx = rect.left + margins.l + plotW / 2;
+      var cy = rect.top + margins.t + plotH / 2;
+      var dx = clientX - cx, dy = clientY - cy;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      var radius = Math.min(plotW, plotH) / 2;
+      if (dist < 5 || dist > radius * 1.5) return null;
+      // 角度：0°在顶部，顺时针
+      var angle = Math.atan2(dx, -dy) * 180 / Math.PI;
+      if (angle < 0) angle += 360;
+      var sectorSize = 360 / n;
+      var idx = Math.round(angle / sectorSize) % n;
+      return thetaVals[idx];
+    }
+
+    // 防抖处理函数（防止 plotly_click 和 DOM click 双重触发）+ toggle 取消
+    var clearEmptyTimer = null;
+
+    function debouncedProcessClick(idx, data) {
+      var now = Date.now();
+      if (now - lastClickTime < 200) return;
+      lastClickTime = now;
+
+      // 取消"点击空白清除"的定时器
+      if (clearEmptyTimer) { clearTimeout(clearEmptyTimer); clearEmptyTimer = null; }
+
+      var label = null;
+      if (data && data.points && data.points[0]) {
+        var pt = data.points[0];
+        if (pt.label) label = String(pt.label);
+        else if (pt.theta !== undefined && pt.theta !== null) label = String(pt.theta);
+        else if (pt.x !== undefined && pt.x !== null) label = String(pt.x);
+      }
+
+      // toggle：再次点击同一标签 → 清除
+      if (label && label === highlightLabel) {
+        label = null;
+      }
+
+      var prev = document.querySelector('.chart-selected');
+      if (prev) prev.classList.remove('chart-selected');
+      var el = document.getElementById(charts[idx].id);
+      var wrapper = el ? el.closest('[data-chart-wrapper]') : null;
+      if (wrapper) {
+        if (selectedIdx === idx && !label) {
+          wrapper.classList.remove('chart-selected');
+          selectedIdx = -1;
+          highlightLabel = null;
+        } else {
+          wrapper.classList.add('chart-selected');
+          selectedIdx = idx;
+          highlightLabel = label;
+        }
+      }
+      // ★ 更新重置按钮可见性
+      updateResetButtonVisibility();
+
+      // 联动：所有图表根据标签高亮对应数据（支持雷达图 trace name 分组联动）
+      charts.forEach(function(cc) {
+        var cel = document.getElementById(cc.id);
+        if (!cel) return;
+        var cdata = cc.data;
+
+        // 判断此图表中是否有雷达 trace 的 name 匹配 highlightLabel（分组联动）
+        var hasNameMatch = false;
+        for (var i = 0; i < (cdata ? cdata.length : 0); i++) {
+          if (String(cdata[i].type || '') === 'scatterpolar' && String(cdata[i].name || '') === highlightLabel) {
+            hasNameMatch = true;
+            break;
+          }
+        }
+
+        for (var ti = 0; ti < (cdata ? cdata.length : 0); ti++) {
+          var trace = cdata[ti];
+          var type = String(trace.type || 'bar');
+          var vals = trace.labels || trace.theta || trace.x;
+          if (!highlightLabel || !vals) {
+            if (type === 'pie') {
+              Plotly.restyle(cel, {'selectedpoints': [null], 'pull': [vals ? vals.map(function() { return 0; }) : [0]]}, [ti]);
+            } else if (type === 'scatterpolar') {
+              Plotly.restyle(cel, {'opacity': [1], 'marker.opacity': [1], 'marker.size': [8]}, [ti]);
+            } else {
+              // ★ 笛卡尔图：恢复 trace opacity + marker opacity
+              Plotly.restyle(cel, {'opacity': [1], 'marker.opacity': [1]}, [ti]);
+            }
+          } else {
+            if (type === 'pie') {
+              var matchIdx = [];
+              vals.forEach(function(v, i) { if (String(v) === highlightLabel) matchIdx.push(i); });
+              var pulls = vals.map(function(v) { return String(v) === highlightLabel ? 0.15 : 0; });
+              // ★ 合并为单次 restyle，避免两次渲染导致 pull 被 Plotly 内部重置
+              Plotly.restyle(cel, {'selectedpoints': [matchIdx], 'pull': [pulls]}, [ti]);
+            } else if (type === 'scatterpolar') {
+              // 雷达图：两种联动模式
+              if (hasNameMatch) {
+                // 模式 1: 分组联动 — highlightLabel 匹配了此图表某条 radar trace 的 name
+                var isMatchedTrace = (String(trace.name || '') === highlightLabel);
+                Plotly.restyle(cel, {
+                  'opacity': [isMatchedTrace ? 1 : 0.15],
+                  'marker.opacity': [isMatchedTrace ? 1 : 0.15],
+                  'marker.size': [isMatchedTrace ? 12 : 6],
+                }, [ti]);
+              } else {
+                // 模式 2: 维度联动 — highlightLabel 匹配 theta 中的某个维度值
+                var opa = vals.map(function(v) { return String(v) === highlightLabel ? 1 : 0.15; });
+                var sizes = vals.map(function(v) { return String(v) === highlightLabel ? 16 : 6; });
+                Plotly.restyle(cel, {'marker.opacity': [opa], 'marker.size': [sizes]}, [ti]);
+              }
+            } else if (type === 'bar' || (type === 'scatter' && String(trace.mode || '').indexOf('lines') === -1)) {
+              // ===== 柱状图 / 纯散点图：逐点 marker.opacity =====
+              var opa2 = vals.map(function(v) { return String(v) === highlightLabel ? 1 : 0.15; });
+              Plotly.restyle(cel, {'marker.opacity': [opa2]}, [ti]);
+            } else {
+              // ===== 折线图 / 箱线图等：trace 级 opacity =====
+              var tName = String(trace.name || '');
+              var isMatch = (tName === highlightLabel);
+              var hasXMatch = false;
+              for (var xi = 0; xi < (vals ? vals.length : 0); xi++) {
+                if (String(vals[xi]) === highlightLabel) { hasXMatch = true; break; }
+              }
+              if (isMatch || hasXMatch) {
+                Plotly.restyle(cel, {'opacity': [1], 'marker.opacity': [1]}, [ti]);
+              } else {
+                Plotly.restyle(cel, {'opacity': [0.15], 'marker.opacity': [0.15]}, [ti]);
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // ===== 复原所有图表到初始状态 =====
+    function resetAllCharts() {
+      // 清除所有高亮状态
+      var allWrappers = document.querySelectorAll('.chart-selected');
+      allWrappers.forEach(function(w) { w.classList.remove('chart-selected'); });
+      selectedIdx = -1;
+      highlightLabel = null;
+      if (clearEmptyTimer) { clearTimeout(clearEmptyTimer); clearEmptyTimer = null; }
+
+      // 遍历所有图表，恢复初始样式
+      charts.forEach(function(cc) {
+        var cel = document.getElementById(cc.id);
+        if (!cel) return;
+        var cdata = cc.data;
+        for (var ti = 0; ti < (cdata ? cdata.length : 0); ti++) {
+          var trace = cdata[ti];
+          var type = String(trace.type || 'bar');
+          var vals = trace.labels || trace.theta || trace.x;
+          if (type === 'pie') {
+            Plotly.restyle(cel, {'selectedpoints': [null], 'pull': [vals ? vals.map(function() { return 0; }) : [0]]}, [ti]);
+          } else if (type === 'scatterpolar') {
+            Plotly.restyle(cel, {'opacity': [1], 'marker.opacity': [1], 'marker.size': [8]}, [ti]);
+          } else {
+            Plotly.restyle(cel, {'opacity': [1], 'marker.opacity': [1]}, [ti]);
+          }
+        }
+      });
+    }
+
+    // ===== 创建浮动"重置图表"按钮 =====
+    function createResetButton() {
+      var btn = document.createElement('button');
+      btn.id = 'dashboard-reset-btn';
+      btn.textContent = '↻ 重置图表';
+      btn.setAttribute('aria-label', '重置所有图表到初始状态');
+      btn.style.cssText = [
+        'position:fixed',
+        'right:24px',
+        'bottom:24px',
+        'z-index:99999',
+        'padding:10px 20px',
+        'font-size:13px',
+        'font-weight:600',
+        'color:#e2e8f0',
+        'background:rgba(139,92,246,0.2)',
+        'border:1px solid rgba(139,92,246,0.4)',
+        'border-radius:10px',
+        'cursor:pointer',
+        'backdrop-filter:blur(8px)',
+        'transition:all 0.2s ease',
+        'box-shadow:0 4px 20px rgba(0,0,0,0.3)',
+        'font-family:inherit',
+        'user-select:none',
+        'display:none', // 初始隐藏，有高亮时才显示
+      ].join(';');
+
+      btn.addEventListener('mouseenter', function() {
+        btn.style.background = 'rgba(139,92,246,0.4)';
+        btn.style.borderColor = 'rgba(139,92,246,0.7)';
+        btn.style.boxShadow = '0 4px 25px rgba(139,92,246,0.3)';
+      });
+      btn.addEventListener('mouseleave', function() {
+        btn.style.background = 'rgba(139,92,246,0.2)';
+        btn.style.borderColor = 'rgba(139,92,246,0.4)';
+        btn.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)';
+      });
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        resetAllCharts();
+      });
+
+      document.body.appendChild(btn);
+    }
+
+    // 高亮变化时显示/隐藏重置按钮
+    function updateResetButtonVisibility() {
+      var btn = document.getElementById('dashboard-reset-btn');
+      if (!btn) return;
+      btn.style.display = highlightLabel ? 'block' : 'none';
+    }
+
+    
+
+    // ===== 渲染所有图表 + 注册交互事件 =====
+    function renderAllChart() {
+      // ★ 用 Promise.all 等待所有图表完全渲染后再注册事件
+      // Plotly v2 的 newPlot 返回 Promise，异步渲染 SVG 交互层
+      // 饼图/雷达图渲染复杂，setTimeout 固定延迟可能不够
+      var renderPromises = charts.map(function(c) {
+        var el = document.getElementById(c.id);
+        if (!el) return Promise.resolve(null);
+        ensureSize(el);
+        var w = el.offsetWidth || el.clientWidth || 800;
+        var h = el.offsetHeight || el.clientHeight || 400;
+        c.layout.width = w;
+        c.layout.height = h;
+        // newPlot 返回 Promise<gd>
+        var p = Plotly.newPlot(c.id, c.data, c.layout, c.config);
+        // 兼容旧版 Plotly（同步返回 gd 而非 Promise）
+        if (!p || typeof p.then !== 'function') return Promise.resolve(el);
+        return p;
+      });
+
+      Promise.all(renderPromises).then(function() {
+        // 所有图表渲染完成，执行 resize 自适应
+        var resizePromises = charts.map(function(c) {
+          var el = document.getElementById(c.id);
+          if (!el) return Promise.resolve();
+          var p = Plotly.Plots.resize(el);
+          if (!p || typeof p.then !== 'function') return Promise.resolve();
+          return p;
+        });
+        return Promise.all(resizePromises);
+      }).then(function() {
+        // resize 也完成后，注册点击事件 + 创建重置按钮
+        registerClickEvents();
+        createResetButton();
+      }).catch(function() {
+        // 出错时回退：延迟后重试
+        setTimeout(function() { registerClickEvents(); createResetButton(); }, 800);
+      });
+    }
+
+    // ===== 注册所有图表的点击交互事件 =====
+    // ★ 核心策略：不依赖 el.on('plotly_click')（导出HTML中可能不触发）
+    //   改用 plotly_hover 跟踪鼠标位置的数据点 + DOM click 处理点击
+    //   hover 比 click 更可靠触发，只要鼠标在数据点上 hover 过，click 就能获取数据
+    var hoverDataMap = {};
+
+    function registerClickEvents() {
+      charts.forEach(function(c, idx) {
+        var el = document.getElementById(c.id);
+        if (!el) return;
+        // 判断是否雷达图
+        var isRadar = c.data.some(function(t) { return String(t.type || '') === 'scatterpolar'; });
+        // 雷达图的 margin 配置（与 layout 一致）
+        var radarMargins = c.layout.margin || { l: 60, r: 30, t: 40, b: 60 };
+
+        // ★ 1. 用 el.on 注册 plotly_click + plotly_hover（如果 el.on 可用）
+        if (typeof el.on === 'function') {
+          el.on('plotly_click', function(data) {
+            debouncedProcessClick(idx, data);
+          });
+          el.on('plotly_hover', function(data) {
+            hoverDataMap[idx] = data;
+          });
+          el.on('plotly_unhover', function() {
+            delete hoverDataMap[idx];
+          });
+        }
+
+        // ★ 2. DOM 事件备用（el.on 不可用或不触发时的双保险）
+        el.addEventListener('plotly_click', function(e) {
+          var detail = e.detail || (e.originalEvent && e.originalEvent.detail);
+          if (detail && detail.points) {
+            debouncedProcessClick(idx, detail);
+          }
+        });
+        el.addEventListener('plotly_hover', function(e) {
+          var detail = e.detail || (e.originalEvent && e.originalEvent.detail);
+          if (detail && detail.points) {
+            hoverDataMap[idx] = detail;
+          }
+        });
+        el.addEventListener('plotly_unhover', function() {
+          delete hoverDataMap[idx];
+        });
+
+        // ★ 3. 统一 DOM click：核心点击处理
+        //   - plotly_click 处理过则跳过
+        //   - 雷达图用坐标计算
+        //   - 有 hover 数据则用 hover 数据处理点击（饼图/柱状图/散点图等）
+        //   - 无 hover 数据则清除高亮（空白区点击）
+        el.addEventListener('click', function(e) {
+          var now = Date.now();
+          // plotly_click 刚处理过（200ms 内），跳过
+          if (now - lastClickTime < 200) return;
+
+          // 雷达图：用坐标计算填充区域点击
+          if (isRadar) {
+            var radarTrace = c.data.find(function(t) { return String(t.type || '') === 'scatterpolar'; });
+            if (radarTrace && radarTrace.theta) {
+              var dim = getRadarDimensionFromPosition(e.clientX, e.clientY, el, radarTrace.theta, radarMargins);
+              if (dim) {
+                lastClickTime = now;
+                if (clearEmptyTimer) { clearTimeout(clearEmptyTimer); clearEmptyTimer = null; }
+                debouncedProcessClick(idx, { points: [{ theta: dim }] });
+                return;
+              }
+            }
+          }
+
+          // ★ 有 hover 数据 → 用 hover 数据处理点击（饼图/柱状图/散点图等）
+          // 这是关键：即使 plotly_click 不触发，只要鼠标在数据点上 hover 过，就能正确处理
+          if (hoverDataMap[idx]) {
+            lastClickTime = now;
+            if (clearEmptyTimer) { clearTimeout(clearEmptyTimer); clearEmptyTimer = null; }
+            debouncedProcessClick(idx, hoverDataMap[idx]);
+            return;
+          }
+
+          // 无 hover 数据 → 空白区点击，延迟 120ms 清除高亮
+          if (clearEmptyTimer) clearTimeout(clearEmptyTimer);
+          clearEmptyTimer = setTimeout(function() {
+            if (highlightLabel) {
+              resetAllCharts();
+              updateResetButtonVisibility();
+            }
+            clearEmptyTimer = null;
+          }, 120);
+        });
+      });
+    }
+
+    // 确保 DOM + CSS 布局完全就绪
+    function ready(fn) {
+      if (document.readyState === 'complete') {
+        setTimeout(fn, 400);
+      } else {
+        window.addEventListener('load', function() { setTimeout(fn, 400); });
+      }
+    }
+
+    // 如果 Plotly CDN 还没加载完，等待它
+    if (typeof Plotly !== 'undefined') {
+      ready(renderAllChart);
+    } else {
+      var check = setInterval(function() {
+        if (typeof Plotly !== 'undefined') {
+          clearInterval(check);
+          ready(renderAllChart);
+        }
+      }, 50);
+    }
+
+    // 窗口 resize 时自适应
+    var resizeTimer;
+    window.addEventListener('resize', function() {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function() {
+        charts.forEach(function(c) {
+          Plotly.Plots.resize(document.getElementById(c.id));
+        });
+      }, 200);
+    });
+  })();
+</script>
+</body>
+</html>

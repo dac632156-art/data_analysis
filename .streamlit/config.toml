@@ -1,0 +1,21 @@
+[theme]
+# 使用深色主题，配合星空风格
+base="dark"
+primaryColor="#8B5CF6"
+backgroundColor="#020617"
+secondaryBackgroundColor="#0A0F1C"
+textColor="#F8FAFC"
+font="sans serif"
+
+# 隐藏 Streamlit 默认的右上角菜单
+[toolbar]
+showToolbar = false
+
+# 服务器配置
+[server]
+enableCORS = false
+enableXsrfProtection = true
+
+# 浏览器配置
+[browser]
+gatherUsageStats = false

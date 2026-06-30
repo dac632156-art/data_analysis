@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Build output
+frontend/dist/
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE (keep .codebuddy - it's project data, not cache)
+.idea/
+.vscode/
+*.swp
+*.swo

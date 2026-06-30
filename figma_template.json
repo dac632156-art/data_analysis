@@ -1,0 +1,404 @@
+{
+  "name": "DataMind AI - 数据分析智能体",
+  "type": "FRAME",
+  "children": [
+    {
+      "name": "侧边栏",
+      "type": "FRAME",
+      "absoluteBoundingBox": {
+        "x": 0,
+        "y": 0,
+        "width": 280,
+        "height": 1024
+      },
+      "fills": [
+        {
+          "type": "SOLID",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 1,
+            "a": 0.85
+          }
+        }
+      ],
+      "strokes": [
+        {
+          "type": "SOLID",
+          "color": {
+            "r": 0.78,
+            "g": 0.9,
+            "b": 0.87,
+            "a": 1
+          }
+        }
+      ],
+      "strokeWeight": 1,
+      "effects": [
+        {
+          "type": "LAYER_BLUR",
+          "radius": 10,
+          "visible": true
+        }
+      ],
+      "children": [
+        {
+          "name": "Logo",
+          "type": "TEXT",
+          "characters": "📊 DataMind AI",
+          "style": {
+            "fontSize": 28,
+            "fontWeight": 700,
+            "fontFamily": "PingFang SC"
+          },
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": {
+                "r": 0.36,
+                "g": 0.72,
+                "b": 0.63,
+                "a": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "副标题",
+          "type": "TEXT",
+          "characters": "数据分析智能体",
+          "style": {
+            "fontSize": 14,
+            "fontWeight": 400,
+            "fontFamily": "PingFang SC"
+          },
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": {
+                "r": 0.35,
+                "g": 0.49,
+                "b": 0.45,
+                "a": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "API 配置区",
+          "type": "FRAME",
+          "children": [
+            {
+              "name": "API Key 输入框",
+              "type": "RECTANGLE",
+              "absoluteBoundingBox": {
+                "x": 20,
+                "y": 120,
+                "width": 240,
+                "height": 44
+              },
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 0.75
+                  }
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": {
+                    "r": 0.78,
+                    "g": 0.9,
+                    "b": 0.87,
+                    "a": 1
+                  }
+                }
+              ],
+              "cornerRadius": 8
+            }
+          ]
+        },
+        {
+          "name": "导航菜单",
+          "type": "FRAME",
+          "children": [
+            {
+              "name": "数据上传按钮",
+              "type": "RECTANGLE",
+              "absoluteBoundingBox": {
+                "x": 20,
+                "y": 250,
+                "width": 240,
+                "height": 48
+              },
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": {
+                    "r": 0.62,
+                    "g": 0.85,
+                    "b": 0.78,
+                    "a": 0.2
+                  }
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": {
+                    "r": 0.36,
+                    "g": 0.72,
+                    "b": 0.63,
+                    "a": 1
+                  }
+                }
+              ],
+              "cornerRadius": 8
+            }
+          ]
+        },
+        {
+          "name": "数据信息卡片",
+          "type": "FRAME",
+          "absoluteBoundingBox": {
+            "x": 20,
+            "y": 550,
+            "width": 240,
+            "height": 180
+          },
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.75
+              }
+            }
+          ],
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": {
+                "r": 0.78,
+                "g": 0.9,
+                "b": 0.87,
+                "a": 1
+              }
+            }
+          ],
+          "cornerRadius": 12
+        }
+      ]
+    },
+    {
+      "name": "主内容区",
+      "type": "FRAME",
+      "absoluteBoundingBox": {
+        "x": 280,
+        "y": 0,
+        "width": 1120,
+        "height": 1024
+      },
+      "fills": [
+        {
+          "type": "GRADIENT_LINEAR",
+          "gradientTransform": [
+            [1, 0, 0],
+            [0, 1, 0]
+          ],
+          "gradientStops": [
+            {
+              "position": 0,
+              "color": {
+                "r": 0.85,
+                "g": 0.95,
+                "b": 0.96,
+                "a": 1
+              }
+            },
+            {
+              "position": 1,
+              "color": {
+                "r": 0.91,
+                "g": 0.97,
+                "b": 0.85,
+                "a": 1
+              }
+            }
+          ]
+        }
+      ],
+      "children": [
+        {
+          "name": "页面标题",
+          "type": "TEXT",
+          "characters": "数据上传",
+          "style": {
+            "fontSize": 32,
+            "fontWeight": 700,
+            "fontFamily": "PingFang SC"
+          },
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": {
+                "r": 0.16,
+                "g": 0.29,
+                "b": 0.26,
+                "a": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "页面副标题",
+          "type": "TEXT",
+          "characters": "上传你的数据文件，支持 CSV、Excel、JSON、SQLite 格式",
+          "style": {
+            "fontSize": 16,
+            "fontWeight": 400,
+            "fontFamily": "PingFang SC"
+          },
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": {
+                "r": 0.35,
+                "g": 0.49,
+                "b": 0.45,
+                "a": 1
+              }
+            }
+          ]
+        },
+        {
+          "name": "上传区域",
+          "type": "RECTANGLE",
+          "absoluteBoundingBox": {
+            "x": 320,
+            "y": 140,
+            "width": 1040,
+            "height": 200
+          },
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.75
+              }
+            }
+          ],
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": {
+                "r": 0.62,
+                "g": 0.85,
+                "b": 0.78,
+                "a": 1
+              }
+            }
+          ],
+          "strokeWeight": 2,
+          "strokeDashes": [5, 5],
+          "cornerRadius": 12
+        },
+        {
+          "name": "指标卡片网格",
+          "type": "FRAME",
+          "children": [
+            {
+              "name": "指标卡片 1",
+              "type": "RECTANGLE",
+              "absoluteBoundingBox": {
+                "x": 320,
+                "y": 380,
+                "width": 240,
+                "height": 120
+              },
+              "fills": [
+                {
+                  "type": "SOLID",
+                  "color": {
+                    "r": 1,
+                    "g": 1,
+                    "b": 1,
+                    "a": 0.75
+                  }
+                }
+              ],
+              "strokes": [
+                {
+                  "type": "SOLID",
+                  "color": {
+                    "r": 0.78,
+                    "g": 0.9,
+                    "b": 0.87,
+                    "a": 1
+                  }
+                }
+              ],
+              "cornerRadius": 12,
+              "effects": [
+                {
+                  "type": "DROP_SHADOW",
+                  "radius": 12,
+                  "spread": 0,
+                  "color": {
+                    "r": 0.36,
+                    "g": 0.72,
+                    "b": 0.63,
+                    "a": 0.08
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "数据表格",
+          "type": "RECTANGLE",
+          "absoluteBoundingBox": {
+            "x": 320,
+            "y": 540,
+            "width": 1040,
+            "height": 400
+          },
+          "fills": [
+            {
+              "type": "SOLID",
+              "color": {
+                "r": 1,
+                "g": 1,
+                "b": 1,
+                "a": 0.75
+              }
+            }
+          ],
+          "strokes": [
+            {
+              "type": "SOLID",
+              "color": {
+                "r": 0.78,
+                "g": 0.9,
+                "b": 0.87,
+                "a": 1
+              }
+            }
+          ],
+          "cornerRadius": 12
+        }
+      ]
+    }
+  ]
+}
