@@ -323,11 +323,34 @@ export const deleteSavedCharts = async (sessionId: string) => {
   return data;
 };
 
+/* ===== V2 分析包读取 ===== */
+export const getSavedPackages = async (sessionId: string): Promise<{
+  success: boolean;
+  packages: Array<Record<string, unknown>>;
+  total: number;
+}> => {
+  const { data } = await api.post('/dashboard/saved-packages', { session_id: sessionId });
+  return data;
+};
+
 /* ===== AI ===== */
 export const generateInsights = async (sessionId: string, apiKey: string, baseUrl?: string, model?: string) => {
   const { data } = await api.post<InsightsResponse>('/insights/generate', {
     session_id: sessionId, api_key: apiKey, base_url: baseUrl, model,
   });
+  return data;
+};
+
+/* ===== 分析执行（V2）===== */
+export const runAnalysis = async (sessionId: string, intents: Array<{
+  business_question: string; analysis_goal: string; priority: string; reason: string;
+}>) => {
+  const { data } = await api.post('/analysis/run', { session_id: sessionId, intents });
+  return data;
+};
+
+export const saveAnalysis = async (sessionId: string, packageIds: string[]) => {
+  const { data } = await api.post('/analysis/save', { session_id: sessionId, package_ids: packageIds });
   return data;
 };
 

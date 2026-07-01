@@ -54,53 +54,24 @@ METRIC_KEYWORDS = [
 
 
 def identify_fields(df: pd.DataFrame) -> Dict[str, Any]:
-    """阶段1：字段识别 ─ 将列分为时间维度、数值指标、分类维度"""
+    """阶段1：字段识别 ─ 将列分为时间维度、数值指标、分类维度
+    （委托 ColumnClassifier 执行，保留此函数以兼容旧调用方）"""
+    from src.column_classifier import ColumnClassifier
     # 处理重复列名：df[重复列名] 会返回 DataFrame 而非 Series，导致 .dtype 报错
     if df.columns.duplicated().any():
         df = df.loc[:, ~df.columns.duplicated()]
     columns = list(df.columns)
     dtypes = {c: str(df[c].dtype) for c in columns}
 
-    time_col = None
-    metrics: List[str] = []
-    dimensions: List[str] = []
-    other: List[str] = []
+    cc = ColumnClassifier()
+    result = cc.classify_all(df)
+    dtypes = {c: str(df[c].dtype) for c in columns}
 
-    for col in columns:
-        col_lower = col.lower().strip()
-        col_stripped = col.strip()
-
-        # 1) 检查时间字段
-        if time_col is None:
-            if any(kw in col_lower for kw in TIME_KEYWORDS):
-                time_col = col_stripped
-                continue
-        # 2) 数值类型检查（兼容 pandas >= 2.0 的 StringDtype）
-        is_numeric = pd.api.types.is_numeric_dtype(df[col])
-        if is_numeric:
-            if any(kw in col_lower for kw in METRIC_KEYWORDS):
-                metrics.append(col_stripped)
-            else:
-                # 数值列但无明确指标名 ─ 看其含义
-                metrics.append(col_stripped)
-        # 3) 分类维度
-        elif any(kw in col_lower for kw in DIMENSION_KEYWORDS):
-            dimensions.append(col_stripped)
-        elif pd.api.types.is_string_dtype(df[col]) or df[col].dtype == 'object':
-            # 字符串类型，检查唯一值占比
-            nunique = df[col].nunique()
-            if nunique < max(20, len(df) * 0.3):
-                dimensions.append(col_stripped)
-            else:
-                other.append(col_stripped)
-        else:
-            other.append(col_stripped)
-
-    result: Dict[str, Any] = {
-        "time_dimension": time_col,
-        "metrics": metrics,
-        "dimensions": dimensions,
-        "other": other,
+    return {
+        "time_dimension": result["time_cols"][0] if result["time_cols"] else None,
+        "metrics": result["numeric_cols"],
+        "dimensions": result["category_cols"],
+        "other": result["other"],
         "dtypes": dtypes,
     }
     return result
@@ -150,11 +121,11 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
             "x": time_col,
             "y": metrics[0],
             "table_type": None,
-            "analysis_type": "trend",
+            "analysis_type": "growth_analysis",
             "dimension": time_col,
             "metric": metrics[0],
             "reason": "报告固定章节·趋势分析 → 折线图",
-            "section": "trend",
+            "section": "growth_analysis",
         })
         core_titles.add(f"{metrics[0]}趋势分析")
 
@@ -169,11 +140,11 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "x": d,
                 "y": m,
                 "table_type": "summary",
-                "analysis_type": "geography",
+                "analysis_type": "structure_analysis",
                 "dimension": d,
                 "metric": m,
                 "reason": "报告固定章节·结构分析 → 3D地图",
-                "section": "structure",
+                "section": "structure_analysis",
             })
             core_titles.add(f"全国{d}{m}分布")
         else:
@@ -183,11 +154,11 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "x": d,
                 "y": m,
                 "table_type": "summary",
-                "analysis_type": "composition",
+                "analysis_type": "structure_analysis",
                 "dimension": d,
                 "metric": m,
                 "reason": "报告固定章节·结构分析 → 饼图",
-                "section": "structure",
+                "section": "structure_analysis",
             })
             core_titles.add(f"各{d}{m}占比分布")
 
@@ -203,11 +174,11 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "x": d,
                 "y": m,
                 "table_type": "sort",
-                "analysis_type": "ranking",
+                "analysis_type": "ranking_analysis",
                 "dimension": d,
                 "metric": m,
                 "reason": "报告固定章节·TOP分析 → 柱状图",
-                "section": "top",
+                "section": "ranking_analysis",
             })
             core_titles.add(title)
 
@@ -227,7 +198,7 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "x": time_col,
                     "y": m,
                     "table_type": None,
-                    "analysis_type": "trend",
+                    "analysis_type": "growth_analysis",
                     "dimension": time_col,
                     "metric": m,
                     "reason": "规则1·趋势/走势类 → 折线图",
@@ -246,7 +217,7 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "x": d,
                         "y": m,
                         "table_type": "sort",
-                        "analysis_type": "ranking",
+                        "analysis_type": "ranking_analysis",
                         "dimension": d,
                         "metric": m,
                         "reason": "规则3·对比/排名类 → 柱状图 + 排序表格",
@@ -266,7 +237,7 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                             "x": d,
                             "y": m,
                             "table_type": "summary",
-                            "analysis_type": "composition",
+                            "analysis_type": "structure_analysis",
                             "dimension": d,
                             "metric": m,
                             "reason": "规则4·占比/比例类 → 饼图 + 汇总表格",
@@ -286,7 +257,7 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                             "x": d,
                             "y": m,
                             "table_type": "summary",
-                            "analysis_type": "geography",
+                            "analysis_type": "structure_analysis",
                             "dimension": d,
                             "metric": m,
                             "reason": "规则5·地区分布类 → 3D 地图 + 汇总表格",
@@ -306,7 +277,7 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "y": metrics[0],
                     "color": d2,
                     "table_type": "cross",
-                    "analysis_type": "comparison",
+                    "analysis_type": "comparison_analysis",
                     "dimension": f"{d1}×{d2}",
                     "metric": metrics[0],
                     "reason": "规则6·交叉分析类 → 堆叠柱状图 + 交叉表格",
@@ -325,7 +296,7 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "x": metrics[i],
                         "y": metrics[j],
                         "table_type": "correlation",
-                        "analysis_type": "correlation",
+                        "analysis_type": "correlation_analysis",
                         "dimension": metrics[i],
                         "metric": metrics[j],
                         "reason": "规则7·相关性类 → 散点图 + 相关系数表格",
@@ -341,7 +312,7 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "title": title,
                 "x": m,
                 "table_type": None,
-                "analysis_type": "distribution",
+                "analysis_type": "distribution_analysis",
                 "dimension": m,
                 "metric": m,
                 "reason": "规则8·分布类 → 直方图",
@@ -359,7 +330,7 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "x": time_col,
                     "y": m,
                     "table_type": "sort",
-                    "analysis_type": "trend",
+                    "analysis_type": "growth_analysis",
                     "dimension": time_col,
                     "metric": m,
                     "reason": "规则2·同比/环比类 → 排序表格（图看趋势，表看具体增减%）",
@@ -380,7 +351,7 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
                             "y": m,
                             "table_type": "sort",
                             "top": 10,
-                            "analysis_type": "ranking",
+                            "analysis_type": "ranking_analysis",
                             "dimension": d,
                             "metric": m,
                             "reason": "规则3扩展·横向条形图 + 排序表格",

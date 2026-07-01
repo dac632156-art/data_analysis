@@ -19,6 +19,8 @@ class SessionData:
         self.cleaning_history: List[Dict] = []
         self.analysis_history: List[Dict] = []
         self.saved_charts: List[Dict[str, Any]] = []  # 用户从分析页保存的图表 [{"title":..., "option":..., "saved_at":...}, ...]
+        self.analysis_packages: Dict[str, Any] = {}     # 临时分析结果（key=pkg_id, value=AnalysisPackage）
+        self.saved_packages: List[Dict[str, Any]] = []   # 用户保存的分析包
         self.api_key: str = ""
         self.created_at: float = time.time()
         self.last_access: float = time.time()
@@ -116,6 +118,16 @@ class SessionManager:
         """获取 API Key"""
         session = self.get_session(session_id)
         return session.api_key if session else ""
+
+    def set_analysis_packages(self, session_id: str, packages: dict):
+        """暂存分析结果（/analysis/run 后调用）"""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = SessionData()
+                self._sessions[session_id] = session
+            session.analysis_packages = packages
+            session.last_access = time.time()
     
     def push_undo_state(self, session_id: str):
         """保存当前状态到撤销栈（最多 20 步）"""
@@ -178,6 +190,27 @@ class SessionManager:
             if session:
                 session.saved_charts.clear()
                 session.last_access = time.time()
+
+    # ===== V2 分析包操作 =====
+    def save_packages(self, session_id: str, package_ids: List[str]):
+        """从 analysis_packages 复制到 saved_packages"""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if not session:
+                return
+            for pkg_id in package_ids:
+                if pkg_id in session.analysis_packages:
+                    pkg = dict(session.analysis_packages[pkg_id])
+                    pkg["saved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    # 去重：同一 ID 不重复保存
+                    if not any(p.get("id") == pkg_id for p in session.saved_packages):
+                        session.saved_packages.append(pkg)
+            session.last_access = time.time()
+
+    def get_saved_packages(self, session_id: str) -> List[Dict[str, Any]]:
+        """获取所有已保存的分析包"""
+        session = self.get_session(session_id)
+        return session.saved_packages if session else []
 
     def clear_data(self, session_id: str):
         """清除会话数据"""

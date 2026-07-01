@@ -37,7 +37,7 @@ def _get_api_key(session_id: str, req_key: str) -> str:
 
 @router.post("/insights/generate")
 async def api_generate_insights(req: InsightsRequest):
-    """生成 AI 数据洞察报告"""
+    """生成 AI 数据洞察报告 + 分析意图列表"""
     df = manager.get_data(req.session_id)
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
@@ -55,8 +55,18 @@ async def api_generate_insights(req: InsightsRequest):
         agent = DataAnalysisAgent(**kwargs)
         loop = asyncio.get_running_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
-            insights = await loop.run_in_executor(executor, agent.generate_insights, df)
-        return {"success": True, "insights": insights}
+            result = await loop.run_in_executor(executor, agent.generate_insights, df)
+        
+        # 尝试解析 JSON（Structured Output）
+        import json as _json
+        if isinstance(result, str):
+            try:
+                data = _json.loads(result)
+                return {"success": True, "insights": data.get("insights", result), "intents": data.get("intents", [])}
+            except _json.JSONDecodeError:
+                return {"success": True, "insights": result, "intents": []}
+        
+        return {"success": True, "insights": str(result), "intents": []}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 分析失败: {str(e)}")
 

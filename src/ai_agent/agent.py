@@ -146,11 +146,10 @@ class DataAnalysisAgent:
             return f"AI 分析出错：{str(e)}\n\n请检查 API Key 是否正确，或稍后重试。"
 
     def generate_insights(self, df: pd.DataFrame) -> str:
-        """自动生成数据洞察报告（用户指定格式：概览→发现→质量→建议）
-
+        """自动生成数据洞察报告 + 分析意图列表（JSON 格式）
+        
         使用 INSIGHTS_SYSTEM_PROMPT + INSIGHTS_USER_PROMPT_TEMPLATE，
-        输出严格的四段式结构，其中「分析建议」每条的（X:列, Y:列）
-        可被前端「应用洞察」逐条解析并自动生成图表和表格。
+        输出 JSON：{insights: Markdown, intents: [{business_question, analysis_goal, priority, reason}]}
         """
         try:
             # ============================================
@@ -165,7 +164,7 @@ class DataAnalysisAgent:
             data_summary = _build_insights_data_summary(df, fields, stats, charts)
 
             # ============================================
-            # 阶段 4-5：AI 生成洞察
+            # 阶段 4-5：AI 生成洞察（Structured Output JSON）
             # ============================================
             user_prompt = INSIGHTS_USER_PROMPT_TEMPLATE.format(
                 data_summary=data_summary,
@@ -181,19 +180,21 @@ class DataAnalysisAgent:
                     temperature=0.0,
                     max_tokens=4096,
                     timeout=120,
+                    response_format={"type": "json_object"},
                 )
 
                 ai_text = response.choices[0].message.content or ""
-                # 清洗：去除 AI 可能多输出的前缀/后缀
-                ai_text = _clean_insights_text(ai_text)
-                return ai_text
+                return ai_text  # 返回 JSON 字符串，由 insights.py 解析
 
             except Exception as e:
                 # AI 调用失败时，降级为纯统计洞察
-                return _build_fallback_insights(df, fields, stats, charts, str(e))
+                import json as _json
+                fallback = _build_fallback_insights(df, fields, stats, charts, str(e))
+                return _json.dumps({"insights": fallback, "intents": []})
 
         except Exception as e:
-            return f"生成洞察报告出错：{str(e)}\n\n请检查 API Key 是否正确。"
+            import json as _json
+            return _json.dumps({"insights": f"生成洞察报告出错：{str(e)}", "intents": []})
 
     def generate_report(
         self,
@@ -623,7 +624,7 @@ def _build_fallback_sections(analysis_data: Dict[str, Any]) -> List[Dict[str, An
             "insight_label": "趋势洞察",
             "analysis": f"整体增长 {icon} {g:+.2f}%，波动率 {t['volatility_cv']:.2f}%，最长连续涨 {t['consecutive_up']} 次。",
         })
-    sections.append({"type": "trend", "title": "趋势分析", "insights": trend_insights})
+    sections.append({"type": "growth_analysis", "title": "趋势分析", "insights": trend_insights})
 
     # 结构（规则12）
     struct_insights = []
@@ -636,7 +637,7 @@ def _build_fallback_sections(analysis_data: Dict[str, Any]) -> List[Dict[str, An
             "insight_label": "结构洞察",
             "analysis": f"共 {s['category_count']} 个分类，Top3 占比 {s['top3_share']:.1f}%。",
         })
-    sections.append({"type": "structure", "title": "结构分析", "insights": struct_insights})
+    sections.append({"type": "structure_analysis", "title": "结构分析", "insights": struct_insights})
 
     # Top（规则11）
     top_insights = []
@@ -649,7 +650,7 @@ def _build_fallback_sections(analysis_data: Dict[str, Any]) -> List[Dict[str, An
             "insight_label": "集中度洞察",
             "analysis": f"{key}：Top1={t['max_category']}({t['max_value']:,.2f})，Top3 集中度={t.get('top3_concentration',0):.1f}%",
         })
-    sections.append({"type": "top", "title": "TOP / 集中度分析", "insights": top_insights})
+    sections.append({"type": "ranking_analysis", "title": "TOP / 集中度分析", "insights": top_insights})
 
     # 异常
     anomaly_insights = []
@@ -670,7 +671,7 @@ def _build_fallback_sections(analysis_data: Dict[str, Any]) -> List[Dict[str, An
             "chart_title": None, "chart_type": None, "table_type": None,
             "rule_id": None, "insight_label": "异常洞察", "analysis": "未检测到显著异常",
         }]
-    sections.append({"type": "anomaly", "title": "异常分析", "insights": anomaly_insights})
+    sections.append({"type": "anomaly_analysis", "title": "异常分析", "insights": anomaly_insights})
 
     # 结论
     sections.append({

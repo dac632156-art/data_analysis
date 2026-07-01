@@ -51,56 +51,50 @@ ANALYSIS_PROMPT_TEMPLATE = """
 # 数据洞察生成 Prompt（用户指定格式：概览→发现→质量→建议）
 # ============================================================
 
-INSIGHTS_SYSTEM_PROMPT = """你是一个严格按模板输出的数据分析机器。
+INSIGHTS_SYSTEM_PROMPT = """你是一个数据分析师。你需要读取数据后，输出两部分内容：
 
-## 输出铁律
-你只能输出四个章节，格式必须与用户给的"正确示例"完全一致。
-1. 章节数量：只能4个。多一个不行，少一个不行。
-2. 章节名称：只允许"## 数据概览""## 关键发现""## 数据质量""## 分析建议"这四种。
-3. 禁止输出：emojis、表格markdown、代码块、总结、结论、建议、附录、备注等任何额外内容。
-4. 禁止编造：所有列名必须来自数据中的真实列名。
-5. 分析建议：每条末尾必须有 (X:列名, Y:列名)，紧跟图表+表格推荐两行。
-6. 分析建议之后：一个字都不能再输出。
+1. Markdown 洞察文字（给人看）
+2. 结构化分析计划 JSON（给程序执行）
 
-这不是报告，不是分析文章，就是一个四段式结构化摘要。"""
+## 输出格式（Structured Output）
+你必须输出一个 JSON 对象，包含以下字段：
+- insights: string —— Markdown 格式的洞察文字（4个章节：数据概览、关键发现、数据质量、分析建议）
+- intents: array —— 分析意图列表，每个 intent 包含：
+  - business_question: string —— 明确的业务问题（中文，15字以内）
+  - analysis_goal: string —— 分析目标简述
+  - priority: string —— "high" | "medium" | "low"
+  - reason: string —— 为什么这个问题值得分析
 
-INSIGHTS_USER_PROMPT_TEMPLATE = """【正确输出示例——你必须一字不差地模仿这个格式：四个##标题、括号标注X:Y:、每建议两行（图+表）】
+## 你可以提出的分析方向
+- 增长趋势分析
+- 排名和对比分析
+- 结构和占比分析
+- 集中度和分布分析
+- 相关关系分析
+- 异常值检测
 
-## 数据概览
-本数据集包含120行记录、8个字段，涵盖日期、城市、产品类别、销售额、成本、利润、客户数及退货数等维度，数据完整性较高，缺失率0%。
+## 铁律
+- intents[] 中可以自由发挥 business_question/analysis_goal/reason
+- priority 根据业务重要性选择 high/medium/low
+- 每条 intent 独立，不相互引用
+- 基于数据真实特征，不编造
+- 禁止输出：analysis_method / algorithm / dimension / metric / chart_type
+- 禁止输出任何技术实现细节或图表类型名称"""
 
-## 关键发现
-1. 「销售额」与「利润」呈强正相关（相关系数0.92），高销售额产品利润同步增长，但「退货数」与销售额无明显线性关系。
-2. 「华东」地区贡献了46%的「销售额」，Top3地区合计占比91.4%，地域集中度极高。
-3. 「手机」产品类别的「销售额」均值最高为25.3万元，而「配件」类最低仅3.1万元，品类差异显著。
-4. 「销售额」存在4个强离群点（Z-score>2.5），分别出现在第12行和第33行，需排查是否为促销活动或数据录入错误。
-5. 「客户数」与「复购率」（均值40%）波动较大（CV=28%），部分月份客户流失明显。
-
-## 数据质量
-数据整体完整，无缺失值与重复行。「销售额」与「成本」列各存在4个IQR异常值（占比3.3%），分布在数据高值端。数据类型一致，日期列格式为YYYY-MM。
-
-## 分析建议
-1. 计算各「产品类别」的「销售额」均值，对比排名 → 柱状图（X:产品类别, Y:销售额）
-    + 排序表格（排序:销售额, 降序）
-2. 计算「城市」的「销售额」占比与比例 → 饼图（X:城市, Y:销售额）
-    + 汇总表格（行:城市, 列:销售额）
-3. 分析「销售额」的分布与频次 → 直方图（X:销售额, Y:）
-4. 计算「销售额」的同比（与去年同月对比）→ 折线图（X:日期, Y:销售额同比）
-    + 排序表格（排序:同比变化%, 降序）
-5. 计算「销售额」的环比（与上月对比）→ 折线图（X:日期, Y:销售额环比）
-    + 排序表格（排序:环比变化%, 降序）
-6. 绘制「城市」的「销售额」地图与地区分布 → 3D地图（X:城市, Y:销售额）
-    + 汇总表格（行:城市, 列:销售额）
-
-
-===== 现在请对以下真实数据，完全模仿上面示例的格式输出。不可自创章节、不可加emoji、分析建议后不可再写任何内容。=====
+INSIGHTS_USER_PROMPT_TEMPLATE = """以下是数据摘要，请输出 JSON 格式的分析结果：
 
 {data_summary}
 
-===== 再次强调 =====
-1. 输出必须从"## 数据概览"开始，到"## 分析建议"的最后一条表格推荐结束。
-2. "分析建议"后面不能再出现任何文字。
-3. 每条建议必须是"图表行 + 表格行"两行，括号内标注 (X:列名, Y:列名)。"""
+输出要求：
+{{
+  "insights": "## 数据概览\\n...\\n## 关键发现\\n...\\n## 数据质量\\n...\\n## 分析建议\\n1. ...\\n2. ...",
+  "intents": [
+    {{"business_question": "销售增长是否放缓？", "analysis_goal": "判断增长速度变化", "priority": "high", "reason": "销售额是核心指标"}},
+    {{"business_question": "哪个地区贡献最高？", "analysis_goal": "地区排名分析", "priority": "high", "reason": "优化区域资源配置"}}
+  ]
+}}
+
+请严格输出 JSON，不要包含任何额外文字。"""
 
 # ============================================================
 # 数据分析报告生成 Prompt（五阶段分析流水线 阶段4-5）
@@ -252,7 +246,7 @@ REPORT_USER_PROMPT_TEMPLATE = """请基于以下统计数据生成一份完整�
       ]
     }},
     {{
-      "type": "trend",
+      "type": "growth_analysis",
       "title": "趋势分析",
       "insights": [
         {{
@@ -261,7 +255,7 @@ REPORT_USER_PROMPT_TEMPLATE = """请基于以下统计数据生成一份完整�
           "table_type": "sort",
           "rule_id": "规则9",
           "insight_label": "趋势洞察",
-          "analysis_type": "trend",
+          "analysis_type": "growth_analysis",
           "dimension": "日期",
           "metric": "销售额",
           "business_question": "销售额随时间如何变化？是否持续增长？",
@@ -280,7 +274,7 @@ REPORT_USER_PROMPT_TEMPLATE = """请基于以下统计数据生成一份完整�
           "table_type": "summary",
           "rule_id": "规则12",
           "insight_label": "结构洞察",
-          "analysis_type": "composition",
+          "analysis_type": "concentration_analysis",
           "dimension": "地区",
           "metric": "销售额",
           "business_question": "各地区销售额占比如何分布？是否存在过度依赖？",
@@ -290,7 +284,7 @@ REPORT_USER_PROMPT_TEMPLATE = """请基于以下统计数据生成一份完整�
       ]
     }},
     {{
-      "type": "top",
+      "type": "ranking_analysis",
       "title": "TOP / 集中度分析",
       "insights": [
         {{
@@ -385,7 +379,7 @@ REPORT_USER_PROMPT_TEMPLATE = """请基于以下统计数据生成一份完整�
 - 如果数据中有地区列（含"省/市/区/地区/区域/城市"等关键词），必须生成一个 type="structure" 的 section，
   其中 insight 对象的 chart_type="map_3d"、rule_id="规则13"、table_type="summary"、insight_label="结构洞察"
 - 如果有 ≥2 个分类维度交叉，生成 type="structure" section，chart_type="stacked_bar"、rule_id="规则14"、table_type="cross"
-- 如果有 ≥2 个数值指标，生成 type="trend" section，chart_type="scatter"、rule_id="规则15"、table_type="correlation"
+- 如果有 ≥2 个数值指标，生成 type="growth_analysis" section，chart_type="scatter"、rule_id="规则15"、table_type="correlation"
 - 所有字符串型 insight 必须改为对象格式（11 个字段缺一不可：chart_title, chart_type, table_type, rule_id, insight_label, analysis_type, dimension, metric, business_question, business_conclusion, analysis）
 - 洞察数量控制在 2-5 条每节
 - 必须使用提供的统计数据，禁止编造数字"""

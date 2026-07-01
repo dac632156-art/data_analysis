@@ -7,7 +7,7 @@ import { CanvasRenderer } from 'echarts/renderers';
 import { ScrollRankingBoard } from '@jiaminghi/data-view-react';
 import AnimatedNumber from '../AnimatedNumber';
 import TbHbTable, { type TbHbRow } from '../TbHbTable';
-import type { EChartItem } from '../../types/api';
+import type { EChartItem, AnalysisPackage } from '../../types/api';
 
 // ★ 注册所有必要组件（2D 地图渲染）
 echarts.use([
@@ -22,6 +22,8 @@ interface Props {
   categoryCol?: string;
   valueCol?: string;
   echarts?: EChartItem[];
+  /** V2：从分析引擎保存的分析包 */
+  packages?: AnalysisPackage[];
 }
 
 const CHINA_GEO_URL = 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json';
@@ -265,7 +267,7 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
   };
 }
 
-export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol, echarts: echartsData }: Props) {
+export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol, echarts: echartsData, packages }: Props) {
   const chinaRef = useRef<HTMLDivElement>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const chinaInst = useRef<echarts.ECharts | null>(null);
@@ -323,6 +325,19 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
     value: Number(row[valCol]) || 0,
   }));
 
+  // ★ V2：从分析包中提取 AI 摘要 & 异常预警
+  const aiSummary = useMemo(() => {
+    if (!packages || packages.length === 0) return [] as string[];
+    return packages.filter(p => p.can_run).flatMap(p => p.insights || []).slice(0, 5);
+  }, [packages]);
+  const anomalyAlerts = useMemo(() => {
+    if (!packages || packages.length === 0) return [] as string[];
+    return packages
+      .filter(p => p.analysis_type === 'anomaly_analysis' && p.can_run)
+      .flatMap(p => p.insights || [])
+      .slice(0, 3);
+  }, [packages]);
+
   const KPIRow = ({ kpi }: { kpi: Props['kpis'][0] }) => {
     const color = kpi.color || '#22d3ee';
     const numVal = typeof kpi.value === 'number' ? kpi.value : parseFloat(String(kpi.value));
@@ -376,6 +391,7 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
             <div className="flex-1" />
             <div className="text-xs text-[#a78bfa] font-semibold mb-2 tracking-wider">📋 数据预览</div>
             <div className="overflow-auto" style={{ height: '160px' }}>
+              {/* ... 数据预览表格 ... */}
               {dataPreview && dataPreview.length > 0 ? (
                 <table className="w-full text-[10px]">
                   <thead>
@@ -397,6 +413,17 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
                 <div className="flex items-center justify-center h-full text-slate-500 text-xs">暂无数据</div>
               )}
             </div>
+            {/* V2: AI 摘要 */}
+            {aiSummary.length > 0 && (
+              <div className="mt-3 pt-2 border-t border-white/[0.06]">
+                <div className="text-xs text-[#f59e0b] font-semibold mb-2 tracking-wider">🤖 AI 摘要</div>
+                <div className="overflow-auto" style={{ maxHeight: '120px' }}>
+                  {aiSummary.map((ins, i) => (
+                    <p key={i} className="text-[10px] text-slate-400 mb-1 leading-relaxed">{ins}</p>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -449,6 +476,17 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
                 <div className="flex items-center justify-center h-full text-slate-500 text-xs">无排行数据</div>
               )}
             </div>
+            {/* V2: 异常预警 */}
+            {anomalyAlerts.length > 0 && (
+              <div className="mt-3 pt-2 border-t border-white/[0.06]">
+                <div className="text-xs text-[#f87171] font-semibold mb-2 tracking-wider">⚠️ 异常预警</div>
+                <div className="overflow-auto" style={{ maxHeight: '100px' }}>
+                  {anomalyAlerts.map((alert, i) => (
+                    <p key={i} className="text-[10px] text-red-400/70 mb-1 leading-relaxed">{alert}</p>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1311,6 +1311,8 @@ interface ReportSection {
   title: string;
   subtitle?: string;
   chartIndex?: number; // 对应 echarts 数组索引（仅图表类型 section 有效）
+  /** V2：按 analysis_type 匹配 saved_packages 中的图表 */
+  analysis_type?: string;
   analysis: string;    // AI 分析文字
   tableData?: Record<string, unknown>[]
   // next_steps 专用字段

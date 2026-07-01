@@ -13,7 +13,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 # 导入路由
-from backend.routers import upload, data, clean, stats, chart, dashboard, insights, chat, report
+from backend.routers import upload, data, clean, stats, chart, dashboard, insights, chat, report, analysis
 from backend.services.session_manager import manager
 
 app = FastAPI(
@@ -45,6 +45,7 @@ app.include_router(dashboard.router, prefix="/api", tags=["仪表盘"])
 app.include_router(insights.router, prefix="/api", tags=["AI 洞察"])
 app.include_router(chat.router, prefix="/api", tags=["AI 对话"])
 app.include_router(report.router, prefix="/api", tags=["报告生成"])
+app.include_router(analysis.router, prefix="/api", tags=["分析执行"])
 
 
 @app.get("/api/health")

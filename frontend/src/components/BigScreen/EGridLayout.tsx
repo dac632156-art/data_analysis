@@ -5,7 +5,8 @@ import EChartView, { EChartsOption } from '../EChartView';
 import GLMapView from '../GLMapView';
 import AnimatedNumber from '../AnimatedNumber';
 import TbHbTable, { type TbHbRow } from '../TbHbTable';
-import type { EChartItem } from '../../types/api';
+import VisualizationRenderer from '../VisualizationRenderer';
+import type { EChartItem, AnalysisPackage } from '../../types/api';
 
 interface KPI { title: string; value: string | number; icon?: string; color?: string; change?: number | null; trend?: 'up' | 'down' | 'flat'; }
 interface Props {
@@ -14,6 +15,8 @@ interface Props {
   title?: string;
   hideChartTitle?: boolean;
   tableData?: Record<string, unknown>[];
+  /** V2：从分析引擎保存的分析包 */
+  packages?: AnalysisPackage[];
 }
 
 /** 检测 ECharts option 是否为 3D GL 类型 */
@@ -35,7 +38,7 @@ function formatTableValue(val: unknown): string {
   return String(val);
 }
 
-export default function EGridLayout({ kpis, echarts, title = '数据分析看板', hideChartTitle, tableData }: Props) {
+export default function EGridLayout({ kpis, echarts, title = '数据分析看板', hideChartTitle, tableData, packages }: Props) {
   const [highlightLabel, setHighlightLabel] = useState<string | null>(null);
   const [showTable, setShowTable] = useState(false);
 
@@ -151,6 +154,14 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* ★ V2 分析包区域 */}
+      {packages && packages.length > 0 && (
+        <div className="px-6 py-4 border-b border-[#1a1f3a]/30" style={{ animation: 'fadeIn 0.4s ease' }}>
+          <h2 className="text-sm font-semibold text-[#22d3ee] mb-3">📊 AI 分析结果</h2>
+          <VisualizationRenderer packages={packages} />
         </div>
       )}
 

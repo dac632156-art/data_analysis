@@ -5,6 +5,7 @@ import EChartView, { EChartsOption } from '../components/EChartView';
 import DataTable from '../components/DataTable';
 import TbHbTable, { type TbHbRow } from '../components/TbHbTable';
 import KPICards, { type KPIItem } from '../components/KPICards';
+import VisualizationRenderer from '../components/VisualizationRenderer';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
 import * as api from '../api/client';
 import { marked } from 'marked';
@@ -39,6 +40,11 @@ export default function AnalysisPage() {
   const [saveMsg, setSaveMsg] = useState('');
   const [chartInfo, setChartInfo] = useState<{ title: string; option: Record<string, unknown> } | null>(null);
   const [chartSuggestions, setChartSuggestions] = useState<Array<{ type: string; x: string; y: string; title: string }>>([]);
+  const [intents, setIntents] = useState<Array<{
+    business_question: string; analysis_goal: string; priority: string; reason: string; checked: boolean;
+  }>>([]);
+  const [analysisPackages, setAnalysisPackages] = useState<Array<Record<string, unknown>>>([]);
+  const [selectedPkgIndex, setSelectedPkgIndex] = useState(0);
   const [analysisKpis, setAnalysisKpis] = useState<KPIItem[]>([]);
   const [tbHbData, setTbHbData] = useState<{
     rows: TbHbRow[];
@@ -353,384 +359,75 @@ export default function AnalysisPage() {
     }
   };
 
-  /** 一键应用洞察：解析建议逐条 → 按需计算 → 自动生成第一张图 → 跳转到智能绘图
-   *  @param sourceText 可选，优先使用传入的文本；否则取 chatHistory 最后一条 AI 回复，其次取 insights */
+  /** V2：一键应用洞察 → 读取 intents[] → 调 /analysis/run → 展示 packages */
   const handleApplyInsights = async (sourceText?: string) => {
-    // 确定源文本
-    let rawText = sourceText;
-    if (!rawText) {
-      const lastAi = [...chatHistory].reverse().find(m => m.role === 'ai');
-      if (lastAi) rawText = lastAi.content;
-    }
-    if (!rawText) rawText = insights;
-
-    if (!rawText) {
-      alert('请先生成 AI 洞察或在 AI 对话中讨论分析方向');
-      return;
-    }
     if (!ds.apiKey) {
       alert('请先在左上角配置 AI API Key');
       return;
     }
 
-    // ---- Step 1: 提取"建议"后面的文本 ----
-    let suggestionsText = '';
-    const txt = rawText;
-    if (txt.includes('分析建议') || txt.includes('建议')) {
-      const splitKey = txt.includes('分析建议') ? '分析建议' : '建议';
-      suggestionsText = txt.split(splitKey)[1] || '';
-    } else {
-      suggestionsText = txt;
-    }
-    suggestionsText = suggestionsText
-      .replace(/[#*_`>|]/g, ' ')
-      .replace(/\n{3,}/g, '\n')
-      .trim();
+    try {
+      setComputing(true);
+      setComputeResult('⏳ 正在调用 AI 生成洞察...');
 
-    if (!suggestionsText) {
-      alert('未能从洞察中提取到分析建议，请手动在左侧"AI 数据计算"中输入');
+      const provider = getProviderConfig();
+      const res = await api.generateInsights(ds.sessionId, ds.apiKey, provider?.baseUrl, provider?.model);
+
+      if (!res.success || !res.intents || res.intents.length === 0) {
+        alert('AI 未返回分析计划，请重试');
+        setComputing(false);
+        return;
+      }
+
+      setIntents(res.intents);
+      setComputeResult(`✅ 获取到 ${res.intents.length} 个分析问题，请勾选后点击「执行分析」`);
+      setComputing(false);
+    } catch (err) {
+      setComputeResult(`❌ 失败: ${err instanceof Error ? err.message : '未知错误'}`);
+      setComputing(false);
+    }
+  };
+
+  /** V2：执行选中的分析计划 → 调 /analysis/run */
+  const handleRunAnalysis = async () => {
+    const selected = intents.filter(i => i.checked);
+    if (selected.length === 0) {
+      alert('请至少勾选一个分析问题');
       return;
     }
-
-    setComputing(true);
-    setComputeResult('⏳ Step 1: 正在解析建议...');
-
-    // ---- Step 1.5: 逐行解析建议，提取每条的 X/Y/图表类型 ----
-    // ★ 关键：地图/省份关键词必须排在"分布"前面，
-    //   否则"各省份销售金额分布"会先命中"分布"→被误判为直方图而非地图
-    const CHART_KEYWORD_MAP: Record<string, string> = {
-      '柱状图': 'bar', '对比': 'bar', '排名': 'bar', '排序': 'bar', '差异': 'bar',
-      '饼图': 'pie', '占比': 'pie', '比例': 'pie', '份额': 'pie', '百分比': 'pie',
-      '3D地图': 'gl_map', '地图': 'gl_map', '地区分布': 'gl_map', '地理': 'gl_map', '省份': 'gl_map',
-      '直方图': 'histogram', '分布': 'histogram', '频次': 'histogram',
-      '散点图': 'scatter', '相关': 'scatter', '关联': 'scatter',
-      '折线图': 'line', '趋势': 'line', '变化': 'line', '走势': 'line', '增长': 'line',
-      '面积图': 'area', '累计': 'area', '覆盖': 'area',
-      '堆叠柱状图': 'stacked_bar', '堆叠': 'stacked_bar', '叠加': 'stacked_bar',
-      '雷达图': 'radar', '雷达': 'radar', '多维': 'radar',
-      '词云图': 'wordcloud', '词云': 'wordcloud', '热词': 'wordcloud', '关键词': 'wordcloud',
-      '热力图': 'heatmap', '矩阵': 'heatmap', '交叉': 'heatmap',
-      '瀑布图': 'waterfall', '瀑布': 'waterfall', '增减': 'waterfall',
-      '树状图': 'treemap', '树状': 'treemap', '层级': 'treemap',
-      '气泡图': 'bubble', '气泡': 'bubble',
-      '箱线图': 'box', '箱线': 'box',
-    };
-
-    // 计算关键词（需要 AI compute 的条目）
-    const COMPUTE_KEYWORDS = ['同比', '环比', '累计', '移动平均', '均值', '总和', '占比', '排名', '聚合', '计算'];
-
-    const lines = suggestionsText.split('\n').filter(l => /^\d+[a-z]?\./.test(l.trim()));
-    const parsedSuggestions: Array<{
-      line: string;
-      chartType: string;
-      x: string;
-      y: string;
-      needCompute: boolean;
-      computeQuery: string;
-    }> = [];
-
-    for (const line of lines) {
-      const cleanLine = line.trim().replace(/^\d+[a-z]?\.\s*/, '');
-      // 提取 X:xxx, Y:xxx（支持中文列名）
-      const xMatch = cleanLine.match(/X[:：]([\w\u4e00-\u9fa5_]+)/);
-      const yMatch = cleanLine.match(/Y[:：]([\w\u4e00-\u9fa5_]*)/);
-      const xCol = xMatch?.[1] || '';
-      const yCol = yMatch?.[1] || '';
-
-      // 提取图表类型：优先匹配"推荐XXX图"或"→ XXX图"，然后匹配关键词
-      let chartType = '';
-      const chartNameMatch = cleanLine.match(/(?:推荐|→)\s*(\S+图|3D地图)/);
-      if (chartNameMatch && CHART_KEYWORD_MAP[chartNameMatch[1]]) {
-        chartType = CHART_KEYWORD_MAP[chartNameMatch[1]];
-      } else {
-        // 按关键词优先级匹配
-        for (const [kw, type] of Object.entries(CHART_KEYWORD_MAP)) {
-          if (cleanLine.includes(kw)) { chartType = type; break; }
-        }
-      }
-      if (!chartType) chartType = 'bar'; // 默认柱状图
-
-      // 判断是否需要计算
-      const needCompute = COMPUTE_KEYWORDS.some(kw => cleanLine.includes(kw));
-      // ★ 同环比数据数值波动小，折线图看起来是一条直线，改用表格展示
-      if (['同比', '环比'].some(kw => cleanLine.includes(kw))) chartType = 'table';
-
-      parsedSuggestions.push({
-        line: cleanLine,
-        chartType,
-        x: xCol,
-        y: yCol,
-        needCompute,
-        computeQuery: cleanLine,
-      });
-    }
-
-    // 如果没有解析到带编号的行，用老逻辑兜底
-    if (parsedSuggestions.length === 0) {
-      // 获取列信息
-      let allCols = columns;
-      let numCols = numericColumns;
-      try {
-        const colRes = await api.getColumnInfo(ds.sessionId);
-        if (colRes.columns) {
-          allCols = colRes.columns.map((c: Record<string, unknown>) => String(c.name ?? ''));
-          numCols = colRes.columns
-            .filter((c: Record<string, unknown>) => ['float64', 'int64', 'int32', 'float32'].includes(String(c.dtype ?? '')))
-            .map((c: Record<string, unknown>) => String(c.name ?? ''));
-        }
-      } catch { /* ignore */ }
-
-      const catCols = allCols.filter(c => !numCols.includes(c));
-      const dimCol = catCols[0] || '地区';
-      const text = suggestionsText.slice(0, 500);
-      const mentionedNumCols = numCols.filter(c => text.includes(c)).slice(0, 3);
-      const mentionedCatCols = catCols.filter(c => text.includes(c)).slice(0, 2);
-
-      // 用关键词匹配兜底
-      const fallbackSuggestions: Array<{ type: string; x: string; y: string; title: string }> = [];
-      const priorityNumCols = [...new Set([...mentionedNumCols, ...numCols])].slice(0, 5);
-
-      if (text.includes('地图') || text.includes('地区分布') || text.includes('省份')) {
-        // ★ 优先选「省份」列（精确匹配 GeoJSON），其次才按通用正则
-        const geoCol = allCols.find(c => c === '省份' || c.toLowerCase() === 'province')
-          || allCols.find(c => /省/.test(c))
-          || allCols.find(c => /市|地区|城市/.test(c))
-          || dimCol;
-        fallbackSuggestions.push({ type: 'gl_map', x: geoCol, y: priorityNumCols[0] || '', title: '中国地图' });
-      }
-      if (text.includes('对比') || text.includes('排名')) {
-        fallbackSuggestions.push({ type: 'bar', x: mentionedCatCols[0] || dimCol, y: priorityNumCols[0] || '', title: '对比排名' });
-      }
-      if (text.includes('占比') || text.includes('比例')) {
-        fallbackSuggestions.push({ type: 'pie', x: mentionedCatCols[0] || dimCol, y: priorityNumCols[0] || '', title: '占比分布' });
-      }
-      if (text.includes('趋势') || text.includes('变化') || text.includes('走势')) {
-        const dateCol = allCols.find(c => /日期|时间|月份|年份/.test(c.toLowerCase())) || dimCol;
-        fallbackSuggestions.push({ type: 'line', x: dateCol, y: priorityNumCols[0] || '', title: '趋势变化' });
-      }
-      if (text.includes('相关') || text.includes('关联')) {
-        if (numCols.length >= 2) fallbackSuggestions.push({ type: 'scatter', x: numCols[0], y: numCols[1], title: '相关性' });
-      }
-      if (text.includes('分布') || text.includes('频次')) {
-        fallbackSuggestions.push({ type: 'histogram', x: priorityNumCols[0] || '', y: '', title: '分布直方图' });
-      }
-      if (fallbackSuggestions.length === 0) {
-        fallbackSuggestions.push({ type: 'bar', x: dimCol, y: priorityNumCols[0] || '', title: '概览' });
-      }
-
-      for (const s of fallbackSuggestions) {
-        parsedSuggestions.push({
-          line: s.title,
-          chartType: s.type,
-          x: s.x,
-          y: s.y,
-          needCompute: false,
-          computeQuery: '',
-        });
-      }
-    }
-
-    setComputeResult(`✅ Step 1: 解析到 ${parsedSuggestions.length} 条建议`);
-
-    // ---- Step 2: 按需执行 AI 计算 ----
-    const needComputeItems = parsedSuggestions.filter(s => s.needCompute);
-    if (needComputeItems.length > 0) {
-      // 将所有需要计算的建议合并成一个 compute 指令
-      const computeLines = needComputeItems.map(s => s.computeQuery).join('\n');
-      const computeQueryText = `根据以下分析建议，对数据添加计算列（用现有列名，不要虚构列名）：\n${computeLines}\n\n请生成 Python 代码，为每条建议添加对应的计算列。`;
-
-      setComputeResult((prev) => prev + `\n⏳ Step 2: 正在计算 ${needComputeItems.length} 条建议...`);
-
-      try {
-        const provider = getProviderConfig();
-        const res = await api.computeData(ds.sessionId, computeQueryText, ds.apiKey, provider?.baseUrl, provider?.model);
-        setComputeResult((prev) => prev + `\n✅ Step 2: ${res.message}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : '未知错误';
-        setComputeResult((prev) => prev + `\n❌ Step 2: 计算失败 - ${msg}`);
-        setComputing(false);
-        // 计算失败时仍然继续推荐图表（用原始列）
-      }
-
-      // 刷新列列表
-      window.dispatchEvent(new Event('columns-updated'));
-      // 等列刷新完成
-      await new Promise(resolve => setTimeout(resolve, 500));
-      // ★ 对同环比建议，调用专用接口获取结构化表格数据 + 折线图
-      const tbHbItems = parsedSuggestions.filter(s => s.chartType === 'table');
-      if (tbHbItems.length > 0) {
-        const firstTb = tbHbItems[0];
-        try {
-          // ★ 用真实数值列（不能用 firstTb.x，那是日期列）
-          const numColsForTb = numericColumns;
-          const valueColumn = numColsForTb.find(c => /金额|收入|数量|利润|成本/.test(c))
-            || numColsForTb[0] || '';
-          if (valueColumn && valueColumn !== firstTb.x) {
-            const tbRes = await api.getTongHuanBi(ds.sessionId, valueColumn, firstTb.x || '日期');
-            if (tbRes.success) {
-              setTbHbData({
-                rows: tbRes.rows,
-                value_column: tbRes.value_column,
-                current_year: tbRes.current_year,
-                previous_year: tbRes.previous_year,
-                has_yoy: tbRes.has_yoy,
-                chart_option: tbRes.chart_option,
-              });
-              if (tbRes.chart_option) {
-                setChartFigure(tbRes.chart_option as EChartsOption);
-                setChartInfo({
-                  title: getOptionTitle(tbRes.chart_option as Record<string, unknown>),
-                  option: tbRes.chart_option,
-                });
-              }
-            }
-          }
-        } catch { /* ignore */ }
-      }
-    } else {
-      setComputeResult((prev) => prev + `\n✅ Step 2: 无需计算（所有建议可直接用原始列）`);
-    }
-
-    // ---- Step 3: 刷新列信息 + 构建图表建议 ----
-    setComputeResult((prev) => prev + `\n⏳ Step 3: 正在推荐图表...`);
-
-    // 获取最新列信息（可能包含计算新增的列）
-    let allCols = columns;
-    let numCols = numericColumns;
     try {
-      const colRes = await api.getColumnInfo(ds.sessionId);
-      if (colRes.columns) {
-        allCols = colRes.columns.map((c: Record<string, unknown>) => String(c.name ?? ''));
-        numCols = colRes.columns
-          .filter((c: Record<string, unknown>) => ['float64', 'int64', 'int32', 'float32'].includes(String(c.dtype ?? '')))
-          .map((c: Record<string, unknown>) => String(c.name ?? ''));
-        setColumns(allCols);
-        setNumericColumns(numCols);
+      setComputing(true);
+      setComputeResult('⏳ 正在执行分析...');
+      const res = await api.runAnalysis(ds.sessionId, selected);
+      if (res.packages) {
+        setAnalysisPackages(res.packages);
+        setSelectedPkgIndex(0);
+        setComputeResult(`✅ 完成 ${res.packages.length} 个分析`);
       }
-    } catch { /* ignore */ }
-
-    // 验证每条的 X/Y 列是否存在于最新列列表
-    const validSuggestions: Array<{ type: string; x: string; y: string; title: string }> = [];
-    for (const s of parsedSuggestions) {
-      const validX = allCols.includes(s.x) ? s.x : '';
-      const validY = numCols.includes(s.y) ? s.y : '';
-      // 特殊处理：gl_map 的 y 可以是任何列；histogram/wordcloud/radar/table 不需要 y
-      const finalY = (['histogram', 'wordcloud', 'radar', 'table'].includes(s.chartType)) ? '' : validY;
-
-      // 如果 X 列不存在，尝试用关键词找到匹配的列
-      if (!validX && s.x) {
-        const matchCol = allCols.find(c => c.includes(s.x) || s.x.includes(c));
-        if (matchCol) { s.x = matchCol; }
-      }
-
-      // 如果 X 还是不存在，跳过或用默认
-      const finalX = allCols.includes(s.x) ? s.x :
-        (s.chartType === 'table' ? allCols.find(c => /日期|时间|月份|年份/.test(c)) || '' :
-         s.chartType === 'gl_map' ? (allCols.find(c => c === '省份' || c.toLowerCase() === 'province') || allCols.find(c => /省/.test(c)) || allCols.find(c => /市|地区|城市/.test(c)) || '') :
-         numCols.includes(s.x) ? s.x : allCols.find(c => !numCols.includes(c)) || '');
-
-      if (finalX) {
-        const shortLine = s.line.replace(/（X[:：].*?Y[:：].*?）/g, '').replace(/→.*$/, '').trim().slice(0, 30);
-        validSuggestions.push({
-          type: s.chartType,
-          x: finalX,
-          y: finalY,
-          title: shortLine || `${finalX}${finalY ? ' / ' + finalY : ''} (${s.chartType})`,
-        });
-      }
-    }
-
-    // 兜底：如果都没有有效建议
-    if (validSuggestions.length === 0) {
-      const catCols = allCols.filter(c => !numCols.includes(c));
-      const defaultX = catCols[0] || allCols[0] || '';
-      const defaultY = numCols[0] || '';
-      if (defaultX) {
-        validSuggestions.push({ type: 'bar', x: defaultX, y: defaultY, title: `${defaultY || defaultX} 概览` });
-      }
-    }
-
-    // 限制最多 8 个
-    const finalSuggestions = validSuggestions.slice(0, 8);
-
-    // 设置第一个建议为当前图表配置，但保留所有建议在列表中（包括第一个）
-    if (finalSuggestions.length > 0) {
-      const first = finalSuggestions[0];
-      setChartType(first.type);
-      setChartX(first.x);
-      setChartY(first.y);
-      setChartSuggestions(finalSuggestions);  // 不减 slice(1)，让用户能切回第一张图
-    }
-
-    const list = finalSuggestions.map((s, i) => `   ${i + 1}. ${s.title} (${s.type}, X:${s.x}, Y:${s.y})`);
-    setComputeResult((prev) =>
-      prev + `\n✅ Step 3: 推荐 ${finalSuggestions.length} 个图表：\n${list.join('\n')}`
-    );
-
-    // ---- Step 4: 自动生成第一张图表/表格 ----
-    setComputeResult((prev) => prev + `\n⏳ 正在自动生成第一张图表...`);
-
-    if (finalSuggestions.length > 0) {
-      const first = finalSuggestions[0];
-      if (first.type === 'table') {
-        // 同环比等用表格展示，调用专用接口
-        setComputeResult((prev) => prev + `\n✅ 检测到同环比数据，以表格+趋势图展示`);
-        setChartType('table');
-        setChartX(first.x);
-        setChartY('');
-        // ★ 找到真正的数值列（不能用 first.x，那是日期列）
-        const valueColumn = numCols.find(c => /金额|收入|数量|利润|成本/.test(c))
-          || numCols[0] || '';
-        if (valueColumn && valueColumn !== first.x) {
-          try {
-            const dateCol = first.x || '日期';
-            const tbRes = await api.getTongHuanBi(ds.sessionId, valueColumn, dateCol);
-            if (tbRes.success) {
-              setTbHbData({
-                rows: tbRes.rows,
-                value_column: tbRes.value_column,
-                current_year: tbRes.current_year,
-                previous_year: tbRes.previous_year,
-                has_yoy: tbRes.has_yoy,
-                chart_option: tbRes.chart_option,
-              });
-              // 同时设置折线图
-              if (tbRes.chart_option) {
-                setChartFigure(tbRes.chart_option as EChartsOption);
-                setChartInfo({
-                  title: getOptionTitle(tbRes.chart_option as Record<string, unknown>),
-                  option: tbRes.chart_option,
-                });
-              } else {
-                setChartFigure(null);
-                setChartInfo(null);
-              }
-            }
-          } catch { /* ignore */ }
-        }
-      } else {
-        try {
-          const res = await api.createEChart(ds.sessionId, {
-            chart_type: first.type,
-            x: first.x,
-            y: first.y,
-          });
-          if (res.option) {
-            setChartFigure(res.option);
-            const title = first.y ? `${first.x} vs ${first.y}` : `${first.x} - ${first.type}`;
-            setChartInfo({ title, option: res.option });
-            setComputeResult((prev) => prev + `\n✅ 第一张图表已生成！`);
-          }
-        } catch (err) {
-          setComputeResult((prev) => prev + `\n⚠️ 自动生成图表失败，请手动点击"生成图表"`);
+      if (res.packages && res.packages.length > 0) {
+        const first = res.packages[0];
+        if (first.charts && first.charts.length > 0) {
+          const c = first.charts[0];
+          setChartFigure(c.option);
+          setChartInfo({ title: c.title, option: c.option });
         }
       }
+      setTab('charts');
+    } catch (err) {
+      setComputeResult(`❌ 分析失败: ${err instanceof Error ? err.message : '未知错误'}`);
+    } finally {
+      setComputing(false);
     }
+  };
 
-    setComputing(false);
-
-    // 跳转到智能绘图 tab（此时图表已经渲染好了）
-    setTab('charts');
+  /** V2：保存选中的分析包到 Dashboard */
+  const handleSavePackages = async (pkgIds: string[]) => {
+    try {
+      const res = await api.saveAnalysis(ds.sessionId, pkgIds);
+      alert(`已保存 ${res.saved_count} 个分析结果到仪表盘`);
+    } catch (err) {
+      alert('保存失败: ' + (err instanceof Error ? err.message : '未知错误'));
+    }
   };
 
   const generateInsights = async () => {
@@ -880,10 +577,83 @@ export default function AnalysisPage() {
                     className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-gradient-to-r from-[#22d3ee]/20 to-[#a78bfa]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:from-[#22d3ee]/30 hover:to-[#a78bfa]/30 disabled:opacity-50 transition-all"
                   >
                     <FiZap className="w-4 h-4" />
-                    {computing ? '正在应用洞察...' : '🚀 一键应用 — 自动计算 + 绘图'}
+                    {computing ? '正在生成分析计划...' : '🚀 一键生成分析计划'}
                   </button>
-                  <span className="text-xs text-slate-500">解析建议 → AI计算列 → 自动生成第一张图表 → 推荐更多</span>
+                  <span className="text-xs text-slate-500">AI 自动分析数据 → 生成分析计划 → 勾选后执行</span>
                 </div>
+              </div>
+            )}
+            {/* V2：分析计划勾选列表 */}
+            {intents.length > 0 && (
+              <div className="glass-card p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-slate-300">📋 分析计划（勾选要执行的项目）</h3>
+                <div className="space-y-2">
+                  {intents.map((item, i) => (
+                    <label key={i} className="flex items-start gap-3 p-2 rounded hover:bg-white/[0.03] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={item.checked}
+                        onChange={() => {
+                          const next = [...intents];
+                          next[i] = { ...next[i], checked: !next[i].checked };
+                          setIntents(next);
+                        }}
+                        className="mt-0.5"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-200 font-medium">{item.business_question}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{item.analysis_goal} · {item.reason}</p>
+                      </div>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                        item.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                        item.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-slate-500/20 text-slate-400'
+                      }`}>{item.priority}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2 pt-2 border-t border-white/[0.06]">
+                  <button
+                    onClick={() => {
+                      setIntents(intents.map(i => ({ ...i, checked: true })));
+                    }}
+                    className="px-3 py-1.5 text-xs rounded bg-white/[0.05] text-slate-400 hover:text-white"
+                  >全选</button>
+                  <button
+                    onClick={() => setIntents(intents.map(i => ({ ...i, checked: false })))}
+                    className="px-3 py-1.5 text-xs rounded bg-white/[0.05] text-slate-400 hover:text-white"
+                  >取消全选</button>
+                  <button
+                    onClick={handleRunAnalysis}
+                    disabled={computing || !intents.some(i => i.checked)}
+                    className="ml-auto flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-lg bg-gradient-to-r from-[#8b5cf6]/80 to-[#a78bfa]/80 text-white hover:from-[#8b5cf6] hover:to-[#a78bfa] disabled:opacity-30 transition-all"
+                  >
+                    <FiTrendingUp className="w-3.5 h-3.5" />
+                    {computing ? '执行中...' : '⚡ 执行分析'}
+                  </button>
+                </div>
+                {computeResult && (
+                  <div className="text-xs text-slate-400 whitespace-pre-wrap mt-1">{computeResult}</div>
+                )}
+              </div>
+            )}
+            {/* V2：分析结果 */}
+            {analysisPackages.length > 0 && (
+              <div className="glass-card p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-300">📊 分析结果（{analysisPackages.length} 项）</h3>
+                  <button
+                    onClick={() => {
+                      const ids = analysisPackages.filter(p => p.id).map(p => p.id as string);
+                      if (ids.length > 0) handleSavePackages(ids);
+                    }}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30 transition-all"
+                  >
+                    <FiSave className="w-3.5 h-3.5" />
+                    保存到仪表盘
+                  </button>
+                </div>
+                <VisualizationRenderer packages={analysisPackages as unknown as import('../types/api').AnalysisPackage[]} />
               </div>
             )}
           </div>
@@ -892,237 +662,91 @@ export default function AnalysisPage() {
 
       {tab === 'charts' && (
         <>
-          {/* KPI 指标卡片 */}
-          {analysisKpis.length > 0 && <KPICards kpis={analysisKpis} />}
-
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-1 space-y-4">
-            {/* AI 数据计算面板 */}
-            <div className="glass-card p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                <FiZap className="w-4 h-4 text-yellow-400" /> AI 数据计算
-              </h3>
-              <p className="text-xs text-slate-500">输入计算需求，AI 自动生成同比/环比/占比等计算列</p>
-              <input
-                value={computeQuery}
-                onChange={(e) => setComputeQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCompute()}
-                placeholder="如：计算 age 的均值、总和、同比增长..."
-                className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8b5cf6]/50"
-              />
-              <button onClick={handleCompute} disabled={computing || !computeQuery.trim()}
-                className="w-full px-3 py-2 text-xs rounded-lg bg-yellow-600/80 text-white hover:bg-yellow-600 disabled:opacity-50 transition-colors">
-                {computing ? '计算中...' : '⚡ 执行计算'}
-              </button>
-              {computeResult && (
-                <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap bg-white/[0.04] rounded p-2 max-h-40 overflow-y-auto"
-                  style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(139,92,246,0.3) transparent' }}>
-                  {computeResult}
-                </div>
-              )}
-              <div className="text-[10px] text-slate-600 space-y-0.5">
-                <p>试试这些：</p>
-                <p className="pl-1">· 计算各城市薪资的平均值和总和</p>
-                <p className="pl-1">· 按部门计算薪资排名</p>
-                <p className="pl-1">· 计算每个部门薪资的占比</p>
-                <p className="pl-1">· 计算薪资的累计和移动平均</p>
-              </div>
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await api.getColumnInfo(ds.sessionId);
-                    if (res.columns) {
-                      // 触发全局事件通知其他组件列信息已更新
-                      window.dispatchEvent(new CustomEvent('columns-updated', { detail: res.columns }));
-                      setComputeResult((prev) => prev + '\n✅ 列列表已刷新，新列可在 X/Y 轴下拉框中选择');
-                    }
-                  } catch {
-                    setComputeResult((prev) => prev + '\n❌ 刷新列列表失败');
-                  }
-                }}
-                className="w-full px-3 py-1.5 text-xs rounded bg-white/[0.06] text-slate-400 hover:text-white transition-colors"
-              >
-                <FiPlus className="w-3 h-3 inline mr-1" />刷新列列表
-              </button>
-            </div>
-
-            {/* 图表配置 */}
-            <div className="glass-card p-4 space-y-4">
-            <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-              图表配置
-              {chartX && computeResult.includes('已自动推荐图表') && (
-                <span className="text-[10px] text-[#22d3ee] font-normal">(AI 已自动推荐)</span>
-              )}
-            </h3>
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-slate-500 block mb-1">图表类型</label>
-                <select value={chartType} onChange={(e) => {
-                  setChartType(e.target.value);
-                  // 词云、雷达图不需要手动选 Y 轴，但 gl_map 需要
-                  if (e.target.value === 'wordcloud' || e.target.value === 'radar') setChartY('');
-                }} className={inputClass}>
-                  <option value="bar">柱状图</option>
-                  <option value="stacked_bar">堆叠柱状图</option>
-                  <option value="line">折线图</option>
-                  <option value="area">面积图</option>
-                  <option value="scatter">散点图</option>
-                  <option value="bubble">气泡图</option>
-                  <option value="pie">饼图</option>
-                  <option value="histogram">直方图</option>
-                  <option value="box">箱线图</option>
-                  <option value="heatmap">热力图</option>
-                  <option value="radar">雷达图</option>
-                  <option value="waterfall">瀑布图</option>
-                  <option value="treemap">树状图</option>
-                  <option value="wordcloud">词云图</option>
-                  <option value="gl_map">🌍 3D 地图</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-500 block mb-1">
-                  {chartType === 'table' ? 'X 轴（请选日期列）' : chartType === 'gl_map' ? 'X 轴（请选地区/省份列）' : chartType === 'wordcloud' ? 'X 轴（词云图请选文本列）' : 'X 轴'}
-                </label>
-                <select value={chartX} onChange={(e) => setChartX(e.target.value)} className={inputClass}>
-                  <option value="">选择列...</option>
-                  {columns.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-
-              {chartType !== 'wordcloud' && chartType !== 'radar' && chartType !== 'table' && (
-                <div>
-                  <label className="text-xs text-slate-500 block mb-1">
-                    {chartType === 'gl_map' ? 'Y 轴（请选数值列，决定地图柱高度）' : 'Y 轴（可选）'}
-                  </label>
-                  <select value={chartY} onChange={(e) => setChartY(e.target.value)} className={inputClass}>
-                    <option value="">选择列...</option>
-                    {numericColumns.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-              )}
-
-              <button onClick={() => generateChart()} disabled={loading || (!chartX && chartType !== 'gl_map')} className={btnFullClass}>
-                {loading ? '生成中...' : '生成图表'}
-              </button>
-            </div>
-          </div>{/* 图表配置 card 结束 */}
-          </div>{/* 左侧栏 wrapper 结束 */}
-
-          <div className="lg:col-span-3 space-y-4">
-            {/* AI 推荐的图表建议列表 */}
-            {chartSuggestions.length > 0 && (
-              <div className="glass-card p-3">
-                <h3 className="text-xs font-semibold text-slate-400 mb-2">💡 AI 图表建议（点击切换并生成）</h3>
-                <div className="flex flex-wrap gap-2">
-                  {chartSuggestions.map((s, i) => {
-                    const isFirst = i === 0;
-                    return (
-                    <button
-                      key={i}
+          {/* ===== V2 布局：有分析包时显示三栏 ===== */}
+          {analysisPackages.length > 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              <div className="lg:col-span-1 space-y-3">
+                <div className="glass-card p-3">
+                  <h3 className="text-xs font-semibold text-slate-400 mb-2">📋 分析问题列表</h3>
+                  {analysisPackages.map((pkg, i) => (
+                    <button key={i}
                       onClick={() => {
-                        if (s.type === 'table') {
-                          setChartType('table');
-                          setChartX(s.x);
-                          setChartY(s.y);
-                          const valueColumn = numericColumns.find(c => /金额|收入|数量|利润|成本/.test(c))
-                            || numericColumns[0] || '';
-                          if (valueColumn && valueColumn !== s.x) {
-                            const shouldRefetch = !tbHbData || tbHbData.value_column !== valueColumn;
-                            const fetch = () => {
-                              api.getTongHuanBi(ds.sessionId, valueColumn, s.x || '日期').then(res => {
-                                if (res.success) {
-                                  setTbHbData({ rows: res.rows, value_column: res.value_column, current_year: res.current_year, previous_year: res.previous_year, has_yoy: res.has_yoy, chart_option: res.chart_option });
-                                  if (res.chart_option) {
-                                    setChartFigure(res.chart_option as EChartsOption);
-                                    setChartInfo({ title: getOptionTitle(res.chart_option as Record<string, unknown>), option: res.chart_option });
-                                  }
-                                }
-                              }).catch(() => {});
-                            };
-                            if (shouldRefetch) fetch();
-                            else if (tbHbData?.chart_option) {
-                              setChartFigure(tbHbData.chart_option as EChartsOption);
-                              setChartInfo({ title: getOptionTitle(tbHbData.chart_option as Record<string, unknown>), option: tbHbData.chart_option });
-                            }
-                          }
-                        } else {
-                          setChartType(s.type);
-                          setChartX(s.x);
-                          setChartY(s.y);
-                          generateChart({ type: s.type, x: s.x, y: s.y });
+                        setSelectedPkgIndex(i);
+                        const charts = pkg.charts as Array<Record<string, unknown>> | undefined;
+                        if (charts && charts.length > 0) {
+                          setChartFigure(charts[0].option as EChartsOption);
+                          setChartInfo({title:charts[0].title as string, option:charts[0].option as Record<string, unknown>});
                         }
                       }}
-                      disabled={loading}
-                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors disabled:opacity-50 ${
-                        isFirst
-                          ? 'border-[#22d3ee]/40 bg-[#22d3ee]/20 text-[#22d3ee] hover:bg-[#22d3ee]/30'
-                          : 'border-white/[0.1] bg-white/[0.06] text-slate-400 hover:text-white hover:border-[#a78bfa]/30'
-                      }`}
-                    >
-                      {i + 1}. {s.title.replace(/^\d+\.\s*/, '')} ({s.type})
+                      className={`w-full text-left px-3 py-2 text-xs rounded mb-1 transition-all duration-200 ${
+                        i===selectedPkgIndex ? 'bg-[#22d3ee]/10 border border-[#22d3ee]/20 text-[#22d3ee]' : 'bg-white/[0.03] text-slate-400 hover:text-white'
+                      }`}>
+                      <span className="block truncate">{pkg.business_question as string}</span>
+                      <span className="text-[10px] text-slate-500">{pkg.analysis_type as string}</span>
                     </button>
-                    );
-                  })}
+                  ))}
                 </div>
+                <button onClick={() => {
+                    const ids = analysisPackages.filter(p=>p.id).map(p=>p.id as string);
+                    if (ids.length>0) handleSavePackages(ids);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30">
+                  <FiSave className="w-3.5 h-3.5"/>保存到仪表盘
+                </button>
               </div>
-            )}
-            {chartFigure && chartType !== 'table' ? (
-              <>
-                <EChartView option={chartFigure} height={500} />
-                <div className="flex items-center gap-3 mt-3">
-                  <button onClick={handleSaveChart} disabled={!chartInfo}
-                    className="flex items-center gap-2 px-4 py-2 text-xs rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30 transition-colors disabled:opacity-50">
-                    <FiSave className="w-3.5 h-3.5" />
-                    保存到仪表盘
-                    {savedCount > 0 && <span className="text-[10px] bg-[#22d3ee]/30 px-1.5 py-0.5 rounded">已存{savedCount}个</span>}
-                  </button>
-                  <button onClick={handleGenerateReport} disabled={loading}
-                    className="flex items-center gap-2 px-4 py-2 text-xs rounded-lg bg-[#8b5cf6]/20 border border-[#8b5cf6]/30 text-[#a78bfa] hover:bg-[#8b5cf6]/30 transition-colors">
-                    <FiFileText className="w-3.5 h-3.5" />
-                    生成分析报告
-                  </button>
-                  {saveMsg && <span className="text-xs text-[#22d3ee]">{saveMsg}</span>}
-                </div>
-              </>
-            ) : chartType === 'table' && tbHbData && tbHbData.rows.length > 0 ? (
-              /* ★ 同环比：折线图 + 规范表格 同时展示 */
-              <div className="space-y-4">
-                {chartFigure && <EChartView option={chartFigure} height={320} />}
-                <TbHbTable
-                  data={tbHbData.rows}
-                  valueColumn={tbHbData.value_column}
-                  currentYear={tbHbData.current_year}
-                  previousYear={tbHbData.previous_year}
-                  hasYoY={tbHbData.has_yoy}
-                  maxHeight="380px"
+              <div className="lg:col-span-3">
+                <VisualizationRenderer
+                  packages={analysisPackages as any}
+                  selectedPackageIndex={selectedPkgIndex}
                 />
-                <div className="flex items-center gap-3">
-                  {chartFigure && chartInfo && (
-                    <button onClick={handleSaveChart}
-                      className="flex items-center gap-2 px-4 py-2 text-xs rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30 transition-colors">
-                      <FiSave className="w-3.5 h-3.5" />
-                      保存到仪表盘
-                      {savedCount > 0 && <span className="text-[10px] bg-[#22d3ee]/30 px-1.5 py-0.5 rounded">已存{savedCount}个</span>}
+              </div>
+            </div>
+          ) : (
+            /* 旧版：手工图表配置 */
+            <>
+              {analysisKpis.length > 0 && <KPICards kpis={analysisKpis}/>}
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div className="lg:col-span-1 space-y-4">
+                  <div className="glass-card p-4 space-y-3">
+                    <h3 className="text-sm font-semibold text-slate-300">图表配置</h3>
+                    <div className="space-y-3">
+                      <div><label className="text-xs text-slate-500 block mb-1">图表类型</label>
+                        <select value={chartType} onChange={(e)=>setChartType(e.target.value)} className={inputClass}>
+                          <option value="bar">柱状图</option><option value="line">折线图</option>
+                          <option value="pie">饼图</option><option value="scatter">散点图</option>
+                          <option value="area">面积图</option><option value="heatmap">热力图</option>
+                          <option value="box">箱线图</option>
+                        </select></div>
+                      <div><label className="text-xs text-slate-500 block mb-1">X 轴</label>
+                        <select value={chartX} onChange={(e)=>setChartX(e.target.value)} className={inputClass}>
+                          <option value="">选择列...</option>
+                          {columns.map(c=><option key={c} value={c}>{c}</option>)}
+                        </select></div>
+                      <div><label className="text-xs text-slate-500 block mb-1">Y 轴（可选）</label>
+                        <select value={chartY} onChange={(e)=>setChartY(e.target.value)} className={inputClass}>
+                          <option value="">选择列...</option>
+                          {numericColumns.map(c=><option key={c} value={c}>{c}</option>)}
+                        </select></div>
+                      <button onClick={()=>generateChart()} disabled={loading||!chartX} className={btnFullClass}>
+                        {loading?'生成中...':'生成图表'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="lg:col-span-3 space-y-4">
+                  {chartFigure && chartType !== 'table' && (<>
+                    <EChartView option={chartFigure} height={420}/>
+                    <button onClick={handleSaveChart} disabled={!chartInfo}
+                      className="flex items-center gap-2 px-4 py-2 text-xs rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30">
+                      <FiSave className="w-3.5 h-3.5"/>保存到仪表盘
                     </button>
-                  )}
-                  <button onClick={handleGenerateReport} disabled={loading}
-                    className="flex items-center gap-2 px-4 py-2 text-xs rounded-lg bg-[#8b5cf6]/20 border border-[#8b5cf6]/30 text-[#a78bfa] hover:bg-[#8b5cf6]/30 transition-colors">
-                    <FiFileText className="w-3.5 h-3.5" />
-                    生成分析报告
-                  </button>
-                  {saveMsg && <span className="text-xs text-[#22d3ee]">{saveMsg}</span>}
+                  </>)}
                 </div>
               </div>
-            ) : (
-              <div className="glass-card p-12 text-center text-slate-500 flex items-center justify-center" style={{ minHeight: 400 }}>
-                选择列并点击「生成图表」
-              </div>
-            )}
-          </div>
-        </div>
-      </>)}
+            </>
+          )}
+        </>
+      )}
       {tab === 'chat' && (
         <div className="space-y-4">
           {(!insights || insights.startsWith('⚠️')) && (
@@ -1146,7 +770,7 @@ export default function AnalysisPage() {
                   className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-gradient-to-r from-[#22d3ee]/20 to-[#a78bfa]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:from-[#22d3ee]/30 hover:to-[#a78bfa]/30 disabled:opacity-50 transition-all"
                 >
                   <FiZap className="w-4 h-4" />
-                  {computing ? '正在应用洞察...' : '🚀 一键应用 — 自动计算 + 绘图'}
+                  {computing ? '正在生成分析计划...' : '🚀 一键生成分析计划'}
                 </button>
               </div>
             </div>

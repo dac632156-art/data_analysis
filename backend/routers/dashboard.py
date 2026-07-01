@@ -74,11 +74,12 @@ _TREND_TYPES = {"scatter", "bubble", "heatmap"}
 _TAB_MAX_CHARTS: dict = {"趋势洞察": 4, "分类分析": 6}
 
 _ANALYSIS_TAB_MAP: dict = {
-    "overview": "数据总览", "trend": "趋势洞察",
-    "comparison": "分类分析", "composition": "分类分析",
-    "ranking": "分类分析", "distribution": "分类分析",
-    "correlation": "分类分析", "geography": "分类分析",
-    "anomaly": "明细查询", "detail": "明细查询",
+    "overview": "数据总览", "growth_analysis": "趋势洞察",
+    "comparison_analysis": "分类分析", "structure_analysis": "分类分析",
+    "ranking_analysis": "分类分析", "distribution_analysis": "分类分析",
+    "correlation_analysis": "分类分析", "concentration_analysis": "分类分析",
+    "proportion_analysis": "分类分析", "anomaly_analysis": "明细查询",
+    "detail": "明细查询",
 }
 
 
@@ -446,3 +447,10 @@ async def api_delete_saved_chart(req: SessionRequest):
     """清空所有已保存图表"""
     manager.clear_saved_charts(req.session_id)
     return {"success": True, "message": "已清空所有保存的图表"}
+
+
+@router.post("/dashboard/saved-packages")
+async def api_get_saved_packages(req: SessionRequest):
+    """获取所有已保存的分析包（V2）"""
+    packages = manager.get_saved_packages(req.session_id)
+    return {"success": True, "packages": packages, "total": len(packages)}

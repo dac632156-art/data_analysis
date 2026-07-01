@@ -3,7 +3,8 @@
 import React, { useState, useMemo } from 'react';
 import EChartView, { EChartsOption } from '../EChartView';
 import TbHbTable, { type TbHbRow } from '../TbHbTable';
-import type { EChartItem } from '../../types/api';
+import VisualizationRenderer from '../VisualizationRenderer';
+import type { EChartItem, AnalysisPackage } from '../../types/api';
 
 interface RingChartData {
   title: string;
@@ -22,6 +23,8 @@ interface Props {
   ringCharts?: RingChartData[];
   /** 列信息：列名 + dtype */
   columnInfo?: Array<{ name: string; dtype: string }>;
+  /** V2：从分析引擎保存的分析包 */
+  packages?: AnalysisPackage[];
 }
 
 // ---- 共享卡片样式 ----
@@ -325,7 +328,7 @@ function buildRingChartOption(title: string, data: { name: string; value: number
 }
 
 // ============================== 主组件 ==============================
-export default function MedicalDashboard({ kpis, echarts, chartTabs, title = '数据分析看板', tableData, navTabs, ringCharts, columnInfo }: Props) {
+export default function MedicalDashboard({ kpis, echarts, chartTabs, title = '数据分析看板', tableData, navTabs, ringCharts, columnInfo, packages }: Props) {
   const columns = tableData && tableData.length > 0 ? Object.keys(tableData[0]) : [];
   const [activeTab, setActiveTab] = useState(0);
   const [highlightLabel, setHighlightLabel] = useState<string | null>(null);
@@ -547,6 +550,71 @@ export default function MedicalDashboard({ kpis, echarts, chartTabs, title = '�
           filterCol={filterCol} setFilterCol={setFilterCol} filterVal={filterVal} setFilterVal={setFilterVal}
           filteredRows={filteredRows} />}
       </div>
+
+      {/* ★ V2：AI 分析结果（来自 saved_packages） */}
+      {packages && packages.length > 0 && (
+        <div className="px-6 pb-4" style={{ borderTop: '1px solid rgba(139,92,246,0.15)' }}>
+          <style>{`
+            .v2-details { margin-bottom: 8px; }
+            .v2-details > summary {
+              cursor: pointer; padding: 8px 12px; border-radius: 6px;
+              background: rgba(139,92,246,0.06); border: 1px solid rgba(139,92,246,0.1);
+              font-size: 12px; color: #cbd5e1; font-weight: 500;
+              transition: background 0.2s, border-color 0.2s;
+              user-select: none;
+            }
+            .v2-details > summary:hover { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.25); }
+            .v2-details[open] > summary { border-color: rgba(139,92,246,0.3); background: rgba(139,92,246,0.1); margin-bottom: 4px; }
+            .v2-details > .v2-content { padding: 8px 12px; animation: slideDown 0.2s ease; }
+            @keyframes slideDown { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+          `}</style>
+          <div className="flex items-center gap-3 pt-3 mb-3">
+            <div className="w-1.5 h-5 bg-gradient-to-b from-[#a78bfa] to-[#22d3ee] rounded-full" />
+            <h3 className="text-sm font-semibold text-[#a78bfa]">🤖 AI 分析结果（{packages.length} 项）</h3>
+          </div>
+          {packages.filter(p => p.can_run).slice(0, 5).map((pkg, i) => (
+            <details key={pkg.id || i} className="v2-details">
+              <summary>
+                {pkg.business_question}
+                <span style={{ marginLeft: 8, fontSize: 10, color: '#a78bfa', background: 'rgba(139,92,246,0.1)', padding: '1px 6px', borderRadius: 3 }}>
+                  {pkg.analysis_type}
+                </span>
+              </summary>
+              <div className="v2-content">
+                <VisualizationRenderer packages={[pkg]} />
+              </div>
+            </details>
+          ))}
+          {packages.filter(p => p.can_run).length > 5 && (
+            <details>
+              <summary style={{
+                cursor: 'pointer', padding: '6px 12px', borderRadius: 6,
+                background: 'rgba(139,92,246,0.03)', border: '1px solid rgba(139,92,246,0.06)',
+                fontSize: 11, color: '#64748b', textAlign: 'center',
+              }}>
+                查看更多（共 {packages.filter(p => p.can_run).length} 项，已显示 5 项）
+              </summary>
+              <div className="v2-content">
+                {packages.filter(p => p.can_run).slice(5).map((pkg, i) => (
+                  <details key={pkg.id || i} className="v2-details">
+                    <summary>{pkg.business_question}</summary>
+                    <div className="v2-content">
+                      <VisualizationRenderer packages={[pkg]} />
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </details>
+          )}
+          {packages.some(p => !p.can_run) && (
+            <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 6, background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.12)' }}>
+              <span style={{ fontSize: 10, color: '#f59e0b' }}>
+                ⚠️ {packages.filter(p => !p.can_run).length} 项分析因数据不支持未能执行
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

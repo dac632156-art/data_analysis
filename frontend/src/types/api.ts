@@ -151,3 +151,82 @@ export interface EChartsAiLayoutResponse {
   ring_charts?: RingChartConfig[];
   charts: EChartItem[];
 }
+
+/* ===== V2 分析引擎类型 ===== */
+
+/** AI 返回的分析意图 */
+export interface AnalysisIntent {
+  business_question: string;
+  analysis_goal: string;
+  priority: 'high' | 'medium' | 'low';
+  reason: string;
+}
+
+/** KPI 指标项（V2） */
+export interface PackageKPIItem {
+  label: string;
+  value: string;
+  change: string | null;
+  kpi_type: 'sum' | 'avg' | 'count' | 'rate' | 'change';
+}
+
+/** 表格数据（V2） */
+export interface PackageTableData {
+  title: string;
+  table_type: 'summary' | 'ranking' | 'cross' | 'growth' | 'correlation' | 'detail' | 'exception';
+  columns: string[];
+  rows: unknown[][];
+}
+
+/** 图表项（V2） */
+export interface PackageChartItem {
+  slot: string;
+  chart_type: string;
+  title: string;
+  role: 'primary' | 'secondary' | 'detail';
+  option: Record<string, unknown>;
+}
+
+/** 分析包（全系统统一数据对象） */
+export interface AnalysisPackage {
+  id: string;
+  analysis_type: string;
+  business_question: string;
+  algorithm: string;
+  dimension: string;
+  metric: string;
+  kpis: PackageKPIItem[];
+  tables: PackageTableData[];
+  charts: PackageChartItem[];
+  insights: string[];
+  conclusions: string[];
+  can_run: boolean;
+  fallback_from: string | null;
+  saved_at: string | null;
+  data_profile: Record<string, string[]>;
+}
+
+/** /insights/generate 响应（V2） */
+export interface InsightsV2Response {
+  success: boolean;
+  insights: string;
+  intents: AnalysisIntent[];
+}
+
+/** /analysis/run 响应 */
+export interface AnalysisRunResponse {
+  packages: AnalysisPackage[];
+}
+
+/** /analysis/save 响应 */
+export interface AnalysisSaveResponse {
+  saved_count: number;
+  package_ids: string[];
+}
+
+/** /dashboard/saved-packages 响应 */
+export interface SavedPackagesResponse {
+  success: boolean;
+  packages: AnalysisPackage[];
+  total: number;
+}
