@@ -235,6 +235,19 @@ class AnalysisTemplate(ABC):
     # --- 边界修复工具方法（所有模板共用）---
 
     @staticmethod
+    def _is_nan(val):
+        """安全的 NaN 检测，避免 Linux 上 pandas checknull C 扩展崩溃"""
+        if val is None:
+            return True
+        try:
+            import math
+            if isinstance(val, float):
+                return val != val  # IEEE 754: NaN != NaN
+            return False
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
     def _safe_divide(a, b, default=None):
         """安全除法：b=0 或结果为 inf/nan 时返回 default"""
         if b == 0 or (isinstance(b, float) and (math.isinf(b) or math.isnan(b))):
@@ -255,7 +268,8 @@ class AnalysisTemplate(ABC):
         result.iloc[0] = default
         result = result.replace([float('inf'), float('-inf')], default)
         if default is None:
-            result = result.where(result.notna(), None)
+            # 避免 .notna() 触发 Linux checknull 崩溃
+            result = result.apply(lambda x: None if (x is None or (isinstance(x, float) and x != x)) else x)
         else:
             result = result.fillna(default)
         return result

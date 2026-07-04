@@ -49,7 +49,8 @@ class GrowthAnalysis(AnalysisTemplate):
 
         # 尝试解析时间列
         time_parsed = pd.to_datetime(grouped[dimension], errors='coerce')
-        can_parse_time = time_parsed.notna().all()
+        # 安全检查：用 count 对比长度判断是否有 NaT（避免 .notna() 触发 Linux checknull 崩溃）
+        can_parse_time = (time_parsed.count() == len(time_parsed))
         self._cache["can_parse_time"] = can_parse_time
 
         if can_parse_time:
@@ -158,7 +159,8 @@ class GrowthAnalysis(AnalysisTemplate):
 
         rows = []
         for _, row in grouped.iterrows():
-            gr = None if pd.isna(row["growth_rate"]) else round(row["growth_rate"], 1)
+            gr_val = row["growth_rate"]
+            gr = None if (gr_val is None or (isinstance(gr_val, float) and gr_val != gr_val)) else round(gr_val, 1)
             rows.append([str(row[dimension]), round(row[metric], 2), gr, round(row["cumsum"], 2)])
 
         return [TableData(
@@ -176,9 +178,11 @@ class GrowthAnalysis(AnalysisTemplate):
         metric = self._cache["metric"]
         alg_label = self._cache.get("algorithm_label", "增长率")
 
-        # 处理 NaN → None 便于 JSON 序列化
+        # 处理 NaN → None 便于 JSON 序列化（避免 .notna() 触发 Linux checknull 崩溃）
         gr_data = grouped[[dimension, "growth_rate"]].copy()
-        gr_data["growth_rate"] = gr_data["growth_rate"].where(gr_data["growth_rate"].notna(), None)
+        gr_data["growth_rate"] = gr_data["growth_rate"].apply(
+            lambda x: None if (x is None or (isinstance(x, float) and x != x)) else x
+        )
 
         return [
             ChartData(slot="trend", chart_type="line",
