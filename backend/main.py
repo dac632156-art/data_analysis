@@ -4,9 +4,11 @@ DataMind AI - FastAPI 后端入口
 """
 import os
 import sys
-from fastapi import FastAPI
+import traceback
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 
 # 添加项目根目录到 sys.path，以便导入现有模块
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -53,6 +55,22 @@ app.include_router(insights.router, prefix="/api", tags=["AI 洞察"])
 app.include_router(chat.router, prefix="/api", tags=["AI 对话"])
 app.include_router(report.router, prefix="/api", tags=["报告生成"])
 app.include_router(analysis.router, prefix="/api", tags=["分析执行"])
+
+
+# 全局异常处理器：捕获所有未处理的异常，返回详细错误信息
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """全局异常捕获：避免 500 时前端只看到 Network Error"""
+    tb = traceback.format_exc()
+    print(f"[ERROR] {exc.__class__.__name__}: {str(exc)}")
+    print(f"[TRACEBACK]\n{tb}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"{exc.__class__.__name__}: {str(exc)}",
+            "traceback": tb if os.getenv("DEBUG") == "1" else None,
+        }
+    )
 
 
 @app.get("/api/health")
