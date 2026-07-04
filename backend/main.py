@@ -79,6 +79,13 @@ async def health_check():
     return {"status": "ok", "version": "1.0.0"}
 
 
+# Render 健康检查需要根路径返回 200，否则会杀掉容器
+@app.get("/")
+async def root():
+    """Root path for Render health check"""
+    return {"status": "ok"}
+
+
 @app.get("/api/session/new")
 async def new_session():
     """创建新会话"""
