@@ -152,50 +152,66 @@ class Planner:
                 dimension = time_cols[0]
         elif dim_type == "category":
             cat_cols = self.classifier.get_category_columns(df)
-            # 对于地理分析，优先选择省份列，然后是城市列，最后是地区列
+            # 对于地理分析：优先根据业务问题关键词选择维度列，再 fallback 到通用优先级
             if intent_name and ("geo" in intent_name or "地理" in intent_name or "地图" in intent_name):
                 province_keywords = ["省份", "省", "province"]
                 city_keywords = ["城市", "市", "city"]
                 region_keywords = ["地区", "区域", "地理", "geo", "region"]
-                
-                for col in cat_cols:
-                    if any(kw in str(col).lower() for kw in province_keywords):
-                        dimension = col
-                        break
-                if dimension is None:
-                    for col in cat_cols:
-                        if any(kw in str(col).lower() for kw in city_keywords):
-                            dimension = col
-                            break
-                if dimension is None:
-                    for col in cat_cols:
-                        if any(kw in str(col).lower() for kw in region_keywords):
-                            dimension = col
-                            break
-            # Geo 维度列差异化：根据业务问题关键词选择不同地理维度列
-            if dimension is None and goal_to_check and ("geo" in intent_name or "地理" in intent_name or "地图" in intent_name):
-                goal_lower = goal_to_check.lower()
-                # 渠道相关 → 优先选渠道列
                 channel_keywords = ["渠道", "channel", "线上", "线下", "门店", "网点"]
-                for col in cat_cols:
-                    if any(kw in str(col).lower() for kw in channel_keywords):
-                        dimension = col
-                        break
-                # 集中度/分布相关 → 优先选地区列
-                if dimension is None:
-                    concentration_keywords = ["集中度", "分布", "帕累托", "concentration"]
+                concentration_keywords = ["集中度", "分布", "帕累托", "concentration"]
+                diff_keywords = ["差异", "对比", "coverage", "覆盖"]
+                
+                # Step 1: 根据 analysis_goal 关键词差异化选择
+                goal_for_geo = (analysis_goal or "").lower()
+                
+                # 渠道相关 → 选渠道列
+                if any(kw in goal_for_geo for kw in channel_keywords):
                     for col in cat_cols:
-                        if any(kw in str(col).lower() for kw in concentration_keywords):
+                        if any(kw in str(col).lower() for kw in channel_keywords):
                             dimension = col
                             break
-                # 渠道差异相关 → 选渠道列
+                
+                # TOP/最强/排名相关 → 选省份列
                 if dimension is None:
-                    diff_keywords = ["差异", "对比", "对比", "coverage", "覆盖"]
+                    top_keywords = ["TOP", "最强", "最高", "最大", "top", "贡献"]
+                    if any(kw in goal_for_geo for kw in top_keywords):
+                        for col in cat_cols:
+                            if any(kw in str(col).lower() for kw in province_keywords):
+                                dimension = col
+                                break
+                
+                # 集中度/分布相关 → 选地区列
+                if dimension is None:
+                    if any(kw in goal_for_geo for kw in concentration_keywords):
+                        for col in cat_cols:
+                            if any(kw in str(col).lower() for kw in region_keywords):
+                                dimension = col
+                                break
+                
+                # 差异/对比/覆盖相关 → 选渠道列
+                if dimension is None:
+                    if any(kw in goal_for_geo for kw in diff_keywords):
+                        for col in cat_cols:
+                            if any(kw in str(col).lower() for kw in channel_keywords):
+                                dimension = col
+                                break
+                
+                # Step 2: 通用 fallback（当 goal 中没有匹配关键词时）
+                if dimension is None:
                     for col in cat_cols:
-                        if any(kw in str(col).lower() for kw in diff_keywords):
+                        if any(kw in str(col).lower() for kw in province_keywords):
                             dimension = col
                             break
-
+                    if dimension is None:
+                        for col in cat_cols:
+                            if any(kw in str(col).lower() for kw in city_keywords):
+                                dimension = col
+                                break
+                    if dimension is None:
+                        for col in cat_cols:
+                            if any(kw in str(col).lower() for kw in region_keywords):
+                                dimension = col
+                                break
 
             # 对于复购分析，优先选择客户ID列
             elif intent_name and "复购" in intent_name:
