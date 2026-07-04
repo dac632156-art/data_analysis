@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from backend.services.session_manager import manager
 from src.data_loader import get_data_info, get_column_info
+from src.utils.json_serializer import sanitize_json
 from utils.helpers import get_numeric_columns, get_categorical_columns, get_datetime_columns
 
 def _parse_missing_rate(row) -> float:
@@ -45,7 +46,7 @@ async def data_preview(req: PreviewRequest):
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据，请先上传文件")
     preview = df.head(req.rows).replace({np.nan: None}).to_dict(orient="records")
-    return {"success": True, "preview": preview, "total_rows": len(df)}
+    return sanitize_json({"success": True, "preview": preview, "total_rows": len(df)})
 
 
 @router.post("/data/info")
@@ -55,7 +56,7 @@ async def data_info(req: DataRequest):
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
     info = get_data_info(df)
-    return {"success": True, "info": info}
+    return sanitize_json({"success": True, "info": info})
 
 
 @router.post("/data/columns")
@@ -75,7 +76,7 @@ async def data_columns(req: DataRequest):
             "unique": int(row.get("唯一值数", 0)),
             "sample": str(row.get("示例值", "")),
         })
-    return {"success": True, "columns": columns}
+    return sanitize_json({"success": True, "columns": columns})
 
 
 @router.post("/data/column-types")
@@ -84,13 +85,13 @@ async def data_column_types(req: DataRequest):
     df = manager.get_data(req.session_id)
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
-    return {
+    return sanitize_json({
         "success": True,
         "numeric_columns": get_numeric_columns(df),
         "categorical_columns": get_categorical_columns(df),
         "datetime_columns": get_datetime_columns(df),
         "all_columns": list(df.columns),
-    }
+    })
 
 
 @router.post("/data/summary")
@@ -100,7 +101,7 @@ async def data_summary(req: DataRequest):
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
     summary = df.describe(include='all').to_dict()
-    return {"success": True, "summary": summary}
+    return sanitize_json({"success": True, "summary": summary})
 
 
 class ComputeRequest(BaseModel):
@@ -229,12 +230,12 @@ async def data_compute(req: ComputeRequest):
         
         # 返回结果
         preview = df.head(10).replace({np.nan: None}).to_dict(orient="records")
-        return {
+        return sanitize_json({
             "success": True,
             "new_columns": new_columns,
             "message": f"已新增 {len(new_columns)} 个计算列：{'、'.join(new_columns)}",
             "preview": preview,
-        }
+        })
         
     except HTTPException:
         raise
@@ -316,7 +317,7 @@ async def data_tonghuanbi(req: TongHuanBiRequest):
         chart_option = _build_tonghuanbi_line_chart(
             result_rows, req.value_column, str(current_year), None, has_yoy=False
         )
-        return {
+        return sanitize_json({
             "success": True,
             "value_column": req.value_column,
             "current_year": str(current_year),
@@ -324,7 +325,7 @@ async def data_tonghuanbi(req: TongHuanBiRequest):
             "rows": result_rows,
             "has_yoy": False,
             "chart_option": chart_option,
-        }
+        })
 
     # 4. 选取最近两年（假设数据包含连续年份）
     current_year = years[-1]
@@ -382,7 +383,7 @@ async def data_tonghuanbi(req: TongHuanBiRequest):
         result_rows, req.value_column, str(current_year), str(previous_year), has_yoy=True
     )
 
-    return {
+    return sanitize_json({
         "success": True,
         "value_column": req.value_column,
         "current_year": str(current_year),
@@ -390,7 +391,7 @@ async def data_tonghuanbi(req: TongHuanBiRequest):
         "rows": result_rows,
         "has_yoy": True,
         "chart_option": chart_option,
-    }
+    })
 
 
 async def data_tonghuanbi_single_year(monthly: pd.DataFrame, current_year: int, value_column: str):
@@ -418,7 +419,7 @@ async def data_tonghuanbi_single_year(monthly: pd.DataFrame, current_year: int, 
     chart_option = _build_tonghuanbi_line_chart(
         result_rows, value_column, str(current_year), None, has_yoy=False
     )
-    return {
+    return sanitize_json({
         "success": True,
         "value_column": value_column,
         "current_year": str(current_year),
@@ -426,7 +427,7 @@ async def data_tonghuanbi_single_year(monthly: pd.DataFrame, current_year: int, 
         "rows": result_rows,
         "has_yoy": False,
         "chart_option": chart_option,
-    }
+    })
 
 
 def _build_tonghuanbi_line_chart(

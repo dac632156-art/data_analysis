@@ -3,13 +3,16 @@
 import axios from 'axios';
 import type {
   UploadResponse, PreviewResponse, StatsResponse,
-  ChartResponse, InsightsResponse, ChatResponse,
+  InsightsResponse, ChatResponse,
   ReportResponse, AIReportResponse, KPIResponse, EChartResponse, EChartItem,
 } from '../types/api';
 import type { ChartConfig } from '../types';
 
+// 部署时通过环境变量指定后端地址，本地开发走 Vite proxy
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE,
   timeout: 60000,
   // 不设置全局 Content-Type，让 axios 自动处理：
   // JSON 请求会自动设为 application/json，FormData 上传会自动设为 multipart/form-data
@@ -237,22 +240,6 @@ export const getTongHuanBi = async (
     value_column: valueColumn,
     date_column: dateColumn,
   });
-  return data;
-};
-
-/* ===== 图表 ===== */
-export const getChartRecommendations = async (sessionId: string) => {
-  const { data } = await api.post('/chart/recommendations', { session_id: sessionId });
-  return data;
-};
-
-export const createChart = async (sessionId: string, config: ChartConfig) => {
-  const { data } = await api.post<ChartResponse>('/chart/create', { session_id: sessionId, ...config });
-  return data;
-};
-
-export const createHeatmap = async (sessionId: string, title = '相关性热力图') => {
-  const { data } = await api.post<ChartResponse>('/chart/heatmap', { session_id: sessionId, title });
   return data;
 };
 

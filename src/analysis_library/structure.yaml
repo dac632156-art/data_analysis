@@ -1,0 +1,36 @@
+# 结构分析 —— 各部分在整体中的构成占比
+intent: structure
+display_name: 结构分析
+description: 分析各部分在整体中的构成占比，了解数据分布结构
+level: L1
+
+template: structure_analysis
+default_algorithm: null
+supported_algorithms: []
+
+keywords:
+  - 构成
+  - 结构
+  - 组成
+  - 占比分布
+  - 各占多少
+  - 比重
+
+priority: 80
+
+outputs:
+  charts:
+    - pie        # 饼图
+  tables:
+    - summary_table  # 汇总表
+  kpis:
+    - top3_share
+    - category_count
+
+examples:
+  - 各地区销售占比是多少？
+  - 各品类构成如何？
+  - 市场份额怎么分布？
+
+fallback:
+  - ranking

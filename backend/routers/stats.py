@@ -8,6 +8,7 @@ import json
 
 from backend.services.session_manager import manager
 from src.stats_analyzer import get_descriptive_stats, get_group_stats, get_correlation_matrix, get_quick_insights
+from src.utils.json_serializer import sanitize_json
 from utils.helpers import get_numeric_columns, get_categorical_columns
 
 router = APIRouter()
@@ -33,12 +34,12 @@ async def api_descriptive_stats(req: StatsRequest):
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
     stats = get_descriptive_stats(df)
-    return {
+    return sanitize_json({
         "success": True,
         "stats": stats.to_dict(orient="index") if hasattr(stats, 'to_dict') else stats,
         "columns": list(stats.columns) if hasattr(stats, 'columns') else [],
         "index": list(stats.index) if hasattr(stats, 'index') else [],
-    }
+    })
 
 
 @router.post("/stats/group")
@@ -50,11 +51,11 @@ async def api_group_stats(req: GroupStatsRequest):
     if req.group_col not in df.columns:
         raise HTTPException(status_code=400, detail=f"无效的分组列: {req.group_col}")
     result = get_group_stats(df, req.group_col, req.agg_cols)
-    return {
+    return sanitize_json({
         "success": True,
         "stats": result.reset_index().to_dict(orient="records") if hasattr(result, 'reset_index') else result,
         "columns": list(result.columns) if hasattr(result, 'columns') else [],
-    }
+    })
 
 
 @router.post("/stats/correlation")
@@ -64,11 +65,11 @@ async def api_correlation(req: CorrRequest):
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
     corr = get_correlation_matrix(df, req.method)
-    return {
+    return sanitize_json({
         "success": True,
         "correlation": corr.to_dict() if hasattr(corr, 'to_dict') else corr,
         "columns": list(corr.columns) if hasattr(corr, 'columns') else [],
-    }
+    })
 
 
 @router.post("/stats/quick-insights")
@@ -78,7 +79,7 @@ async def api_quick_insights(req: StatsRequest):
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
     insights = get_quick_insights(df)
-    return {"success": True, "insights": insights}
+    return sanitize_json({"success": True, "insights": insights})
 
 
 @router.post("/stats/numeric-columns")
@@ -87,4 +88,4 @@ async def api_numeric_columns(req: StatsRequest):
     df = manager.get_data(req.session_id)
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
-    return {"success": True, "columns": get_numeric_columns(df)}
+    return sanitize_json({"success": True, "columns": get_numeric_columns(df)})

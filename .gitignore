@@ -23,3 +23,10 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Upload sessions (runtime data, not source code)
+backend/uploads/
+
+# Python virtual env
+venv/
+.venv/

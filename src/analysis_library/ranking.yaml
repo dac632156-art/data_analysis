@@ -1,0 +1,44 @@
+# 排名分析 —— Top/Bottom N 对比排名
+intent: ranking
+display_name: 排名分析
+description: 按维度对比排名，识别表现最好和最差的分类
+level: L1
+
+template: ranking_analysis
+default_algorithm: null
+supported_algorithms: []
+
+keywords:
+  - 排名
+  - 最高
+  - 最低
+  - TOP
+  - top
+  - 排行
+  - 第一
+  - 最大
+  - 最小
+  - 靠前
+  - 靠后
+  - 前几名
+
+priority: 90
+
+outputs:
+  charts:
+    - bar             # 柱状图排名
+    - horizontal_bar  # 横向条形图
+  tables:
+    - ranking_table   # 排序表
+  kpis:
+    - top1_value
+    - top3_concentration
+
+examples:
+  - 哪个产品销售额最高？
+  - 哪些地区贡献最高？
+  - 销售额排名前5的是哪些？
+  - 谁的表现最差？
+
+fallback:
+  - structure

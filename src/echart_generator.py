@@ -800,10 +800,31 @@ _REGION_CENTROIDS = {
 }
 
 
+_CITY_TO_PROVINCE = {
+    '深圳': '广东省', '广州': '广东省', '东莞': '广东省', '佛山': '广东省',
+    '杭州': '浙江省', '宁波': '浙江省', '温州': '浙江省',
+    '南京': '江苏省', '苏州': '江苏省', '无锡': '江苏省',
+    '成都': '四川省', '武汉': '湖北省', '西安': '陕西省',
+    '郑州': '河南省', '青岛': '山东省', '济南': '山东省',
+    '长沙': '湖南省', '合肥': '安徽省', '福州': '福建省',
+    '厦门': '福建省', '南昌': '江西省', '大连': '辽宁省',
+    '沈阳': '辽宁省', '长春': '吉林省', '哈尔滨': '黑龙江省',
+    '石家庄': '河北省', '太原': '山西省', '南宁': '广西壮族自治区',
+    '昆明': '云南省', '贵阳': '贵州省', '兰州': '甘肃省',
+    '呼和浩特': '内蒙古自治区', '乌鲁木齐': '新疆维吾尔自治区',
+    '拉萨': '西藏自治区', '银川': '宁夏回族自治区',
+    '海口': '海南省', '台北': '台湾省', '高雄': '台湾省',
+}
+
 def _to_geo_name(name: str) -> str:
-    """将各种形式的省份名转为 GeoJSON 标准名称"""
-    cleaned = str(name).replace('省', '').replace('市', '').replace('自治区', '').replace('特别行政区', '').replace('壮族', '').replace('回族', '').replace('维吾尔', '').strip()
-    return _GEO_PROVINCE_NAMES.get(name, _GEO_PROVINCE_NAMES.get(cleaned, str(name)))
+    """将各种形式的省份名/城市名转为 GeoJSON 标准名称"""
+    name_str = str(name).strip()
+    
+    if name_str in _CITY_TO_PROVINCE:
+        return _CITY_TO_PROVINCE[name_str]
+    
+    cleaned = name_str.replace('省', '').replace('市', '').replace('自治区', '').replace('特别行政区', '').replace('壮族', '').replace('回族', '').replace('维吾尔', '').strip()
+    return _GEO_PROVINCE_NAMES.get(name_str, _GEO_PROVINCE_NAMES.get(cleaned, name_str))
 
 
 def _province_short_name(params: dict) -> str:

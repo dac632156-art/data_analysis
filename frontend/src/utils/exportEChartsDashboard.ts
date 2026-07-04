@@ -63,12 +63,64 @@ function makeKPICard(kpi: KPI) {
 </div>`;
 }
 
-function makeChartDiv(id: string, title: string, height: number, hideTitle: boolean) {
+interface TableDataRaw {
+  rows?: unknown[][];
+  columns?: string[];
+}
+
+function convertTableData(tableData: TableDataRaw): Record<string, unknown>[] {
+  if (!tableData || !tableData.rows || !tableData.columns) return [];
+  return tableData.rows.map(row => {
+    const obj: Record<string, unknown> = {};
+    tableData.columns!.forEach((col, idx) => {
+      obj[col] = row[idx];
+    });
+    return obj;
+  });
+}
+
+function makeChartDiv(id: string, title: string, height: number, hideTitle: boolean, chartType?: string, tableData?: TableDataRaw) {
   const titleHtml = hideTitle ? '' : `
 <div style="padding:10px 16px;border-bottom:1px solid rgba(139,92,246,0.1);display:flex;align-items:center;gap:10px;">
   <span style="width:8px;height:8px;border-radius:50%;background:#8b5cf6;"></span>
   <span style="font-size:13px;font-weight:600;color:#cbd5e1;">${title}</span>
 </div>`;
+
+  if (chartType === 'table' && tableData) {
+    const convertedData = convertTableData(tableData);
+    const tableHtml = makeTableHTML(convertedData);
+    return `
+<div data-chart-wrapper style="border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(139,92,246,0.15);">
+  ${titleHtml}
+  <div style="width:100%;padding:12px;overflow:auto;max-height:${hideTitle ? height : height - 40}px;">
+    ${tableHtml}
+  </div>
+</div>`;
+  }
+
+  if (chartType === 'analysis_table' && tableData) {
+    const columns = tableData.columns || [];
+    const rows = tableData.rows || [];
+    let theadHtml = `<thead><tr style="background:rgba(34,211,238,0.1);"><th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(34,211,238,0.15);">${columns.join('</th><th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(34,211,238,0.15);">')}</th></tr></thead>`;
+    let tbodyHtml = '<tbody>';
+    rows.forEach((row: unknown[], ri: number) => {
+      tbodyHtml += `<tr style="border-bottom:1px solid rgba(34,211,238,0.04);background:${ri % 2 === 0 ? 'rgba(15,23,42,0.5)' : 'transparent'};">`;
+      row.forEach((cell: unknown) => {
+        const val = cell !== null && cell !== undefined ? String(cell) : '-';
+        tbodyHtml += `<td style="padding:8px 12px;font-size:11px;color:#e2e8f0;">${val}</td>`;
+      });
+      tbodyHtml += '</tr>';
+    });
+    tbodyHtml += '</tbody>';
+    return `
+<div data-chart-wrapper style="border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(139,92,246,0.15);">
+  ${titleHtml}
+  <div style="width:100%;padding:12px;overflow:auto;max-height:${hideTitle ? height : height - 40}px;">
+    <table style="width:100%;border-collapse:collapse;">${theadHtml}${tbodyHtml}</table>
+  </div>
+</div>`;
+  }
+
   return `
 <div data-chart-wrapper style="border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(139,92,246,0.15);">
   ${titleHtml}
@@ -91,8 +143,10 @@ function makeRingChartDiv(id: string, title: string, height: number, hideTitle: 
 }
 
 function makeEChartsScript(charts: (EChartItem | { id?: string; title: string; option: any })[], hideTitle: boolean) {
+  // 过滤掉表格类型的图表，它们不需要 ECharts 初始化
+  const validCharts = charts.filter((c) => (c as EChartItem).chart_type !== 'table' && (c as EChartItem).chart_type !== 'analysis_table');
   // 序列化每个图表的 option，安全处理 NaN / Infinity / undefined
-  const chartConfigs = charts.map((c, i) => {
+  const chartConfigs = validCharts.map((c, i) => {
     const optionStr = JSON.stringify(c.option, (key, val) => {
       // 跳过无法序列化的值
       if (typeof val === 'function') return undefined;
@@ -367,7 +421,7 @@ function buildGridLayout(kpis: KPI[], charts: EChartItem[], title: string, hideT
 
   const chartHtml = charts.length > 0 ? `
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:24px;">
-  ${charts.slice(0, 6).map((c, i) => makeChartDiv(`chart_${i}`, c.title, 420, hideTitle)).join('\n  ')}
+  ${charts.slice(0, 6).map((c, i) => makeChartDiv('chart_' + i, c.title, 420, hideTitle, c.chart_type, c.table_data)).join('\n  ')}
 </div>` : `
 <div style="padding:60px;text-align:center;color:#64748b;font-size:18px;">暂无图表</div>`;
 
@@ -406,10 +460,19 @@ function buildClassicLayout(kpis: KPI[], charts: EChartItem[], title: string, hi
 
   const leftHtml = `<div style="width:22%;display:flex;flex-direction:column;gap:12px;">
   ${kpiHtml}
-  ${leftCharts.map((c, i) => makeChartDiv(`chart_${i + (mainChart ? 1 : 0)}`, c.title, 260, hideTitle)).join('\n  ')}
+  ${leftCharts.map((c, i) => makeChartDiv(`chart_${i + (mainChart ? 1 : 0)}`, c.title, 260, hideTitle, c.chart_type, c.table_data)).join('\n  ')}
 </div>`;
 
-  const centerHtml = `<div data-chart-wrapper style="flex:1;border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.4);border:1px solid rgba(139,92,246,0.2);">
+  const centerHtml = mainChart && mainChart.chart_type === 'table' && mainChart.table_data
+    ? '<div data-chart-wrapper style="flex:1;border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.4);border:1px solid rgba(139,92,246,0.2);">' +
+      (hideTitle ? '' : '<div style="padding:12px 20px;border-bottom:1px solid rgba(139,92,246,0.1);display:flex;align-items:center;gap:12px;">' +
+        '<span style="width:10px;height:10px;border-radius:50%;background:#22d3ee;"></span>' +
+        '<span style="font-size:15px;font-weight:600;">' + (mainChart.title || '主视图') + '</span>' +
+        '</div>') +
+      '<div style="width:100%;padding:12px;overflow:auto;max-height:520px;">' +
+      makeTableHTML(convertTableData(mainChart.table_data)) +
+      '</div></div>'
+    : `<div data-chart-wrapper style="flex:1;border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.4);border:1px solid rgba(139,92,246,0.2);">
   ${hideTitle ? '' : `<div style="padding:12px 20px;border-bottom:1px solid rgba(139,92,246,0.1);display:flex;align-items:center;gap:12px;">
     <span style="width:10px;height:10px;border-radius:50%;background:#22d3ee;"></span>
     <span style="font-size:15px;font-weight:600;">${mainChart?.title || '主视图'}</span>
@@ -418,7 +481,7 @@ function buildClassicLayout(kpis: KPI[], charts: EChartItem[], title: string, hi
 </div>`;
 
   const rightHtml = `<div style="width:22%;display:flex;flex-direction:column;gap:12px;">
-  ${rightCharts.map((c, i) => makeChartDiv(`chart_${i + (mainChart ? 1 : 0) + leftCharts.length}`, c.title, 260, hideTitle)).join('\n  ')}
+  ${rightCharts.map((c, i) => makeChartDiv(`chart_${i + (mainChart ? 1 : 0) + leftCharts.length}`, c.title, 260, hideTitle, c.chart_type, c.table_data)).join('\n  ')}
 </div>`;
 
   return `<!DOCTYPE html>
@@ -463,14 +526,21 @@ function buildImmersiveLayout(kpis: KPI[], charts: EChartItem[], title: string, 
   ${charts.map((c, i) => {
     const isMain = i === 0 && isGrid;
     const chartH = isMain ? 560 : 300;
-    return `
-  <div data-chart-wrapper style="border-radius:16px;overflow:hidden;background:rgba(10,10,30,0.8);border:1px solid rgba(139,92,246,0.15);position:relative;${isMain ? 'grid-row:span 2;' : ''}">
-    ${hideTitle ? '' : `<div style="padding:10px 16px;border-bottom:1px solid #1e1e3a80;display:flex;align-items:center;gap:10px;">
-      <span style="width:10px;height:10px;border-radius:50%;${isMain ? 'background:#22d3ee;' : 'background:#8b5cf6;'}"></span>
-      <span style="font-size:13px;font-weight:600;color:#cbd5e1;">${c.title}</span>
-    </div>`}
-    <div id="chart_${i}" style="width:100%;height:${chartH}px;"></div>
-  </div>`;
+    const titleColor = isMain ? '#22d3ee' : '#8b5cf6';
+    const titleHtml = hideTitle ? '' : '<div style="padding:10px 16px;border-bottom:1px solid #1e1e3a80;display:flex;align-items:center;gap:10px;">' +
+      '<span style="width:10px;height:10px;border-radius:50%;background:' + titleColor + ';"></span>' +
+      '<span style="font-size:13px;font-weight:600;color:#cbd5e1;">' + c.title + '</span>' +
+      '</div>';
+    if (c.chart_type === 'table' && c.table_data) {
+      return '<div data-chart-wrapper style="border-radius:16px;overflow:hidden;background:rgba(10,10,30,0.8);border:1px solid rgba(139,92,246,0.15);position:relative;' + (isMain ? 'grid-row:span 2;' : '') + '">' +
+        titleHtml +
+        '<div style="width:100%;padding:12px;overflow:auto;max-height:' + chartH + 'px;">' +
+        makeTableHTML(convertTableData(c.table_data)) +
+        '</div></div>';
+    }
+    return '<div data-chart-wrapper style="border-radius:16px;overflow:hidden;background:rgba(10,10,30,0.8);border:1px solid rgba(139,92,246,0.15);position:relative;' + (isMain ? 'grid-row:span 2;' : '') + '">' +
+      titleHtml +
+      '<div id="chart_' + i + '" style="width:100%;height:' + chartH + 'px;"></div></div>';
   }).join('\n  ')}
 </div>` : '<div style="padding:60px;text-align:center;color:#64748b;font-size:18px;">暂无图表</div>';
 

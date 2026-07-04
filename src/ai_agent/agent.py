@@ -79,13 +79,24 @@ class DataAnalysisAgent:
         return result_container["result"]
 
     def analyze(self, user_query: str, df: pd.DataFrame) -> str:
-        """分析用户问题，返回 AI 回答"""
+        """分析用户问题，返回 AI 回答
+        
+        当用户询问分析/图表时，返回结构化 JSON（同 generate_insights 格式），
+        包含 insights 和 intents，以便前端生成可执行的分析计划。
+        """
         try:
-            # 生成数据摘要
             data_summary = self._get_data_summary(df)
-
-            # 构造消息（引导 AI 直接回答，不要生成代码）
-            # ★ 当用户询问分析/图表建议时，要求输出 X:列名, Y:列名 格式以支持前端自动生成图表
+            
+            # 判断是否为分析/图表相关请求
+            is_analysis_request = any(kw in user_query for kw in 
+                ['图表', '建议', '推荐', '分析方向', '做什么', '画什么', '地图', '省份', 
+                 '分析', '可视化', '生成', '统计', '对比', '趋势', '分布'])
+            
+            if is_analysis_request:
+                # 分析请求：直接调用 generate_insights 返回结构化 JSON
+                return self.generate_insights(df, user_query)
+            
+            # 通用对话：直接回答
             _chart_hint = (
                 '\n\n如果用户询问分析方向或图表建议，请在\u201c分析建议\u201d章节中，'
                 '每条建议包含 (X:列名, Y:列名) 格式标注，并紧跟\u201c\u2192 图表类型\u201d说明。'
@@ -145,11 +156,14 @@ class DataAnalysisAgent:
         except Exception as e:
             return f"AI 分析出错：{str(e)}\n\n请检查 API Key 是否正确，或稍后重试。"
 
-    def generate_insights(self, df: pd.DataFrame) -> str:
+    def generate_insights(self, df: pd.DataFrame, user_query: str = "") -> str:
         """自动生成数据洞察报告 + 分析意图列表（JSON 格式）
         
         使用 INSIGHTS_SYSTEM_PROMPT + INSIGHTS_USER_PROMPT_TEMPLATE，
         输出 JSON：{insights: Markdown, intents: [{business_question, analysis_goal, priority, reason}]}
+        
+        参数：
+            user_query: 用户的具体分析问题（可选），如果提供，会在提示词中加入该问题
         """
         try:
             # ============================================
@@ -166,9 +180,10 @@ class DataAnalysisAgent:
             # ============================================
             # 阶段 4-5：AI 生成洞察（Structured Output JSON）
             # ============================================
+            query_context = f"\n\n用户具体问题：{user_query}\n请重点围绕用户问题生成相关的分析意图。" if user_query else ""
             user_prompt = INSIGHTS_USER_PROMPT_TEMPLATE.format(
                 data_summary=data_summary,
-            )
+            ) + query_context
 
             try:
                 response = self.client.chat.completions.create(
@@ -180,7 +195,6 @@ class DataAnalysisAgent:
                     temperature=0.0,
                     max_tokens=4096,
                     timeout=120,
-                    response_format={"type": "json_object"},
                 )
 
                 ai_text = response.choices[0].message.content or ""

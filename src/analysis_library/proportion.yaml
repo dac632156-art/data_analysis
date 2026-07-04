@@ -1,0 +1,39 @@
+# 占比分析 —— 各部分在整体中的百分比份额
+intent: proportion
+display_name: 占比分析
+description: 计算各部分在整体中的百分比份额，支持饼图和百分比表格
+level: L1
+
+template: proportion_analysis
+default_algorithm: null
+supported_algorithms: []
+
+keywords:
+  - 占比
+  - 饼图
+  - 比例
+  - 份额
+  - 百分比
+  - 占多少
+  - 份额
+
+priority: 82
+
+outputs:
+  charts:
+    - pie          # 饼图
+    - donut        # 环形图
+  tables:
+    - proportion_table  # 占比明细表
+  kpis:
+    - top3_share
+    - category_count
+
+examples:
+  - 各产品占比如何？
+  - 市场份额分别占多少？
+  - 哪个品类占比最高？
+
+fallback:
+  - structure
+  - ranking

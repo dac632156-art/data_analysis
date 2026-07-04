@@ -61,24 +61,29 @@ INSIGHTS_SYSTEM_PROMPT = """你是一个数据分析师。你需要读取数据�
 - insights: string —— Markdown 格式的洞察文字（4个章节：数据概览、关键发现、数据质量、分析建议）
 - intents: array —— 分析意图列表，每个 intent 包含：
   - business_question: string —— 明确的业务问题（中文，15字以内）
-  - analysis_goal: string —— 分析目标简述
+  - analysis_goal: string —— 分析目标简述（中文自然语言，如"分析增长趋势""产品销售额排名""客户复购率""线上VS线下对比"等）
   - priority: string —— "high" | "medium" | "low"
   - reason: string —— 为什么这个问题值得分析
 
-## 你可以提出的分析方向
-- 增长趋势分析
-- 排名和对比分析
-- 结构和占比分析
-- 集中度和分布分析
-- 相关关系分析
-- 异常值检测
+## 你可以提出的分析方向（analysis_goal 应包含以下关键词之一）
+- 增长/趋势/同比/环比/放缓/上涨 → 增长趋势分析
+- 排名/最高/最低/TOP/排行 → 排名和对比分析
+- 构成/结构/占比/比例 → 结构和占比分析
+- 二八/帕累托/集中度/贡献 → 集中度分析
+- 分布/直方图/频率/离散 → 分布分析
+- 相关/关联/关系/影响 → 相关关系分析
+- 异常/离群/波动/突变 → 异常值检测
+- 复购/回头客/重复购买/留存 → 复购率分析
+- 对比/比较/差异/VS/谁更高 → AB对比分析
+- 地理/地图/区域/省份/城市/分布/热力 → 地理空间分析
 
 ## 铁律
 - intents[] 中可以自由发挥 business_question/analysis_goal/reason
+- analysis_goal 必须用中文描述，不要使用英文枚举值（如不要写"growth"，应写"分析增长趋势"）
 - priority 根据业务重要性选择 high/medium/low
 - 每条 intent 独立，不相互引用
 - 基于数据真实特征，不编造
-- 禁止输出：analysis_method / algorithm / dimension / metric / chart_type
+- 禁止输出：analysis_method / algorithm / dimension / metric / chart_type / template_name
 - 禁止输出任何技术实现细节或图表类型名称"""
 
 INSIGHTS_USER_PROMPT_TEMPLATE = """以下是数据摘要，请输出 JSON 格式的分析结果：
@@ -89,8 +94,10 @@ INSIGHTS_USER_PROMPT_TEMPLATE = """以下是数据摘要，请输出 JSON 格式
 {{
   "insights": "## 数据概览\\n...\\n## 关键发现\\n...\\n## 数据质量\\n...\\n## 分析建议\\n1. ...\\n2. ...",
   "intents": [
-    {{"business_question": "销售增长是否放缓？", "analysis_goal": "判断增长速度变化", "priority": "high", "reason": "销售额是核心指标"}},
-    {{"business_question": "哪个地区贡献最高？", "analysis_goal": "地区排名分析", "priority": "high", "reason": "优化区域资源配置"}}
+    {{"business_question": "销售增长是否放缓？", "analysis_goal": "分析增长趋势", "priority": "high", "reason": "销售额是核心指标"}},
+    {{"business_question": "哪个地区贡献最高？", "analysis_goal": "地区排名对比", "priority": "high", "reason": "优化区域资源配置"}},
+    {{"business_question": "客户复购率如何？", "analysis_goal": "客户复购率分析", "priority": "medium", "reason": "了解客户粘性"}},
+    {{"business_question": "线上VS线下哪个利润更高？", "analysis_goal": "线上线下对比", "priority": "medium", "reason": "渠道策略决策"}}
   ]
 }}
 

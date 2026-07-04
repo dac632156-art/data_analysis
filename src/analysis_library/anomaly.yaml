@@ -1,0 +1,41 @@
+# 异常分析 —— 检测数据中的离群值和异常点
+intent: anomaly
+display_name: 异常分析
+description: 检测数据中的异常值、离群点和突变波动
+level: L1
+
+template: anomaly_analysis
+default_algorithm: zscore
+supported_algorithms:
+  - zscore
+  - iqr
+  - isolation_forest
+
+keywords:
+  - 异常
+  - 离群
+  - 突变
+  - 怪异
+  - 波动
+  - 异常值
+  - outlier
+  - 突变点
+
+priority: 72
+
+outputs:
+  charts:
+    - scatter      # 异常点标注图
+  tables:
+    - anomaly_table   # 异常明细表
+  kpis:
+    - anomaly_count
+    - anomaly_rate
+
+examples:
+  - 数据中有异常值吗？
+  - 哪些记录看起来不正常？
+  - 最近有没有突变波动？
+
+fallback:
+  - structure

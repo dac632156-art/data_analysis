@@ -1,0 +1,46 @@
+# 集中度分析 —— 判断是否存在帕累托效应（少数分类贡献大部分值）
+intent: concentration
+display_name: 集中度分析
+description: 判断数据是否高度集中在少数分类中（帕累托效应/二八法则）
+level: L2
+
+template: concentration_analysis
+default_algorithm: pareto
+supported_algorithms:
+  - pareto
+  - hhi
+  - gini
+
+keywords:
+  - 二八
+  - 帕累托
+  - pareto
+  - hhi
+  - 基尼
+  - gini
+  - 集中度
+  - 集中
+  - 少数
+  - 头部
+
+priority: 85
+
+outputs:
+  charts:
+    - bar           # 帕累托图
+  tables:
+    - concentration_table  # 集中度明细表
+  kpis:
+    - hhi_index
+    - top20_contribution
+    - gini_coefficient
+
+examples:
+  - 销售是否存在二八效应？
+  - 头部客户贡献了多少？
+  - 集中度高吗？
+  - 是否依赖少数几个产品？
+
+fallback:
+  - ranking
+  - structure

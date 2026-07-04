@@ -95,6 +95,20 @@ function InsightBlock({ insights }: { insights: string[] }) {
   );
 }
 
+function ConclusionBlock({ conclusions }: { conclusions: string[] }) {
+  if (!conclusions || conclusions.length === 0) return null;
+  return (
+    <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(139,92,246,0.06)', borderRadius: 8, border: '1px solid rgba(139,92,246,0.15)' }}>
+      <p style={{ fontSize: 11, color: '#8b5cf6', fontWeight: 600, marginBottom: 6 }}>核心结论</p>
+      {conclusions.map((c, i) => (
+        <p key={i} style={{ fontSize: 12, color: '#e2e8f0', margin: '4px 0', lineHeight: 1.6 }}>
+          <span style={{ color: '#8b5cf6', fontWeight: 700 }}>{i + 1}.</span> {c}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function UnsupportedBlock({ pkg }: { pkg: AnalysisPackage }) {
   const reasons = (pkg.insights || []).filter(s => s);
   const reasonText = reasons.length > 0 ? reasons[0] : '当前数据不支持该分析';
@@ -188,6 +202,9 @@ export default function VisualizationRenderer({ packages, selectedPackageIndex =
 
       {/* 洞察文字 */}
       <InsightBlock insights={pkg.insights || []} />
+
+      {/* 结论 */}
+      <ConclusionBlock conclusions={pkg.conclusions || []} />
     </div>
   );
 }

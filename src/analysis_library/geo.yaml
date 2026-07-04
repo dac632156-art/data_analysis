@@ -1,0 +1,44 @@
+# 地理空间分析 —— 区域数据的可视化展示
+intent: geo
+display_name: 地理空间分析
+description: 分析数据在地理空间上的分布特征，生成中国地图可视化
+level: L2
+
+template: geo_analysis
+default_algorithm: null
+supported_algorithms: []
+
+keywords:
+  - 地理
+  - 地图
+  - 区域
+  - 省份
+  - 城市
+  - 分布
+  - 热力
+  - 空间
+  - 地域
+  - 省市
+
+priority: 85
+
+outputs:
+  charts:
+    - map      # 省级填充地图（Choropleth）
+    - scatter  # 散点地图（Bubble Map）
+  tables:
+    - geo_summary    # 区域汇总表
+    - geo_ranking    # 区域排名表
+  kpis:
+    - geo_coverage
+    - top_region
+
+examples:
+  - 各省份销售金额的地理分布如何？
+  - 哪些地区是销售高地？
+  - 客户分布在哪些城市？
+  - 退货数在哪些省份集中？
+
+fallback:
+  - ranking
+  - structure

@@ -1,0 +1,39 @@
+# 相关分析 —— 数值指标间的关联关系
+intent: correlation
+display_name: 相关分析
+description: 分析两个或多个数值指标之间的关联关系强度
+level: L1
+
+template: correlation_analysis
+default_algorithm: pearson
+supported_algorithms:
+  - pearson
+  - spearman
+
+keywords:
+  - 相关
+  - 关联
+  - 关系
+  - 影响
+  - 伴随
+  - 相关系
+  - 相关性
+
+priority: 78
+
+outputs:
+  charts:
+    - scatter    # 散点图
+  tables:
+    - correlation_table  # 相关系数表
+  kpis:
+    - correlation_coefficient
+    - r_squared
+
+examples:
+  - 销售额和利润相关吗？
+  - 广告费和收入有关系吗？
+  - 两个指标之间是否存在关联？
+
+fallback:
+  - ranking

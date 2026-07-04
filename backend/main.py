@@ -22,14 +22,21 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS 配置 - 允许前端开发服务器访问
+# CORS 配置 - 支持本地开发和线上部署
+# 环境变量 BACKEND_CORS_ORIGINS 可在 Render 上设置，格式：逗号分隔的域名列表
+cors_origins = os.getenv("BACKEND_CORS_ORIGINS", "").split(",")
+cors_origins = [o.strip() for o in cors_origins if o.strip()]
+# 默认允许本地开发地址
+default_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+]
+all_origins = default_origins + cors_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite 开发服务器
-        "http://localhost:3000",  # 备用
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=all_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,0 +1,41 @@
+# 分布分析 —— 数值的分布形态与频次
+intent: distribution
+display_name: 分布分析
+description: 分析数值数据的分布形态（偏态、峰度、区间分布）
+level: L1
+
+template: distribution_analysis
+default_algorithm: null
+supported_algorithms: []
+
+keywords:
+  - 分布
+  - 分散
+  - 直方图
+  - 频率
+  - 区间
+  - 分箱
+  - 离散
+  - 偏态
+
+priority: 75
+
+outputs:
+  charts:
+    - histogram       # 直方图
+    - box_plot        # 箱线图
+  tables:
+    - distribution_table  # 分布统计表
+  kpis:
+    - mean
+    - median
+    - std_dev
+    - skewness
+
+examples:
+  - 销售额分布是怎样的？
+  - 客户消费金额集中在哪个区间？
+  - 数据是否正态分布？
+
+fallback:
+  - structure

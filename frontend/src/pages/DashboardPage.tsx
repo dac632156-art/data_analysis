@@ -71,6 +71,7 @@ export default function DashboardPage() {
   const [generating, setGenerating] = useState(false);
   const [hideChartTitle, setHideChartTitle] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [savedTableData, setSavedTableData] = useState<Record<string, unknown>[]>([]);
 
   const screenRef = useRef<HTMLDivElement>(null);
   const hasData = ds.rows > 0;
@@ -99,20 +100,119 @@ export default function DashboardPage() {
     loadEChartsDashboard();
   }, [loadEChartsDashboard]);
 
-  // ===== 加载已保存图表（从分析页收藏） =====
+  // ===== 加载已保存分析包（从分析页收藏） =====
   const handleLoadSaved = async () => {
     setLoading(true);
     try {
-      const res = await api.getSavedCharts(ds.sessionId);
-      if (res.charts && res.charts.length > 0) {
-        setECharts(res.charts);
-        const [kpiRes] = await Promise.all([api.getDashboardKPIs(ds.sessionId)]);
-        if (kpiRes.kpis) setKpis(kpiRes.kpis);
+      // 优先尝试 V2 saved_packages
+      let res: any = null;
+      try {
+        res = await api.getSavedPackages(ds.sessionId);
+      } catch {
+        // V2 接口不可用，跳到旧接口
+      }
+
+      if (res && res.packages && res.packages.length > 0) {
+        // V2：从 saved_packages 中提取图表、KPI 和表格
+        const allCharts: EChartItem[] = [];
+        const allKpis: KPIItem[] = [];
+        const allTableData: Record<string, unknown>[] = [];
+        for (const pkg of res.packages) {
+          // 图表：rendered_charts（含 option）或 charts
+          const pkgCharts = pkg.rendered_charts || pkg.charts || [];
+          for (const c of pkgCharts) {
+            if (c && c.option) {
+              allCharts.push({
+                title: c.title || '',
+                option: c.option,
+                x: c.x || '',
+                y: c.y || '',
+                analysis_type: pkg.analysis_type || '',
+                chart_type: c.chart_type || '',
+              } as EChartItem);
+            }
+          }
+          // KPI：rendered_kpis（含 label/value 格式化）或 kpis
+          const pkgKpis = pkg.rendered_kpis || pkg.kpis || [];
+          for (const k of pkgKpis) {
+            if (k) {
+              // rendered_kpis 格式: {label, value, change, kpi_type, formatted, color}
+              // kpis 格式: {label, value, change, kpi_type}
+              allKpis.push({
+                label: k.label || '',
+                value: k.formatted || k.value || '',
+                change: k.change || '',
+                kpi_type: k.kpi_type || 'sum',
+              });
+            }
+          }
+          // 表格：rendered_tables（含 columns/rows）或 tables
+          const pkgTables = pkg.rendered_tables || pkg.tables || [];
+          for (const t of pkgTables) {
+            if (t && t.rows && t.columns) {
+              // RenderedTable 的 rows 是 List[List[RenderedCell]]，需要提取 value
+              const tableRows = t.rows.map((row: unknown[]) => {
+                return row.map((cell: any) => {
+                  return cell && typeof cell === 'object' && 'value' in cell ? cell.value : cell;
+                });
+              });
+              // 将表格转换为 EChartItem 格式，添加到 charts 数组
+              // 使用 'analysis_table' 类型区分分析报告表格（与同环比表格 'table' 类型区分）
+              allCharts.push({
+                title: t.title || '数据表格',
+                option: {},
+                x: '',
+                y: '',
+                analysis_type: pkg.analysis_type || '',
+                chart_type: 'analysis_table',
+                table_data: {
+                  rows: tableRows,
+                  columns: t.columns,
+                },
+              } as EChartItem);
+            }
+          }
+        }
+        setECharts(allCharts);
+        if (allKpis.length > 0) setKpis(allKpis);
+        if (allKpis.length === 0) {
+          const kpiRes = await api.getDashboardKPIs(ds.sessionId);
+          if (kpiRes.kpis) setKpis(kpiRes.kpis);
+        }
       } else {
-        alert('暂无已保存的图表，请先在「分析可视化」页面生成并保存图表');
+        // V2 无数据 → fallback 到旧接口
+        const oldRes = await api.getSavedCharts(ds.sessionId);
+        if (oldRes.charts && oldRes.charts.length > 0) {
+          // 旧格式：{title, option, type, saved_at, table_data}
+          const charts: EChartItem[] = [];
+          const allTableData: Record<string, unknown>[] = [];
+          for (const c of oldRes.charts) {
+            charts.push({
+              title: c.title || '',
+              option: (c as any).option || c,
+              x: (c as any).x || '',
+              y: (c as any).y || '',
+              analysis_type: '',
+              chart_type: (c as any).type || '',
+              table_data: (c as any).table_data || null,
+            } as EChartItem);
+            // 收集表格数据（同环比表格类型）
+            if ((c as any).table_data && (c as any).table_data.rows) {
+              allTableData.push(...(c as any).table_data.rows);
+            }
+          }
+          setECharts(charts);
+          if (allTableData.length > 0) {
+            setSavedTableData(allTableData);
+          }
+          const kpiRes = await api.getDashboardKPIs(ds.sessionId);
+          if (kpiRes.kpis) setKpis(kpiRes.kpis);
+        } else {
+          alert('暂无已保存的分析结果，请先在「分析可视化」页面生成并保存图表');
+        }
       }
     } catch (err) {
-      console.error('加载保存图表失败', err);
+      console.error('加载保存分析失败', err);
     } finally { setLoading(false); }
   };
 
@@ -151,7 +251,7 @@ export default function DashboardPage() {
       alert('暂无图表数据');
       return;
     }
-    const tableData = ds?.preview || [];
+    const tableData = savedTableData.length > 0 ? savedTableData : (ds?.preview || []);
     const filename = `数据大屏_${displayTitle}_${new Date().toISOString().slice(0, 10)}.html`;
     const html = generateEChartsDashboardHTML(template, kpis, echarts, displayTitle, hideChartTitle, navTabs, ringCharts, tableData);
     setReportHtml(html);

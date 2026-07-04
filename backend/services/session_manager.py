@@ -5,6 +5,7 @@
 
 import uuid
 import time
+import dataclasses
 import pandas as pd
 from typing import Dict, Optional, List, Any
 from threading import Lock
@@ -200,7 +201,7 @@ class SessionManager:
                 return
             for pkg_id in package_ids:
                 if pkg_id in session.analysis_packages:
-                    pkg = dict(session.analysis_packages[pkg_id])
+                    pkg = dataclasses.asdict(session.analysis_packages[pkg_id])
                     pkg["saved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
                     # 去重：同一 ID 不重复保存
                     if not any(p.get("id") == pkg_id for p in session.saved_packages):
@@ -211,6 +212,75 @@ class SessionManager:
         """获取所有已保存的分析包"""
         session = self.get_session(session_id)
         return session.saved_packages if session else []
+
+    def get_saved_packages_full(self, session_id: str) -> List[Dict[str, Any]]:
+        """获取已保存的分析包（含渲染后的 KPI/Table/Chart/Insight/Conclusion）
+
+        使用 Renderer 层将 AnalysisPackage 的原始数据渲染为前端可消费格式。
+        """
+        from src.kpi_renderer import KPIRenderer
+        from src.table_renderer import TableRenderer
+        from src.insight_renderer import InsightRenderer
+        from src.conclusion_renderer import ConclusionRenderer
+        import dataclasses
+
+        session = self.get_session(session_id)
+        if not session:
+            return []
+
+        kpi_renderer = KPIRenderer()
+        table_renderer = TableRenderer()
+        insight_renderer = InsightRenderer()
+        conclusion_renderer = ConclusionRenderer()
+
+        full_packages = []
+        for pkg in session.saved_packages:
+            # 渲染各部分
+            kpis_raw = pkg.get("kpis", [])
+            tables_raw = pkg.get("tables", [])
+            charts_raw = pkg.get("charts", [])
+            insights_raw = pkg.get("insights", [])
+            conclusions_raw = pkg.get("conclusions", [])
+            chart_data_raw = pkg.get("chart_data", [])
+
+            # KPI 渲染
+            rendered_kpis = []
+            for k in kpis_raw:
+                if isinstance(k, dict):
+                    from src.analysis_templates.base import KPIItem
+                    item = KPIItem(**k) if "label" in k else None
+                    if item:
+                        rendered_kpis.append(dataclasses.asdict(kpi_renderer.render(item)))
+
+            # Table 渲染
+            rendered_tables = []
+            for t in tables_raw:
+                if isinstance(t, dict) and "title" in t:
+                    from src.analysis_templates.base import TableData
+                    table_data = TableData(**{k: t[k] for k in ("title","table_type","columns","rows") if k in t})
+                    rendered_tables.append(dataclasses.asdict(table_renderer.render(table_data)))
+
+            # Insight 渲染
+            rendered_insights = []
+            if isinstance(insights_raw, list):
+                rendered_insights = [
+                    dataclasses.asdict(r) for r in insight_renderer.render_all(insights_raw)
+                ]
+
+            # Conclusion 渲染
+            rendered_conclusion = dataclasses.asdict(
+                conclusion_renderer.render(conclusions_raw if isinstance(conclusions_raw, list) else [])
+            )
+
+            full_pkg = dict(pkg)
+            full_pkg["rendered_kpis"] = rendered_kpis
+            full_pkg["rendered_tables"] = rendered_tables
+            full_pkg["rendered_charts"] = charts_raw
+            full_pkg["rendered_insights"] = rendered_insights
+            full_pkg["rendered_conclusion"] = rendered_conclusion
+            full_packages.append(full_pkg)
+
+        return full_packages
 
     def clear_data(self, session_id: str):
         """清除会话数据"""

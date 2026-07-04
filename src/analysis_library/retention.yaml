@@ -1,0 +1,45 @@
+# 复购分析 —— 客户重复购买行为分析
+intent: retention
+display_name: 复购分析
+description: 分析客户复购率，识别重复购买客户占比和产品复购排行
+level: L3
+
+template: retention_analysis
+default_algorithm: null
+supported_algorithms: []
+
+keywords:
+  - 复购
+  - 回头客
+  - 重复购买
+  - 留存
+  - 回购
+  - 复购率
+  - 忠诚度
+  - 老客户
+  - 再次购买
+  - 复购客户
+
+priority: 88
+
+outputs:
+  charts:
+    - bar          # 产品复购率柱状图
+    - pie          # 复购客户占比饼图
+  tables:
+    - retention_table    # 复购率明细表
+    - product_retention  # 产品复购排行
+  kpis:
+    - retention_rate
+    - repeat_customer_count
+    - avg_purchase_frequency
+
+examples:
+  - 复购率高吗？
+  - 哪些产品复购率最高？
+  - 回头客占比多少？
+  - 客户平均购买几次？
+
+fallback:
+  - ranking
+  - structure

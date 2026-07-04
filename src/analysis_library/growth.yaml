@@ -1,0 +1,51 @@
+# 增长分析 —— 指标随时间的变化趋势与增长率
+intent: growth
+display_name: 增长分析
+description: 分析指标随时间的变化趋势，支持同比(YoY)、环比(MoM)、季环比(QoQ)三种对比算法
+level: L2
+
+template: growth_analysis
+default_algorithm: yoy
+supported_algorithms:
+  - yoy
+  - mom
+  - qoq
+
+keywords:
+  - 增长
+  - 趋势
+  - 同比
+  - 环比
+  - 放缓
+  - 上涨
+  - 下降
+  - 变化
+  - 走势
+  - 波动趋势
+  - 增长率
+  - 增速
+
+priority: 95
+
+outputs:
+  charts:
+    - line      # 趋势折线图
+    - bar       # 增长率柱状图
+    - area      # 累计面积图
+  tables:
+    - growth_table   # 增长率明细表
+  kpis:
+    - growth_rate
+    - total_growth
+    - avg_growth_rate
+
+examples:
+  - 销售增长怎么样？
+  - 哪个月增长最快？
+  - 同比增长多少？
+  - 销售额的变化趋势是什么？
+  - 最近增长是否放缓了？
+
+fallback:
+  - ranking
+  - structure

@@ -274,11 +274,23 @@ export default function AnalysisPage() {
     }
     setLoading(true);
     try {
-      const saved = await api.getSavedCharts(ds.sessionId);
-      const chartCount = saved.total;
-      const reportPrompt = chartCount > 0
-        ? `请基于以下 ${chartCount} 个已保存的分析图表，生成一份专业的数据分析报告。报告应包含：1）数据概览 2）关键发现 3）图表解读 4）结论与建议。图表数据：${JSON.stringify(saved.charts.map(c => c.title))}`
-        : '请基于当前数据生成一份数据分析报告，包含数据概览、关键发现和结论建议。';
+      // V2：优先使用 saved_packages，fallback 到 saved_charts
+      let chartCount = 0;
+      let reportPrompt = '';
+      try {
+        const savedPkgs = await api.getSavedPackages(ds.sessionId);
+        chartCount = savedPkgs.total;
+        const pkgTitles = savedPkgs.packages.map(p => (p as any).business_question || (p as any).analysis_type || '');
+        reportPrompt = chartCount > 0
+          ? `请基于以下 ${chartCount} 个已保存的分析结果，生成一份专业的数据分析报告。报告应包含：1）数据概览 2）关键发现 3）图表解读 4）结论与建议。分析问题：${pkgTitles.join(', ')}`
+          : '请基于当前数据生成一份数据分析报告，包含数据概览、关键发现和结论建议。';
+      } catch {
+        const saved = await api.getSavedCharts(ds.sessionId);
+        chartCount = saved.total;
+        reportPrompt = chartCount > 0
+          ? `请基于以下 ${chartCount} 个已保存的分析图表，生成一份专业的数据分析报告。报告应包含：1）数据概览 2）关键发现 3）图表解读 4）结论与建议。图表数据：${JSON.stringify(saved.charts.map(c => c.title))}`
+          : '请基于当前数据生成一份数据分析报告，包含数据概览、关键发现和结论建议。';
+      }
       
       const provider = AI_PROVIDERS.find(p => p.id === ds.aiProvider);
       if (!provider) { alert('请先在左上角选择 AI 模型提供商'); setLoading(false); return; }
@@ -359,31 +371,57 @@ export default function AnalysisPage() {
     }
   };
 
-  /** V2：一键应用洞察 → 读取 intents[] → 调 /analysis/run → 展示 packages */
-  const handleApplyInsights = async (sourceText?: string) => {
+  /** V2：一键应用洞察 → 调 /insights/generate → 显示 intents 勾选列表
+   *  后端三层兜底保证 intents 永不为空：AI JSON → AI 文本解析 → Planner 纯规则
+   *  因此前端只需处理 API 网络错误，不需要再处理 intents 为空
+   */
+  const handleApplyInsights = async () => {
     if (!ds.apiKey) {
       alert('请先在左上角配置 AI API Key');
       return;
     }
 
+    // 如果已经有 intents，直接提示
+    if (intents.length > 0) {
+      setComputeResult(`✅ 已有 ${intents.length} 个分析问题，请勾选后点击「执行分析」`);
+      return;
+    }
+
     try {
       setComputing(true);
-      setComputeResult('⏳ 正在调用 AI 生成洞察...');
+      setComputeResult('⏳ 正在调用 AI 生成分析计划...');
 
       const provider = getProviderConfig();
       const res = await api.generateInsights(ds.sessionId, ds.apiKey, provider?.baseUrl, provider?.model);
 
-      if (!res.success || !res.intents || res.intents.length === 0) {
-        alert('AI 未返回分析计划，请重试');
-        setComputing(false);
-        return;
-      }
+      console.log('[handleApplyInsights] API 返回:', res);
+      console.log('[handleApplyInsights] intents 数量:', res.intents?.length ?? 0, 'is_fallback:', res.is_fallback);
 
-      setIntents(res.intents);
-      setComputeResult(`✅ 获取到 ${res.intents.length} 个分析问题，请勾选后点击「执行分析」`);
+      // 后端已保证 intents 不为空（三层兜底），直接提取即可
+      if (res.intents && res.intents.length > 0) {
+        setIntents(res.intents.map((item: Record<string, string>) => ({
+          business_question: item.business_question || '',
+          analysis_goal: item.analysis_goal || '',
+          priority: item.priority || 'medium',
+          reason: res.is_fallback ? `[自动推荐] ${item.reason || '基于数据特征'}` : (item.reason || ''),
+          checked: item.priority === 'high',
+        })));
+        if (res.insights) {
+          setInsights(res.insights);
+        }
+        setComputeResult(
+          res.is_fallback
+            ? `✅ 已自动生成 ${res.intents.length} 个推荐分析问题（AI 未返回 JSON，已用规则引擎兜底）`
+            : `✅ 获取到 ${res.intents.length} 个分析问题，请勾选后点击「执行分析」`
+        );
+      } else {
+        // 极端情况：后端三层兜底都失败了（不应发生，但防御性编程）
+        setComputeResult('⚠️ 分析计划生成失败，请重试或检查网络连接');
+      }
       setComputing(false);
     } catch (err) {
-      setComputeResult(`❌ 失败: ${err instanceof Error ? err.message : '未知错误'}`);
+      console.error('[handleApplyInsights] 网络错误:', err);
+      setComputeResult(`❌ 网络请求失败: ${err instanceof Error ? err.message : '未知错误'}`);
       setComputing(false);
     }
   };
@@ -436,7 +474,22 @@ export default function AnalysisPage() {
     try {
       const provider = getProviderConfig();
       const res = await api.generateInsights(ds.sessionId, ds.apiKey, provider?.baseUrl, provider?.model);
-      setInsights(res.insights);
+      setInsights(res.insights || '');
+      // ★ 同步提取 intents（后端三层兜底保证不为空）
+      if (res.intents && res.intents.length > 0) {
+        setIntents(res.intents.map((item: Record<string, string>) => ({
+          business_question: item.business_question || '',
+          analysis_goal: item.analysis_goal || '',
+          priority: item.priority || 'medium',
+          reason: res.is_fallback ? `[自动推荐] ${item.reason || '基于数据特征'}` : (item.reason || ''),
+          checked: item.priority === 'high',
+        })));
+        setComputeResult(
+          res.is_fallback
+            ? `✅ 已自动生成 ${res.intents.length} 个推荐分析问题（规则引擎兜底）`
+            : `✅ 获取到 ${res.intents.length} 个分析问题，请勾选后点击「执行分析」`
+        );
+      }
     } catch (err) {
       setChatHistory((prev) => [...prev, { role: 'ai', content: `❌ ${err instanceof Error ? err.message : '洞察生成失败'}` }]);
     } finally {
@@ -453,7 +506,33 @@ export default function AnalysisPage() {
     try {
       const provider = getProviderConfig();
       const res = await api.chatAnalyze(ds.sessionId, question, ds.apiKey, provider?.baseUrl, provider?.model);
-      setChatHistory((prev) => [...prev, { role: 'ai', content: res.answer }]);
+      
+      // 确保 answer 是可读文本，不是原始 JSON
+      let displayAnswer = res.answer || '';
+      if (displayAnswer.startsWith('{') && displayAnswer.endsWith('}')) {
+        try {
+          const jsonData = JSON.parse(displayAnswer);
+          displayAnswer = jsonData.insights || jsonData.message || displayAnswer;
+        } catch {
+          // 解析失败，保持原样
+        }
+      }
+      setChatHistory((prev) => [...prev, { role: 'ai', content: displayAnswer }]);
+      
+      // 如果聊天响应包含 intents，更新分析计划（不强制切换标签页）
+      if (res.intents && res.intents.length > 0) {
+        try {
+          setIntents(res.intents.map((item: Record<string, string>) => ({
+            business_question: item.business_question || '',
+            analysis_goal: item.analysis_goal || '',
+            priority: item.priority || 'medium',
+            reason: item.reason || '',
+            checked: true,
+          })));
+        } catch (e) {
+          console.error('Failed to parse intents:', e);
+        }
+      }
     } catch (err) {
       setChatHistory((prev) => [...prev, { role: 'ai', content: `❌ ${err instanceof Error ? err.message : '请求失败'}` }]);
     } finally {
@@ -479,6 +558,63 @@ export default function AnalysisPage() {
   const inputClass = "w-full px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8b5cf6]/50 transition-colors";
   const btnClass = "px-4 py-2 text-sm rounded-lg bg-[#8b5cf6]/80 text-white hover:bg-[#8b5cf6] disabled:opacity-50 transition-colors";
   const btnFullClass = "w-full px-4 py-2 text-sm rounded-lg bg-[#8b5cf6]/80 text-white hover:bg-[#8b5cf6] disabled:opacity-50 transition-colors";
+
+  /** IntentChecklist — 分析计划勾选列表（overview Tab 和 chat Tab 共用） */
+  const IntentChecklist = () => {
+    if (intents.length === 0) return null;
+    return (
+      <div className="glass-card p-4 space-y-3">
+        <h3 className="text-sm font-semibold text-slate-300">
+          📋 分析计划（勾选要执行的项目）
+          {computeResult && computeResult.includes('自动推荐') && (
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[#22d3ee]/20 text-[#22d3ee]">自动推荐</span>
+          )}
+        </h3>
+        <div className="space-y-2">
+          {intents.map((item, i) => (
+            <label key={i} className="flex items-start gap-3 p-2 rounded hover:bg-white/[0.03] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={item.checked}
+                onChange={() => {
+                  const next = [...intents];
+                  next[i] = { ...next[i], checked: !next[i].checked };
+                  setIntents(next);
+                }}
+                className="mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-slate-200 font-medium">{item.business_question}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{item.analysis_goal} · {item.reason}</p>
+              </div>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                item.priority === 'high' ? 'bg-red-500/20 text-red-400' :
+                item.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                'bg-slate-500/20 text-slate-400'
+              }`}>{item.priority}</span>
+            </label>
+          ))}
+        </div>
+        <div className="flex gap-2 pt-2 border-t border-white/[0.06]">
+          <button onClick={() => setIntents(intents.map(i => ({ ...i, checked: true })))}
+            className="px-3 py-1.5 text-xs rounded bg-white/[0.05] text-slate-400 hover:text-white">全选</button>
+          <button onClick={() => setIntents(intents.map(i => ({ ...i, checked: false })))}
+            className="px-3 py-1.5 text-xs rounded bg-white/[0.05] text-slate-400 hover:text-white">取消全选</button>
+          <button
+            onClick={handleRunAnalysis}
+            disabled={computing || !intents.some(i => i.checked)}
+            className="ml-auto flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-lg bg-gradient-to-r from-[#8b5cf6]/80 to-[#a78bfa]/80 text-white hover:from-[#8b5cf6] hover:to-[#a78bfa] disabled:opacity-30 transition-all"
+          >
+            <FiTrendingUp className="w-3.5 h-3.5" />
+            {computing ? '执行中...' : '⚡ 执行分析'}
+          </button>
+        </div>
+        {computeResult && (
+          <div className="text-xs text-slate-400 whitespace-pre-wrap mt-1">{computeResult}</div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="page-enter space-y-6">
@@ -551,9 +687,19 @@ export default function AnalysisPage() {
                 🤖 AI 深度洞察
                 {!ds.apiKey && <span className="ml-2 text-xs text-slate-500 font-normal">（需配置 API Key）</span>}
               </h2>
-              <button onClick={generateInsights} disabled={loading} className={btnClass}>
-                {loading ? '分析中...' : '生成洞察'}
-              </button>
+              <div className="flex gap-2">
+                <button onClick={generateInsights} disabled={loading} className={btnClass}>
+                  {loading ? '分析中...' : '生成洞察'}
+                </button>
+                <button
+                  onClick={() => handleApplyInsights()}
+                  disabled={loading || computing}
+                  className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-gradient-to-r from-[#22d3ee]/20 to-[#a78bfa]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:from-[#22d3ee]/30 hover:to-[#a78bfa]/30 disabled:opacity-50 transition-all"
+                >
+                  <FiZap className="w-4 h-4" />
+                  {computing ? '生成中...' : '🚀 一键生成分析计划'}
+                </button>
+              </div>
             </div>
             {!ds.apiKey && (
               <div className="glass-card p-4 text-sm text-slate-500">
@@ -568,75 +714,12 @@ export default function AnalysisPage() {
                   dangerouslySetInnerHTML={{ __html: renderMarkdown(insights) }}
                 />
                 <div className="flex items-center gap-3 pt-2 border-t border-white/[0.06]">
-
-
-
-                  <button
-                    onClick={() => handleApplyInsights()}
-                    disabled={loading || computing}
-                    className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-gradient-to-r from-[#22d3ee]/20 to-[#a78bfa]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:from-[#22d3ee]/30 hover:to-[#a78bfa]/30 disabled:opacity-50 transition-all"
-                  >
-                    <FiZap className="w-4 h-4" />
-                    {computing ? '正在生成分析计划...' : '🚀 一键生成分析计划'}
-                  </button>
-                  <span className="text-xs text-slate-500">AI 自动分析数据 → 生成分析计划 → 勾选后执行</span>
+                  <span className="text-xs text-slate-500">💡 点击上方「一键生成分析计划」按钮执行深度分析</span>
                 </div>
               </div>
             )}
             {/* V2：分析计划勾选列表 */}
-            {intents.length > 0 && (
-              <div className="glass-card p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-slate-300">📋 分析计划（勾选要执行的项目）</h3>
-                <div className="space-y-2">
-                  {intents.map((item, i) => (
-                    <label key={i} className="flex items-start gap-3 p-2 rounded hover:bg-white/[0.03] cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={item.checked}
-                        onChange={() => {
-                          const next = [...intents];
-                          next[i] = { ...next[i], checked: !next[i].checked };
-                          setIntents(next);
-                        }}
-                        className="mt-0.5"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-slate-200 font-medium">{item.business_question}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">{item.analysis_goal} · {item.reason}</p>
-                      </div>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                        item.priority === 'high' ? 'bg-red-500/20 text-red-400' :
-                        item.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-slate-500/20 text-slate-400'
-                      }`}>{item.priority}</span>
-                    </label>
-                  ))}
-                </div>
-                <div className="flex gap-2 pt-2 border-t border-white/[0.06]">
-                  <button
-                    onClick={() => {
-                      setIntents(intents.map(i => ({ ...i, checked: true })));
-                    }}
-                    className="px-3 py-1.5 text-xs rounded bg-white/[0.05] text-slate-400 hover:text-white"
-                  >全选</button>
-                  <button
-                    onClick={() => setIntents(intents.map(i => ({ ...i, checked: false })))}
-                    className="px-3 py-1.5 text-xs rounded bg-white/[0.05] text-slate-400 hover:text-white"
-                  >取消全选</button>
-                  <button
-                    onClick={handleRunAnalysis}
-                    disabled={computing || !intents.some(i => i.checked)}
-                    className="ml-auto flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-lg bg-gradient-to-r from-[#8b5cf6]/80 to-[#a78bfa]/80 text-white hover:from-[#8b5cf6] hover:to-[#a78bfa] disabled:opacity-30 transition-all"
-                  >
-                    <FiTrendingUp className="w-3.5 h-3.5" />
-                    {computing ? '执行中...' : '⚡ 执行分析'}
-                  </button>
-                </div>
-                {computeResult && (
-                  <div className="text-xs text-slate-400 whitespace-pre-wrap mt-1">{computeResult}</div>
-                )}
-              </div>
-            )}
+            <IntentChecklist />
             {/* V2：分析结果 */}
             {analysisPackages.length > 0 && (
               <div className="glass-card p-4 space-y-3">
@@ -749,11 +832,22 @@ export default function AnalysisPage() {
       )}
       {tab === 'chat' && (
         <div className="space-y-4">
-          {(!insights || insights.startsWith('⚠️')) && (
-            <button onClick={generateInsights} disabled={loading} className="w-full px-6 py-3 text-sm rounded-lg bg-[#8b5cf6]/80 text-white hover:bg-[#8b5cf6] disabled:opacity-50 transition-colors">
-              {loading ? '分析中...' : '📊 生成自动数据洞察'}
+          {/* 两按钮并排：生成洞察 + 一键生成分析计划 */}
+          <div className="flex gap-3">
+            {(!insights || insights.startsWith('⚠️')) && (
+              <button onClick={generateInsights} disabled={loading} className="flex-1 px-6 py-3 text-sm rounded-lg bg-[#8b5cf6]/80 text-white hover:bg-[#8b5cf6] disabled:opacity-50 transition-colors">
+                {loading ? '分析中...' : '📊 生成数据洞察'}
+              </button>
+            )}
+            <button
+              onClick={() => handleApplyInsights()}
+              disabled={loading || computing}
+              className="flex items-center justify-center gap-2 px-6 py-3 text-sm rounded-lg bg-gradient-to-r from-[#22d3ee]/20 to-[#a78bfa]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:from-[#22d3ee]/30 hover:to-[#a78bfa]/30 disabled:opacity-50 transition-all"
+            >
+              <FiZap className="w-4 h-4" />
+              {computing ? '生成中...' : '🚀 一键生成分析计划'}
             </button>
-          )}
+          </div>
 
           {insights && !insights.startsWith('⚠️') && (
             <div className="glass-card p-4 space-y-3">
@@ -764,15 +858,31 @@ export default function AnalysisPage() {
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(insights) }}
               />
               <div className="pt-2 border-t border-white/[0.06]">
+                <span className="text-xs text-slate-500">💡 点击上方「一键生成分析计划」按钮执行深度分析</span>
+              </div>
+            </div>
+          )}
+
+          {/* V2：分析计划勾选列表（独立显示，不依赖 insights） */}
+          <IntentChecklist />
+
+          {/* V2：分析结果 */}
+          {analysisPackages.length > 0 && (
+            <div className="glass-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-300">📊 分析结果（{analysisPackages.length} 项）</h3>
                 <button
-                  onClick={() => handleApplyInsights()}
-                  disabled={loading || computing}
-                  className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-gradient-to-r from-[#22d3ee]/20 to-[#a78bfa]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:from-[#22d3ee]/30 hover:to-[#a78bfa]/30 disabled:opacity-50 transition-all"
+                  onClick={() => {
+                    const ids = analysisPackages.filter(p => p.id).map(p => p.id as string);
+                    if (ids.length > 0) handleSavePackages(ids);
+                  }}
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30 transition-all"
                 >
-                  <FiZap className="w-4 h-4" />
-                  {computing ? '正在生成分析计划...' : '🚀 一键生成分析计划'}
+                  <FiSave className="w-3.5 h-3.5" />
+                  保存到仪表盘
                 </button>
               </div>
+              <VisualizationRenderer packages={analysisPackages as unknown as import('../types/api').AnalysisPackage[]} />
             </div>
           )}
 

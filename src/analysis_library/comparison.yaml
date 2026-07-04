@@ -1,0 +1,45 @@
+# 对比分析 —— 两个或多个分类组之间的差异对比
+intent: comparison
+display_name: 对比分析
+description: 对比两个或多个分类组之间的指标差异，识别优劣和差异程度
+level: L3
+
+template: comparison_analysis
+default_algorithm: null
+supported_algorithms: []
+
+keywords:
+  - 对比
+  - 比较
+  - 差异
+  - 区别
+  - vs
+  - VS
+  - 哪个更
+  - 相比
+  - 之间对比
+  - 好坏对比
+
+priority: 87
+
+outputs:
+  charts:
+    - grouped_bar      # 分组柱状图
+    - radar            # 雷达图
+  tables:
+    - comparison_table   # 对比明细表
+    - diff_table         # 差异表
+  kpis:
+    - diff_rate
+    - winner_category
+    - max_gap
+
+examples:
+  - 线上VS线下哪个利润更高？
+  - 两个产品线对比哪个更好？
+  - A组和B组有什么区别？
+  - 不同渠道的转化率对比？
+
+fallback:
+  - ranking
+  - structure

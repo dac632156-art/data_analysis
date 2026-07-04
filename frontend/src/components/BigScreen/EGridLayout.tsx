@@ -170,13 +170,38 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
         {echarts.length > 0 ? (
           echarts.slice(0, 6).map((chart, i) => {
             const isGL = isGLOption(chart.option);
-            const gridSpan = isGL ? { gridColumn: 'span 3' } : {};
+            const isAnalysisTable = chart.chart_type === 'analysis_table' && chart.table_data;
+            const gridSpan = isGL ? { gridColumn: 'span 3' } : isAnalysisTable ? { gridColumn: 'span 3' } : {};
 
             return (
               <div key={i} style={gridSpan}>
                 <BorderBox1 color={['#22d3ee', '#8b5cf6']} style={{ padding: '6px' }}>
                   {isGL ? (
                     <GLMapView option={chart.option} height={520} title={hideChartTitle ? undefined : chart.title} />
+                  ) : isAnalysisTable ? (
+                    <div style={{ padding: '12px', background: 'rgba(10,14,30,0.95)', borderRadius: '8px', maxHeight: '380px', overflow: 'auto' }}>
+                      {!hideChartTitle && chart.title && (
+                        <h3 className="text-sm font-semibold text-[#a78bfa] mb-4">{chart.title}</h3>
+                      )}
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr style={{ background: 'rgba(34,211,238,0.1)' }}>
+                            {chart.table_data.columns.map((col: string, ci: number) => (
+                              <th key={ci} className="px-3 py-2 text-left text-slate-400 font-semibold">{col}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {chart.table_data.rows.map((row: unknown[], ri: number) => (
+                            <tr key={ri} style={{ borderBottom: '1px solid rgba(34,211,238,0.04)', background: ri % 2 === 0 ? 'rgba(15,23,42,0.5)' : undefined }}>
+                              {row.map((cell: unknown, ci: number) => (
+                                <td key={ci} className="px-3 py-2 text-slate-300">{cell !== null && cell !== undefined ? String(cell) : '-'}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   ) : (
                     <EChartView
                       option={chart.option}

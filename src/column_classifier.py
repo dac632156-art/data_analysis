@@ -133,6 +133,31 @@ class ColumnClassifier:
             "other": other,
         }
 
+    # --- 语义实体匹配 ---
+    def match_by_keywords(self, df: pd.DataFrame, keywords: List[str],
+                          prefer_type: str = "category") -> List[str]:
+        """用关键词列表匹配 df 中的列名，返回匹配到的列名列表。
+        prefer_type 限定列类型：'category'/'numeric'/'time'"""
+        if df.columns.duplicated().any():
+            df = df.loc[:, ~df.columns.duplicated()]
+        matched = []
+        for col in df.columns:
+            col_lower = str(col).lower().strip()
+            if not any(kw.lower() in col_lower for kw in keywords):
+                continue
+            # 类型过滤
+            if prefer_type == "numeric" and not pd.api.types.is_numeric_dtype(df[col]):
+                continue
+            if prefer_type == "time":
+                if not any(kw in col_lower for kw in TIME_KEYWORDS):
+                    # 列名含关键词但非时间类型，仍接受
+                    pass
+            if prefer_type == "category":
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    continue
+            matched.append(col.strip())
+        return matched
+
     # --- 私有方法 ---
     def _find_time_column(self, df: pd.DataFrame) -> Optional[str]:
         time_cols = self.get_time_columns(df)
