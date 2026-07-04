@@ -1,4 +1,4 @@
-"""
+﻿"""
 Planner —— 薄调度器：Library 查询 → 列推断 → Template 调度
 
 V2 设计原则：
@@ -172,6 +172,31 @@ class Planner:
                         if any(kw in str(col).lower() for kw in region_keywords):
                             dimension = col
                             break
+            # Geo 维度列差异化：根据业务问题关键词选择不同地理维度列
+            if dimension is None and goal_to_check and ("geo" in intent_name or "地理" in intent_name or "地图" in intent_name):
+                goal_lower = goal_to_check.lower()
+                # 渠道相关 → 优先选渠道列
+                channel_keywords = ["渠道", "channel", "线上", "线下", "门店", "网点"]
+                for col in cat_cols:
+                    if any(kw in str(col).lower() for kw in channel_keywords):
+                        dimension = col
+                        break
+                # 集中度/分布相关 → 优先选地区列
+                if dimension is None:
+                    concentration_keywords = ["集中度", "分布", "帕累托", "concentration"]
+                    for col in cat_cols:
+                        if any(kw in str(col).lower() for kw in concentration_keywords):
+                            dimension = col
+                            break
+                # 渠道差异相关 → 选渠道列
+                if dimension is None:
+                    diff_keywords = ["差异", "对比", "对比", "coverage", "覆盖"]
+                    for col in cat_cols:
+                        if any(kw in str(col).lower() for kw in diff_keywords):
+                            dimension = col
+                            break
+
+
             # 对于复购分析，优先选择客户ID列
             elif intent_name and "复购" in intent_name:
                 for col in cat_cols:
@@ -218,6 +243,33 @@ class Planner:
                             metric = col
                             break
             
+            # Geo 指标列差异化：根据业务问题选择不同数值列
+            if metric is None and ("geo" in intent_name or "地理" in intent_name or "地图" in intent_name):
+                # 渠道覆盖相关 → 优先选订单数/覆盖数/客户数
+                channel_metric_keywords = ["渠道", "覆盖", "网点", "门店数", "订单数", "count", "coverage"]
+                if goal_to_check and any(kw in goal_lower for kw in channel_metric_keywords):
+                    for col in numeric_cols:
+                        if any(kw in str(col).lower() for kw in channel_metric_keywords):
+                            metric = col
+                            break
+                # TOP/排名相关 → 优先选金额列
+                if metric is None:
+                    top_keywords = ["TOP", "最高", "最强", "最大", "top"]
+                    if goal_to_check and any(kw in goal_lower for kw in top_keywords):
+                        for col in numeric_cols:
+                            if any(kw in str(col).lower() for kw in ["金额", "sales", "revenue", "收入"]):
+                                metric = col
+                                break
+                # 集中度相关 → 优先选金额或利润
+                if metric is None:
+                    concentration_metric_keywords = ["集中度", "帕累托", "concentration"]
+                    if goal_to_check and any(kw in goal_lower for kw in concentration_metric_keywords):
+                        for col in numeric_cols:
+                            if any(kw in str(col).lower() for kw in ["金额", "利润", "sales", "revenue"]):
+                                metric = col
+                                break
+
+
             # 如果没有根据目标匹配到，使用默认逻辑
             if metric is None:
                 for col in numeric_cols:
