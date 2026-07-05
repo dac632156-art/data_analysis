@@ -1465,7 +1465,7 @@ function buildReportHTML(
     const hasChart = sec.chartIndex !== undefined && sec.chartIndex < echarts.length;
     const chartId = hasChart ? `report_chart_${sec.chartIndex}` : '';
     const chartDiv = chartId
-      ? `<div class="chart-container"><div id="${chartId}" style="width:100%;height:420px;"></div><div class="chart-caption">${sec.subtitle || cleanTitle(sec.title)}</div></div>`
+      ? `<div class="chart-container"><div id="${chartId}" style="width:100%!important;min-width:600px;height:420px;display:block;"></div><div class="chart-caption">${sec.subtitle || cleanTitle(sec.title)}</div></div>`
       : '';
 
     // 分析文本：转换 Markdown 加粗 **xxx** → <strong>xxx</strong>，去除末尾空行
@@ -1570,7 +1570,7 @@ function buildReportHTML(
   th, td { border: 1px solid #dee2e6; padding: 8px 6px; text-align: center; }
   th { background: #0d1b2a; color: #fff; font-weight: 600; }
   tr:nth-child(even) { background: #f8f9fa; }
-  .chart-container { text-align: center; margin: 10px 0; }
+  .chart-container { text-align: center; margin: 10px 0; width: 100%; display: block; overflow: hidden; }
   .chart-caption { font-size: 13px; color: #6c757d; margin-top: 6px; text-align: center; font-style: italic; }
   .analysis-text { margin: 10px 0; text-indent: 2em; }
   .trend-up { color: #28a745; font-weight: 700; }
