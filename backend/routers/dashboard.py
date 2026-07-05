@@ -253,40 +253,45 @@ class CardsGenerateRequest(BaseModel):
 @router.post('/dashboard/cards')
 async def api_generate_cards(req: CardsGenerateRequest):
     """V5: Card Generator - 将 AnalysisPackage 转换为 CardPackage"""
+    import traceback
     from backend.services.session_manager import manager
     from src.card_generator import CardGenerator
 
-    packages = manager.get_saved_packages_full(req.session_id)
-    if not packages:
+    try:
+        packages = manager.get_saved_packages_full(req.session_id)
+        if not packages:
+            return {
+                'success': True,
+                'cards': [],
+                'meta': {'total_cards': 0, 'insight_strength': 0, 'data_quality': 0},
+            }
+
+        generator = CardGenerator()
+        all_cards = []
+        all_meta = []
+
+        for pkg in packages:
+            result = generator.generate(pkg)
+            all_cards.extend(result['cards'])
+            all_meta.append(result['meta'])
+
+        # Sort all cards by score globally
+        all_cards.sort(key=lambda x: x.get('score', 0), reverse=True)
+
+        # Global meta
+        avg_strength = sum(m.get('insight_strength', 0) for m in all_meta) / max(len(all_meta), 1)
+        avg_quality = sum(m.get('data_quality', 0) for m in all_meta) / max(len(all_meta), 1)
+
         return {
             'success': True,
-            'cards': [],
-            'meta': {'total_cards': 0, 'insight_strength': 0, 'data_quality': 0},
+            'cards': all_cards,
+            'meta': {
+                'total_cards': len(all_cards),
+                'insight_strength': round(avg_strength, 2),
+                'data_quality': round(avg_quality, 2),
+            },
         }
-
-    generator = CardGenerator()
-    all_cards = []
-    all_meta = []
-
-    for pkg in packages:
-        result = generator.generate(pkg)
-        all_cards.extend(result['cards'])
-        all_meta.append(result['meta'])
-
-    # Sort all cards by score globally
-    all_cards.sort(key=lambda x: x.get('score', 0), reverse=True)
-
-    # Global meta
-    avg_strength = sum(m.get('insight_strength', 0) for m in all_meta) / max(len(all_meta), 1)
-    avg_quality = sum(m.get('data_quality', 0) for m in all_meta) / max(len(all_meta), 1)
-
-    return {
-        'success': True,
-        'cards': all_cards,
-        'meta': {
-            'total_cards': len(all_cards),
-            'insight_strength': round(avg_strength, 2),
-            'data_quality': round(avg_quality, 2),
-        },
-    }
+    except Exception as e:
+        traceback.print_exc()
+        return {'success': False, 'cards': [], 'error': str(e)}
 
