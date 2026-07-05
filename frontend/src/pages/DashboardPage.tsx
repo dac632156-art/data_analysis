@@ -9,7 +9,7 @@ import KPICards, { type KPIItem } from '../components/KPICards';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
 import * as api from '../api/client';
 import { generateEChartsDashboardHTML, downloadEChartsHTML } from '../utils/exportEChartsDashboard';
-import type { EChartItem } from '../types/api';
+import type { EChartItem, CardItem, CardMeta } from '../types/api';
 
 type TemplateType = 'command' | 'grid' | 'medical' | 'report';
 
@@ -72,6 +72,8 @@ export default function DashboardPage() {
   const [hideChartTitle, setHideChartTitle] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [savedTableData, setSavedTableData] = useState<Record<string, unknown>[]>([]);
+  const [cards, setCards] = useState<CardItem[]>([]);
+  const [cardMeta, setCardMeta] = useState<CardMeta | null>(null);
 
   const screenRef = useRef<HTMLDivElement>(null);
   const hasData = ds.rows > 0;
@@ -99,6 +101,24 @@ export default function DashboardPage() {
   useEffect(() => {
     loadEChartsDashboard();
   }, [loadEChartsDashboard]);
+
+  // ===== V5: 加载 Cards =====
+  const loadCards = useCallback(async () => {
+    if (!hasData) return;
+    try {
+      const res = await api.generateCards(ds.sessionId);
+      if (res.success && res.cards) {
+        setCards(res.cards as CardItem[]);
+        setCardMeta(res.meta || null);
+      }
+    } catch (err) {
+      console.error('[Cards] load failed:', err);
+    }
+  }, [hasData, ds.sessionId]);
+
+  useEffect(() => {
+    loadCards();
+  }, [loadCards]);
 
   // ===== 加载已保存分析包（从分析页收藏） =====
   const handleLoadSaved = async () => {
@@ -276,15 +296,40 @@ export default function DashboardPage() {
 
     setReportGenerating(true);
     setReportError('');
-    setReportText('🔍 正在进行数据统计分析（阶段1-3）...');
+    setReportText('📝 正在提交分析任务...');
     const provider = AI_PROVIDERS.find(p => p.id === ds.aiProvider);
     const pk = ds.apiKey;
     const bu = provider?.baseUrl;
     const md = provider?.model;
 
     try {
-      // ★ 单次调用后端五阶段分析流水线
-      const result = await api.generateAIReport(ds.sessionId, pk, bu, md);
+      // ★ 步骤1：提交异步任务（秒回 task_id）
+      const { task_id } = await api.submitAIReport(ds.sessionId, pk, bu, md);
+      setReportText('🔍 正在进行数据统计分析（阶段1-3）...');
+
+      // ★ 步骤2：轮询任务状态（每 3 秒一次，最长等 5 分钟）
+      const POLL_INTERVAL = 3000;   // 3 秒
+      const MAX_WAIT = 5 * 60 * 1000; // 5 分钟
+      const startTime = Date.now();
+      let status = 'pending';
+
+      while (status !== 'done' && status !== 'failed') {
+        if (Date.now() - startTime > MAX_WAIT) {
+          throw new Error('报告生成超时（超过5分钟），请尝试减少数据量后重试');
+        }
+
+        await new Promise(r => setTimeout(r, POLL_INTERVAL));
+        const s = await api.getAIReportStatus(task_id);
+        status = s.status;
+        setReportText(s.message || reportText);
+
+        if (status === 'failed') {
+          throw new Error(s.error || '报告生成失败');
+        }
+      }
+
+      // ★ 步骤3：获取结果
+      const result = await api.getAIReportResult(task_id);
       const sections: Array<{
         type: string; title: string; content?: string;
         insights?: Array<string | { chart_title: string; analysis: string }>;
@@ -467,7 +512,7 @@ export default function DashboardPage() {
         ) : template === 'command' ? (
             <CommandScreen kpis={kpis} dataPreview={ds.preview} echarts={echarts} />
         ) : template === 'medical' ? (
-            <MedicalDashboard kpis={kpis} echarts={echarts} chartTabs={chartTabs} title={displayTitle} tableData={ds.preview} navTabs={navTabs} ringCharts={ringCharts} columnInfo={ds.columnInfo} />
+            <MedicalDashboard cards={cards} meta={cardMeta || undefined} title={displayTitle} />
         ) : template === 'report' ? (
           /* 分析报告生成面板 */
           <div className="flex-1 flex items-center justify-center p-8" style={{ background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)' }}>

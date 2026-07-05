@@ -1,4 +1,4 @@
-/* DataMind AI - Axios API 客户端 */
+﻿/* DataMind AI - Axios API 客户端 */
 
 import axios from 'axios';
 import type {
@@ -299,7 +299,7 @@ export const saveChart = async (
 export const getSavedCharts = async (sessionId: string): Promise<{
   success: boolean;
   charts: Array<{ title: string; option: Record<string, unknown>; saved_at: number }>;
-  total: number;
+  
 }> => {
   const { data } = await api.post('/dashboard/saved-charts', { session_id: sessionId });
   return data;
@@ -314,7 +314,7 @@ export const deleteSavedCharts = async (sessionId: string) => {
 export const getSavedPackages = async (sessionId: string): Promise<{
   success: boolean;
   packages: Array<Record<string, unknown>>;
-  total: number;
+  
 }> => {
   const { data } = await api.post('/dashboard/saved-packages', { session_id: sessionId });
   return data;
@@ -354,22 +354,72 @@ export const generateReport = async (sessionId: string, title = '数据分析报
   return data;
 };
 
-/** AI 分析报告（五阶段流水线：pandas 统计 + LLM 洞察） */
+
+/** V3: 从 AnalysisPackage 提取扁平指标列表 */
+export const generateCards = async (sessionId: string): Promise<{
+  success: boolean;
+  cards: Array<Record<string, unknown>>;
+  meta?: Record<string, unknown>;
+  
+}> => {
+  const { data } = await api.post('/dashboard/cards', { session_id: sessionId });
+  return data;
+};
+/** AI 分析报告 — 提交异步任务（立即返回 task_id） */
+export const submitAIReport = async (
+  sessionId: string,
+  apiKey: string,
+  baseUrl?: string,
+  model?: string,
+): Promise<{ task_id: string; status: string }> => {
+  const { data } = await api.post('/report/ai-analyze', {
+    session_id: sessionId,
+    api_key: apiKey,
+    base_url: baseUrl,
+    model,
+  });
+  return data;
+};
+
+/** 轮询任务状态 */
+export const getAIReportStatus = async (
+  taskId: string,
+): Promise<{
+  task_id: string;
+  status: 'pending' | 'processing' | 'done' | 'failed';
+  progress: number;
+  message: string;
+  error?: string;
+}> => {
+  const { data } = await api.get(`/report/ai-analyze/status/${taskId}`);
+  return data;
+};
+
+/** 获取任务结果 */
+export const getAIReportResult = async (
+  taskId: string,
+): Promise<AIReportResponse> => {
+  const { data } = await api.get(`/report/ai-analyze/result/${taskId}`);
+  return data;
+};
+
+/** @deprecated 旧同步接口（已废弃，改为 submitAIReport + 轮询模式） */
 export const generateAIReport = async (
   sessionId: string,
   apiKey: string,
   baseUrl?: string,
   model?: string,
-) => {
+): Promise<AIReportResponse> => {
   const { data } = await api.post<AIReportResponse>('/report/ai-analyze', {
     session_id: sessionId,
     api_key: apiKey,
     base_url: baseUrl,
     model,
   }, {
-    timeout: 300000, // 5 分钟超时，AI 报告生成需要较长时间
+    timeout: 300000,
   });
   return data;
 };
 
 export default api;
+
