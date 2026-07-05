@@ -24,24 +24,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS 配置 - 支持本地开发和线上部署
-# 环境变量 BACKEND_CORS_ORIGINS 可在 Render 上设置，格式：逗号分隔的域名列表
-cors_origins = os.getenv("BACKEND_CORS_ORIGINS", "").split(",")
-cors_origins = [o.strip() for o in cors_origins if o.strip()]
-# 默认允许本地开发地址 + Vercel 生产前端
-default_origins = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:5173",
-    # Vercel 生产前端
-    "https://data-analysis-teal-eight.vercel.app",
-]
-all_origins = default_origins + cors_origins
-
+# CORS 配置 - 演示阶段允许所有来源（生产环境应限制）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=all_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,   # allow_origins=["*"] 时必须为 False
     allow_methods=["*"],
     allow_headers=["*"],
 )
