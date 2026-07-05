@@ -200,7 +200,81 @@ export default function DashboardPage() {
           if (kpiRes.kpis) setKpis(kpiRes.kpis);
         }
       } else {
-        // V2 无数据 → fallback 到旧接口
+        
+        // ===== V5: 同时将 packages 转换为 cards =====
+        const allCards: CardItem[] = [];
+        for (const pkg of res.packages) {
+          const pkgKpis = pkg.rendered_kpis || pkg.kpis || [];
+          for (const k of pkgKpis) {
+            if (k && k.label) {
+              const kpiType = k.kpi_type || 'sum';
+              const priorityMap: Record<string, number> = { sum: 7, rate: 9, change: 8, avg: 5, count: 6 };
+              allCards.push({
+                id: 'kpi_' + k.label + '_' + Math.random().toString(36).slice(2, 8),
+                type: 'kpi',
+                title: k.label,
+                priority: priorityMap[kpiType] || 5,
+                size: 'm',
+                score: (priorityMap[kpiType] || 5) / 10,
+                data: { value: k.formatted || k.value, change: k.change, kpi_type: kpiType },
+              });
+            }
+          }
+          const pkgCharts = pkg.rendered_charts || pkg.charts || [];
+          for (const ch of pkgCharts) {
+            if (ch && ch.option) {
+              const rolePriority = ch.role === 'primary' ? 9 : ch.role === 'secondary' ? 6 : 4;
+              allCards.push({
+                id: 'chart_' + (ch.title || Math.random().toString(36)).slice(0, 8),
+                type: 'chart',
+                title: ch.title || '',
+                priority: rolePriority,
+                size: 'l',
+                score: rolePriority / 10,
+                data: ch.option,
+                chart_type: ch.chart_type || '',
+              });
+            }
+          }
+          const pkgTables = pkg.rendered_tables || pkg.tables || [];
+          for (const t of pkgTables) {
+            if (t && t.rows && t.columns) {
+              allCards.push({
+                id: 'table_' + (t.title || Math.random().toString(36)).slice(0, 8),
+                type: 'table',
+                title: t.title || '数据表格',
+                priority: 5,
+                size: 'm',
+                score: 0.5,
+                data: { columns: t.columns, rows: t.rows },
+              });
+            }
+          }
+          const pkgInsights = pkg.rendered_insights || pkg.insights || [];
+          for (const ins of pkgInsights) {
+            const text = typeof ins === 'string' ? ins : (ins as any).text || '';
+            if (text) {
+              allCards.push({
+                id: 'insight_' + Math.random().toString(36).slice(2, 8),
+                type: 'insight',
+                title: '洞察',
+                priority: 4,
+                size: 's',
+                score: 0.4,
+                data: { text },
+              });
+            }
+          }
+        }
+        if (allCards.length > 0) {
+          setCards(allCards);
+          setCardMeta({
+            total_cards: allCards.length,
+            insight_strength: 0.6,
+            data_quality: 0.8,
+          });
+        }
+// V2 无数据 → fallback 到旧接口
         const oldRes = await api.getSavedCharts(ds.sessionId);
         if (oldRes.charts && oldRes.charts.length > 0) {
           // 旧格式：{title, option, type, saved_at, table_data}

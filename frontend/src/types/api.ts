@@ -1,4 +1,4 @@
-/* DataMind AI - API 响应类型 */
+﻿/* DataMind AI - API 响应类型 */
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -229,4 +229,23 @@ export interface SavedPackagesResponse {
   success: boolean;
   packages: AnalysisPackage[];
   total: number;
+}
+
+/** V5: Card 驱动 BI 大屏 */
+export interface CardItem {
+  id: string;
+  type: 'kpi' | 'chart' | 'table' | 'insight' | 'warning' | 'fallback';
+  title: string;
+  priority: number;
+  size: 's' | 'm' | 'l' | 'xl';
+  score: number;
+  data: Record<string, unknown>;
+  chart_type?: string;
+  fallback_chain?: Array<Record<string, unknown>>;
+}
+
+export interface CardMeta {
+  total_cards: number;
+  insight_strength: number;
+  data_quality: number;
 }
