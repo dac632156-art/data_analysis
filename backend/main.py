@@ -68,18 +68,29 @@ async def health_check():
     return {"status": "ok", "version": "1.0.0"}
 
 
-# Render 健康检查需要根路径返回 200，否则会杀掉容器
-@app.get("/")
-async def root():
-    """Root path for Render health check"""
-    return {"status": "ok"}
-
-
 @app.get("/api/session/new")
 async def new_session():
     """创建新会话"""
     session_id = manager.create_session()
     return {"session_id": session_id, "success": True}
+
+
+# ===== 生产环境：服务前端静态文件（Render 上构建） =====
+frontend_dist = os.path.join(project_root, "frontend", "dist")
+if os.path.isdir(frontend_dist):
+    from fastapi.responses import FileResponse
+
+    @app.get("/{rest_of_path:path}")
+    async def serve_spa(rest_of_path: str):
+        """SPA fallback：非 /api/ 路径返回前端 index.html"""
+        # API 路径不拦截，交给 FastAPI 返回 404
+        if rest_of_path.startswith("api/"):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not found")
+        file_path = os.path.join(frontend_dist, rest_of_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
 
 
 if __name__ == "__main__":
