@@ -1,0 +1,2 @@
+# Render 部署用：指向后端依赖
+-r backend/requirements.txt

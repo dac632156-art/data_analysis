@@ -4,7 +4,9 @@ services:
     runtime: python
     plan: free
     buildCommand: |
-      pip install -r backend/requirements.txt
+      # 安装后端依赖（从根目录引用）
+      pip install -r requirements.txt
+      # 安装 Node.js 并构建前端
       curl -fsSL https://nodejs.org/dist/v18.20.4/node-v18.20.4-linux-x64.tar.xz | tar -xJ -C /tmp
       export PATH=/tmp/node-v18.20.4-linux-x64/bin:$PATH
       cd frontend && npm install && npm run build
