@@ -75,15 +75,25 @@ async def new_session():
     return {"session_id": session_id, "success": True}
 
 
-# ===== 生产环境：服务前端静态文件（Render 上构建） =====
+# ===== 前端静态文件服务（如果有 dist/） =====
 frontend_dist = os.path.join(project_root, "frontend", "dist")
-if os.path.isdir(frontend_dist):
-    from fastapi.responses import FileResponse
+HAS_FRONTEND = os.path.isdir(frontend_dist)
+from fastapi.responses import FileResponse
+
+
+@app.get("/")
+async def root():
+    """根路径：优先返回 index.html，否则返回健康检查"""
+    if HAS_FRONTEND and os.path.isfile(os.path.join(frontend_dist, "index.html")):
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+    return {"status": "ok", "version": "1.0.0"}
+
+
+if HAS_FRONTEND:
 
     @app.get("/{rest_of_path:path}")
     async def serve_spa(rest_of_path: str):
         """SPA fallback：非 /api/ 路径返回前端 index.html"""
-        # API 路径不拦截，交给 FastAPI 返回 404
         if rest_of_path.startswith("api/"):
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Not found")
