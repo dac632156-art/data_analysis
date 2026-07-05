@@ -18,9 +18,37 @@ const api = axios.create({
   // JSON 请求会自动设为 application/json，FormData 上传会自动设为 multipart/form-data
 });
 
+// Render 后端休眠时的自动唤醒 + 重试
+let _wakePromise: Promise<void> | null = null;
+
+async function wakeUpBackend(): Promise<void> {
+  if (_wakePromise) return _wakePromise;
+  _wakePromise = (async () => {
+    console.warn('🔧 Render 后端可能已休眠，正在唤醒（冷启动约 35 秒）...');
+    // 发一个轻量 ping 触发冷启动（不限时的 GET，让 Render 收到请求并开始启动）
+    try { await axios.get(`${API_BASE}/health`, { timeout: 5000 }); } catch { /* 预期可能失败 */ }
+    // 等待冷启动完成
+    await new Promise(r => setTimeout(r, 35000));
+    console.log('✅ 唤醒等待结束，即将重试请求');
+  })();
+  await _wakePromise;
+  _wakePromise = null;
+}
+
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
+  async (err) => {
+    // 检测网络/超时错误（Render 休眠的典型症状）
+    const isNetworkError = !err.response &&
+      (err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK' ||
+       err.message?.includes('timeout') || err.message?.includes('Network Error'));
+
+    if (isNetworkError && err.config && !err.config._retried) {
+      err.config._retried = true;
+      await wakeUpBackend();
+      return api(err.config);  // 重试
+    }
+
     let msg = err.response?.data?.detail || err.message || '请求失败';
     // FastAPI 422 验证错误时 detail 是数组，需要提取第一条信息
     if (Array.isArray(msg)) {
