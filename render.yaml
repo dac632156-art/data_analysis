@@ -4,5 +4,5 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: bash start.sh
+    startCommand: python start_server.py
     autoDeploy: true

@@ -148,7 +148,7 @@ function TableCard({ card }: { card: CardItem }) {
               <tr key={ri} style={ri % 2 === 0 ? { background: "rgba(15,23,42,0.3)" } : undefined}>
                 {(row as unknown[]).map((cell, ci) => (
                   <td key={ci} style={{ padding: "6px 12px", color: "#cbd5e1", borderBottom: "1px solid rgba(34,211,238,0.04)" }}>
-                    {formatCellValue(cell)}
+                    {formatCellValue(typeof cell === "object" && cell !== null && "value" in cell ? (cell as any).value : cell)}
                   </td>
                 ))}
               </tr>

@@ -102,7 +102,7 @@ export default function DashboardPage() {
     loadEChartsDashboard();
   }, [loadEChartsDashboard]);
 
-  // ===== V5: 加载 Cards =====
+  // ===== V5: 加载 Cards（从 saved_packages 提取） =====
   const loadCards = useCallback(async () => {
     if (!hasData) return;
     try {
@@ -112,7 +112,7 @@ export default function DashboardPage() {
         setCardMeta(res.meta || null);
       }
     } catch (err) {
-      console.error('[Cards] load failed:', err);
+      console.error("[Cards] load failed:", err);
     }
   }, [hasData, ds.sessionId]);
 
@@ -199,23 +199,22 @@ export default function DashboardPage() {
           const kpiRes = await api.getDashboardKPIs(ds.sessionId);
           if (kpiRes.kpis) setKpis(kpiRes.kpis);
         }
-      } else {
-        
+      
         // ===== V5: 同时将 packages 转换为 cards =====
         const allCards: CardItem[] = [];
         for (const pkg of res.packages) {
           const pkgKpis = pkg.rendered_kpis || pkg.kpis || [];
           for (const k of pkgKpis) {
             if (k && k.label) {
-              const kpiType = k.kpi_type || 'sum';
-              const priorityMap: Record<string, number> = { sum: 7, rate: 9, change: 8, avg: 5, count: 6 };
+              const kpiType = k.kpi_type || "sum";
+              const pm: Record<string, number> = { sum: 7, rate: 9, change: 8, avg: 5, count: 6 };
               allCards.push({
-                id: 'kpi_' + k.label + '_' + Math.random().toString(36).slice(2, 8),
-                type: 'kpi',
+                id: "kpi_" + k.label + "_" + Math.random().toString(36).slice(2, 8),
+                type: "kpi",
                 title: k.label,
-                priority: priorityMap[kpiType] || 5,
-                size: 'm',
-                score: (priorityMap[kpiType] || 5) / 10,
+                priority: pm[kpiType] || 5,
+                size: "m",
+                score: (pm[kpiType] || 5) / 10,
                 data: { value: k.formatted || k.value, change: k.change, kpi_type: kpiType },
               });
             }
@@ -223,16 +222,16 @@ export default function DashboardPage() {
           const pkgCharts = pkg.rendered_charts || pkg.charts || [];
           for (const ch of pkgCharts) {
             if (ch && ch.option) {
-              const rolePriority = ch.role === 'primary' ? 9 : ch.role === 'secondary' ? 6 : 4;
+              const rp = ch.role === "primary" ? 9 : ch.role === "secondary" ? 6 : 4;
               allCards.push({
-                id: 'chart_' + (ch.title || Math.random().toString(36)).slice(0, 8),
-                type: 'chart',
-                title: ch.title || '',
-                priority: rolePriority,
-                size: 'l',
-                score: rolePriority / 10,
+                id: "chart_" + (ch.title || Math.random().toString(36)).slice(0, 8),
+                type: "chart",
+                title: ch.title || "",
+                priority: rp,
+                size: "l",
+                score: rp / 10,
                 data: ch.option,
-                chart_type: ch.chart_type || '',
+                chart_type: ch.chart_type || "",
               });
             }
           }
@@ -240,11 +239,11 @@ export default function DashboardPage() {
           for (const t of pkgTables) {
             if (t && t.rows && t.columns) {
               allCards.push({
-                id: 'table_' + (t.title || Math.random().toString(36)).slice(0, 8),
-                type: 'table',
-                title: t.title || '数据表格',
+                id: "table_" + (t.title || Math.random().toString(36)).slice(0, 8),
+                type: "table",
+                title: t.title || "数据表格",
                 priority: 5,
-                size: 'm',
+                size: "m",
                 score: 0.5,
                 data: { columns: t.columns, rows: t.rows },
               });
@@ -252,14 +251,14 @@ export default function DashboardPage() {
           }
           const pkgInsights = pkg.rendered_insights || pkg.insights || [];
           for (const ins of pkgInsights) {
-            const text = typeof ins === 'string' ? ins : (ins as any).text || '';
+            const text = typeof ins === "string" ? ins : (ins as any).text || "";
             if (text) {
               allCards.push({
-                id: 'insight_' + Math.random().toString(36).slice(2, 8),
-                type: 'insight',
-                title: '洞察',
+                id: "insight_" + Math.random().toString(36).slice(2, 8),
+                type: "insight",
+                title: "洞察",
                 priority: 4,
-                size: 's',
+                size: "s",
                 score: 0.4,
                 data: { text },
               });
@@ -273,8 +272,8 @@ export default function DashboardPage() {
             insight_strength: 0.6,
             data_quality: 0.8,
           });
-        }
-// V2 无数据 → fallback 到旧接口
+        }} else {
+        // V2 无数据 → fallback 到旧接口
         const oldRes = await api.getSavedCharts(ds.sessionId);
         if (oldRes.charts && oldRes.charts.length > 0) {
           // 旧格式：{title, option, type, saved_at, table_data}
@@ -370,40 +369,15 @@ export default function DashboardPage() {
 
     setReportGenerating(true);
     setReportError('');
-    setReportText('📝 正在提交分析任务...');
+    setReportText('🔍 正在进行数据统计分析（阶段1-3）...');
     const provider = AI_PROVIDERS.find(p => p.id === ds.aiProvider);
     const pk = ds.apiKey;
     const bu = provider?.baseUrl;
     const md = provider?.model;
 
     try {
-      // ★ 步骤1：提交异步任务（秒回 task_id）
-      const { task_id } = await api.submitAIReport(ds.sessionId, pk, bu, md);
-      setReportText('🔍 正在进行数据统计分析（阶段1-3）...');
-
-      // ★ 步骤2：轮询任务状态（每 3 秒一次，最长等 5 分钟）
-      const POLL_INTERVAL = 3000;   // 3 秒
-      const MAX_WAIT = 5 * 60 * 1000; // 5 分钟
-      const startTime = Date.now();
-      let status = 'pending';
-
-      while (status !== 'done' && status !== 'failed') {
-        if (Date.now() - startTime > MAX_WAIT) {
-          throw new Error('报告生成超时（超过5分钟），请尝试减少数据量后重试');
-        }
-
-        await new Promise(r => setTimeout(r, POLL_INTERVAL));
-        const s = await api.getAIReportStatus(task_id);
-        status = s.status;
-        setReportText(s.message || reportText);
-
-        if (status === 'failed') {
-          throw new Error(s.error || '报告生成失败');
-        }
-      }
-
-      // ★ 步骤3：获取结果
-      const result = await api.getAIReportResult(task_id);
+      // ★ 单次调用后端五阶段分析流水线
+      const result = await api.generateAIReport(ds.sessionId, pk, bu, md);
       const sections: Array<{
         type: string; title: string; content?: string;
         insights?: Array<string | { chart_title: string; analysis: string }>;
