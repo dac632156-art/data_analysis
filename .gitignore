@@ -7,7 +7,8 @@ __pycache__/
 *.pyo
 
 # Build output
-frontend/dist/
+# Note: frontend/dist/ is committed for Render deployment
+node_modules/.vite/
 
 # Environment / secrets
 .env

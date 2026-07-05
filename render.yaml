@@ -3,12 +3,6 @@ services:
     name: data-analysis
     runtime: python
     plan: free
-    buildCommand: |
-      # 安装后端依赖（从根目录引用）
-      pip install -r requirements.txt
-      # 安装 Node.js 并构建前端
-      curl -fsSL https://nodejs.org/dist/v18.20.4/node-v18.20.4-linux-x64.tar.xz | tar -xJ -C /tmp
-      export PATH=/tmp/node-v18.20.4-linux-x64/bin:$PATH
-      cd frontend && npm install && npm run build
+    buildCommand: pip install -r requirements.txt
     startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
     autoDeploy: true
