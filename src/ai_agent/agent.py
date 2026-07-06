@@ -1,4 +1,4 @@
-"""
+﻿"""
 AI Agent 核心 - 使用原生 DeepSeek API 实现函数调用
 不依赖 LangChain，更简单、更可控
 """
@@ -275,14 +275,16 @@ class DataAnalysisAgent:
                         {"role": "user", "content": user_prompt},
                     ],
                     temperature=0.4,
-                    max_tokens=4096,
+                    max_tokens=8192,
                     timeout=120,
                 )
 
                 ai_text = response.choices[0].message.content or ""
+                print(f'[Report Debug] AI returned text length: {len(ai_text)}')
 
                 # 尝试解析 JSON
                 sections = _parse_report_json(ai_text)
+                print(f"[Report Debug] Parsed {len(sections)} sections")
 
                 # 自动绑定保底图表到对应 section（AI 漏填 chartIndex 时兜底）
                 sections = _bind_core_charts_to_sections(sections, charts)
@@ -424,6 +426,35 @@ def _format_anomalies(al: List[Dict[str, Any]]) -> str:
     return "\n".join(lines) if lines else "（未检测到显著异常）"
 
 
+
+def _fill_missing_sections(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """补全缺失的 report sections，确保至少 7 个章节"""
+    existing_types = {s.get("type", "") for s in sections}
+    required_types = ["overview", "kpi", "trend", "structure", "top", "anomaly", "conclusion", "suggestions", "next_steps"]
+
+    for rt in required_types:
+        if rt not in existing_types:
+            if rt == "overview":
+                sections.insert(0, {"type": "overview", "title": "数据概览", "content": "数据概览信息不足"})
+            elif rt == "kpi":
+                sections.insert(1, {"type": "kpi", "title": "核心指标", "insights": [{"chart_title": "核心指标总览", "chart_type": None, "table_type": None, "rule_id": "规则10", "insight_label": "趋势洞察", "analysis": "核心经营指标数据不足"}]})
+            elif rt == "trend":
+                sections.append({"type": "trend", "title": "趋势分析", "insights": [{"chart_title": "趋势分析", "chart_type": "line", "table_type": "sort", "rule_id": "规则9", "insight_label": "趋势洞察", "analysis": "趋势分析数据不足"}]})
+            elif rt == "structure":
+                sections.append({"type": "structure", "title": "结构分析", "insights": [{"chart_title": "结构分析", "chart_type": "pie", "table_type": "summary", "rule_id": "规则12", "insight_label": "结构洞察", "analysis": "结构分析数据不足"}]})
+            elif rt == "top":
+                sections.append({"type": "top", "title": "TOP / 集中度分析", "insights": [{"chart_title": "排名分析", "chart_type": "bar", "table_type": "sort", "rule_id": "规则11", "insight_label": "集中度洞察", "analysis": "排名分析数据不足"}]})
+            elif rt == "anomaly":
+                sections.append({"type": "anomaly", "title": "异常分析", "insights": [{"chart_title": None, "chart_type": None, "table_type": None, "rule_id": None, "insight_label": "异常洞察", "analysis": "未检测到显著异常"}]})
+            elif rt == "conclusion":
+                sections.append({"type": "conclusion", "title": "核心结论", "insights": [{"chart_title": None, "chart_type": None, "table_type": None, "rule_id": None, "insight_label": None, "analysis": "结论信息不足"}]})
+            elif rt == "suggestions":
+                sections.append({"type": "suggestions", "title": "业务建议", "insights": [{"chart_title": None, "chart_type": None, "table_type": None, "rule_id": None, "insight_label": None, "analysis": "建议信息不足"}]})
+            elif rt == "next_steps":
+                sections.append({"type": "next_steps", "title": "下一步操作建议", "action_items": [{"priority": 1, "action": "请补充数据分析以生成详细建议"}]})
+
+    return sections
+
 def _parse_report_json(ai_text: str) -> List[Dict[str, Any]]:
     """从 AI 返回的文本中解析 JSON sections"""
     import json as _json
@@ -447,8 +478,13 @@ def _parse_report_json(ai_text: str) -> List[Dict[str, Any]]:
             return [{"type": "error", "title": "AI 返回解析失败", "content": ai_text[:500]}]
 
     try:
+
         data = _json.loads(json_str)
-        return data.get("sections", [])
+        sections = data.get("sections", [])
+        # 兜底：如果 sections 少于 5 个，说明 AI 输出被截断，补全缺失章节
+        if len(sections) < 5:
+            sections = _fill_missing_sections(sections)
+        return sections
     except Exception:
         # JSON 解析失败，返回原始文本
         return [{"type": "error", "title": "AI 返回格式异常", "content": ai_text[:1000]}]

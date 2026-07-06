@@ -1,10 +1,10 @@
-/* DashboardPage - 大屏仪表盘（3模板 + AI推荐 + ECharts引擎） */
+﻿/* DashboardPage - 大屏仪表盘（3模板 + AI推荐 + ECharts引擎） */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import html2canvas from 'html2canvas';
 import { FiDownload, FiFileText, FiGrid, FiRadio, FiActivity, FiSave } from 'react-icons/fi';
 import EGridLayout from '../components/BigScreen/EGridLayout';
 import CommandScreen from '../components/BigScreen/CommandScreen';
-import MedicalDashboard from '../components/BigScreen/MedicalDashboard';
+import BigScreenDashboard from '../components/BigScreen/MedicalDashboard';
 import KPICards, { type KPIItem } from '../components/KPICards';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
 import * as api from '../api/client';
@@ -560,7 +560,7 @@ export default function DashboardPage() {
         ) : template === 'command' ? (
             <CommandScreen kpis={kpis} dataPreview={ds.preview} echarts={echarts} />
         ) : template === 'medical' ? (
-            <MedicalDashboard cards={cards} meta={cardMeta || undefined} title={displayTitle} />
+            <BigScreenDashboard cards={cards} meta={cardMeta || undefined} title={displayTitle} />
         ) : template === 'report' ? (
           /* 分析报告生成面板 */
           <div className="flex-1 flex items-center justify-center p-8" style={{ background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)' }}>
@@ -619,3 +619,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

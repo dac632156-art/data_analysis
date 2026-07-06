@@ -1,4 +1,4 @@
-/* 生成自包含 ECharts 交互式 HTML 大屏文件，保留所有 ECharts 交互和深色主题 */
+﻿/* 生成自包含 ECharts 交互式 HTML 大屏文件，保留所有 ECharts 交互和深色主题 */
 import type { EChartItem } from '../types/api';
 
 interface KPI {
@@ -1426,6 +1426,9 @@ function buildReportHTML(
   aiSummary: string,
   aiConclusion: string,
 ): string {
+  // 鈽?sections 涓虹┖/杩囧皯鏃讹紝鐢熸垚鍏嶈矗鎶ュ憡缁撴瀯
+  const effectiveSections = sections && sections.length > 0 ? sections : _buildFallbackReportSections(kpis, echarts, aiSummary, aiConclusion);
+
   // ★ 为 ECharts 图表生成脚本
   const chartScript = makeEChartsScript(echarts.map((c, i) => ({ ...c, id: `report_chart_${i}` })), false);
 
@@ -1444,10 +1447,10 @@ function buildReportHTML(
   const cleanTitle = (raw: string) => (raw || '').replace(/^[\d\.\、\s]+/, '').trim();
 
   // ★ 将 sections 拆分为 overview + 正文 sections（确保 TOC 与正文编号一致）
-  const overviewSection = sections.find(s => cleanTitle(s.title).includes('概览') && sections.indexOf(s) === 0);
+  const overviewSection = effectiveSections.find(s => cleanTitle(s.title).includes('概览') && effectiveSections.indexOf(s) === 0);
   const bodySections = overviewSection
-    ? sections.slice(1)  // overview 一定是第一个，skip 它
-    : sections.filter(s => !cleanTitle(s.title).includes('概览'));  // 兜底：过滤所有概览
+    ? effectiveSections.slice(1)  // overview 一定是第一个，skip 它
+    : effectiveSections.filter(s => !cleanTitle(s.title).includes('概览'));  // 兜底：过滤所有概览
   // 确保 bodySections 中不会有被遗漏的概览
   const finalBodySections = bodySections.filter(s => !cleanTitle(s.title).includes('概览'));
 
@@ -1694,6 +1697,36 @@ function generateDefaultConclusion(kpis: KPI[]): string {
   return `<strong>关键指标总结</strong><br>${items}<br><br><strong>建议</strong><br>• 持续关注核心指标变化趋势<br>• 对异常波动及时预警<br>• 定期更新数据以保持分析时效性`;
 }
 
+
+function _buildFallbackReportSections(
+  kpis: KPI[],
+  echarts: EChartItem[],
+  summary: string,
+  conclusion: string,
+): ReportSection[] {
+  return [
+    {
+      type: 'overview',
+      title: '数据概览',
+      analysis: summary || `本数据集包含 ${kpis.length} 项关键指标`,
+    },
+    ...(kpis.length > 0 ? [{
+      type: 'kpi',
+      title: '核心指标',
+      analysis: kpis.map(k => `**${k.title}**：${k.value}${k.unit || ''}`).join('\n'),
+    }] : []),
+    ...(echarts.length > 0 ? [{
+      type: 'trend',
+      title: '图表分析',
+      analysis: echarts.map((e, i) => `图表 ${i+1}：${e.title || '未命名'}（${e.type || '未知'}）`).join('\n'),
+    }] : []),
+    ...(conclusion ? [{
+      type: 'conclusion',
+      title: '核心结论',
+      analysis: conclusion,
+    }] : []),
+  ];
+}
 export function downloadEChartsHTML(html: string, filename: string) {
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);

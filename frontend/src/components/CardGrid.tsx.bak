@@ -37,10 +37,10 @@ function formatCellValue(val: unknown): string {
 
 function getChartHeight(size: string): number {
   switch (size) {
-    case "xl": return 380;
-    case "l": return 260;
-    case "m": return 180;
-    default: return 120;
+    case "xl": return 350;
+    case "l": return 280;
+    case "m": return 220;
+    default: return 160;
   }
 }
 
@@ -239,7 +239,7 @@ function CardRenderer({ card }: { card: CardItem }) {
       default: return <FallbackCard card={card} />;
     }
   };
-  const minHeight: Record<string, number> = { xl: 420, l: 300, m: 200, s: 100 };
+  const minHeight: Record<string, number> = { xl: 300, l: 240, m: 180, s: 120 };
   return (
     <div className="transition-all duration-200 hover:scale-[1.01] cursor-pointer" style={{
       minHeight: minHeight[card.size] || 120,
@@ -259,9 +259,9 @@ function getColumns(): number {
 
 function calcSpan(size: string, cols: number): number {
   switch (size) {
-    case "xl": return Math.min(2, cols);
+    case "xl": return cols;
     case "l": return Math.ceil(cols / 2);
-    case "m": return Math.max(1, Math.floor(cols / 3));
+    case "m": return Math.max(1, Math.floor(cols / 2));
     default: return 1;
   }
 }
@@ -296,7 +296,7 @@ export default function CardGrid({ cards, meta, onCardClick }: Props) {
           </span>
         </div>
       )}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(" + cols + ", 1fr)" }}>
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(" + cols + ", 1fr)" }}>
         {layoutCards.map((card) => (
           <CardRenderer key={card.id} card={card} />
         ))}
@@ -304,4 +304,3 @@ export default function CardGrid({ cards, meta, onCardClick }: Props) {
     </div>
   );
 }
-
