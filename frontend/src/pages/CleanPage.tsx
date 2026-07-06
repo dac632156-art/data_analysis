@@ -22,7 +22,8 @@ export default function CleanPage() {
     rows_change: number;
   } | null>(null);
 
-  const hasData = ds.rows > 0;
+  // 用 columnInfo/fileName 判断是否有数据，而不是 rows（清洗删行时 rows 会变导致 hasData 翻转、DOM 树整体卸载重挂）
+  const hasData = ds.columnInfo.length > 0 || !!ds.fileName;
   const columns = ds.columnInfo.map((c) => c.name);
 
   const addMessage = (type: 'success' | 'error', text: string) => {
@@ -196,13 +197,7 @@ export default function CleanPage() {
         </div>
       </div>
 
-      {!hasData && (
-        <div className="glass-card p-8 text-center text-slate-500">
-          请先在「数据上传」页面上传数据
-        </div>
-      )}
-
-      {hasData && (
+      {hasData ? (
         <>
           {/* AI 智能清洗面板 */}
           <div className="glass-card p-4 space-y-3" style={{ borderColor: 'rgba(34,211,238,0.3)' }}>
@@ -405,9 +400,13 @@ export default function CleanPage() {
                 <FiRefreshCw className="w-3 h-3" /> 刷新
               </button>
             </div>
-            <DataTable data={preview} />
+            <DataTable key={columns.join('|')} data={preview} />
           </div>
         </>
+      ) : (
+        <div className="glass-card p-8 text-center text-slate-500">
+          请先在「数据上传」页面上传数据
+        </div>
       )}
     </div>
   );
