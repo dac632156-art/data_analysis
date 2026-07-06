@@ -1439,7 +1439,7 @@ function buildReportHTML(
   <div class="metric-card">
     <div class="metric-abbr ${k.color ? `metric-${k.color}` : ''}">${formatAbbreviatedCN(k.value)}${k.unit || ''}</div>
     <div class="metric-full">${formatFullNumber(k.value)}</div>
-    <div class="metric-label">${k.title}</div>
+    <div class="metric-label">${k.title || k.label || "指标"}</div>
   </div>`).join('\n  ')}
 </div>` : '';
 
@@ -1693,7 +1693,7 @@ export function generateEChartsDashboardHTML(
 
 function generateDefaultConclusion(kpis: KPI[]): string {
   if (kpis.length === 0) return '暂无数据，无法生成结论。';
-  const items = kpis.map(k => `• <strong>${k.title}</strong>：${k.value}${k.unit || ''}`).join('<br>');
+  const items = kpis.map(k => `${k.name}：${k.value}`).join('<br>');
   return `<strong>关键指标总结</strong><br>${items}<br><br><strong>建议</strong><br>• 持续关注核心指标变化趋势<br>• 对异常波动及时预警<br>• 定期更新数据以保持分析时效性`;
 }
 
@@ -1713,7 +1713,7 @@ function _buildFallbackReportSections(
     ...(kpis.length > 0 ? [{
       type: 'kpi',
       title: '核心指标',
-      analysis: kpis.map(k => `**${k.title}**：${k.value}${k.unit || ''}`).join('\n'),
+  const items = kpis.map(k => <strong>\</strong>：\\</strong>).join('<br>');
     }] : []),
     ...(echarts.length > 0 ? [{
       type: 'trend',

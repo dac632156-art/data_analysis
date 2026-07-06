@@ -86,9 +86,9 @@ export default function CleanPage() {
       }
       if (res.steps_applied?.some((s) => s.success)) {
         addMessage('success', `AI 清洗完成：${res.steps_applied.filter(s => s.success).length} 步，数据行数变化 ${res.rows_change > 0 ? '+' : ''}${res.rows_change}`);
-        // 先用 AI 返回的 preview 快速刷新本地预览
-        setPreview(res.preview);
-        dd({ type: 'SET_DATA', payload: { rows: res.rows, columns: res.columns.length } });
+        // 先用 AI 返回的 preview 快速刷新本地预览（防空：可能为 undefined）
+        if (res.preview) setPreview(res.preview);
+        dd({ type: 'SET_DATA', payload: { rows: res.rows, columns: res.columns?.length ?? 0 } });
         // 再完整刷新列信息，确保其他页面拿到最新数据
         await refreshAllData();
       }

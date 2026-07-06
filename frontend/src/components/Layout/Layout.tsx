@@ -3,6 +3,7 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import StarBackground from './StarBackground';
+import ErrorBoundary from '../ErrorBoundary';
 
 export default function Layout() {
   return (
@@ -11,7 +12,9 @@ export default function Layout() {
       <Sidebar />
       <main className="ml-64 min-h-screen p-6 relative z-10">
         <div className="max-w-7xl mx-auto page-enter">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
     </div>
