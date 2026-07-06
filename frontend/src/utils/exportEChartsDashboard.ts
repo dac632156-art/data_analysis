@@ -1713,7 +1713,7 @@ function _buildFallbackReportSections(
     ...(kpis.length > 0 ? [{
       type: 'kpi',
       title: '核心指标',
-  const items = kpis.map(k => <strong>\</strong>：\\</strong>).join('<br>');
+      content: `<strong>关键指标总结</strong><br>${kpis.map(k => `${k.name}：${k.value}`).join('<br>')}<br><br><strong>建议</strong><br>• 持续关注核心指标变化趋势<br>• 对异常波动及时预警<br>• 定期更新数据以保持分析时效性`,
     }] : []),
     ...(echarts.length > 0 ? [{
       type: 'trend',
