@@ -76,7 +76,7 @@ export const uploadFile = async (
   formData.append('session_id', sessionId);
   // 不手动设置 Content-Type，让浏览器/axios 自动添加正确的 boundary
   const { data } = await api.post('/upload', formData, {
-    timeout: 120000,
+    timeout: 600000,  // 10 分钟，大文件上传需要更长时间
   });
   return data;
 };
