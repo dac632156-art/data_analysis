@@ -31,30 +31,31 @@ export default function CleanPage() {
   };
 
   const refreshAllData = useCallback(async () => {
-    try {
-      const previewRes = await api.getDataPreview(ds.sessionId);
-      setPreview(previewRes.preview);
-      dd({ type: 'SET_PREVIEW', preview: previewRes.preview });
+    // 先并行获取所有数据，再一次性更新状态（避免多次中间渲染导致 insertBefore）
+    const [previewRes, colRes] = await Promise.allSettled([
+      api.getDataPreview(ds.sessionId),
+      api.getColumnInfo(ds.sessionId),
+    ]);
 
-      // 同步刷新列信息，确保其他页面（分析、仪表盘）拿到最新的列名和类型
-      try {
-        const colRes = await api.getColumnInfo(ds.sessionId);
-        if (colRes.columns) {
-          const columnInfo = colRes.columns.map((c: Record<string, unknown>) => ({
-            name: String(c.name ?? ''),
-            dtype: String(c.dtype ?? ''),
-            missing: Number(c.missing ?? 0),
-            missing_rate: Number(c.missing_rate ?? 0),
-            unique: Number(c.unique ?? 0),
-            sample: String(c.sample ?? ''),
-          }));
-          dd({ type: 'SET_DATA', payload: { columnInfo } });
-          // 通知分析页刷新列下拉框
-          window.dispatchEvent(new Event('columns-updated'));
-        }
-      } catch { /* 列信息刷新失败不影响预览 */ }
-    } catch {
+    // 同一个同步块中更新所有状态 → React 只渲染一次
+    if (previewRes.status === 'fulfilled') {
+      setPreview(previewRes.value.preview);
+      dd({ type: 'SET_PREVIEW', preview: previewRes.value.preview });
+    } else {
       addMessage('error', '刷新预览失败');
+      return;
+    }
+    if (colRes.status === 'fulfilled' && colRes.value.columns) {
+      const columnInfo = colRes.value.columns.map((c: Record<string, unknown>) => ({
+        name: String(c.name ?? ''),
+        dtype: String(c.dtype ?? ''),
+        missing: Number(c.missing ?? 0),
+        missing_rate: Number(c.missing_rate ?? 0),
+        unique: Number(c.unique ?? 0),
+        sample: String(c.sample ?? ''),
+      }));
+      dd({ type: 'SET_DATA', payload: { columnInfo } });
+      window.dispatchEvent(new Event('columns-updated'));
     }
   }, [ds.sessionId, dd]);
 
@@ -78,6 +79,36 @@ export default function CleanPage() {
     setAiResponse(null);
     try {
       const res = await api.aiClean(ds.sessionId, aiInput, ds.apiKey, provider.baseUrl, provider.model);
+
+      const hasSuccess = res.steps_applied?.some((s) => s.success);
+
+      // ── 先获取所有需要的数据，不触发任何状态更新 ──
+      let previewData = res.preview ?? ds.preview;
+      let newColumnInfo = ds.columnInfo;
+      const newRows = res.rows ?? ds.rows;
+
+      if (hasSuccess) {
+        // 并行获取预览和列信息
+        const [previewRes, colRes] = await Promise.allSettled([
+          api.getDataPreview(ds.sessionId),
+          api.getColumnInfo(ds.sessionId),
+        ]);
+        if (previewRes.status === 'fulfilled') {
+          previewData = previewRes.value.preview;
+        }
+        if (colRes.status === 'fulfilled' && colRes.value.columns) {
+          newColumnInfo = colRes.value.columns.map((c: Record<string, unknown>) => ({
+            name: String(c.name ?? ''),
+            dtype: String(c.dtype ?? ''),
+            missing: Number(c.missing ?? 0),
+            missing_rate: Number(c.missing_rate ?? 0),
+            unique: Number(c.unique ?? 0),
+            sample: String(c.sample ?? ''),
+          }));
+        }
+      }
+
+      // ── 一次性更新所有状态（同一同步块 → React 18 批处理只渲染一次）──
       if (res.explanation) {
         setAiResponse({
           explanation: res.explanation,
@@ -85,12 +116,16 @@ export default function CleanPage() {
           rows_change: res.rows_change || 0,
         });
       }
-      if (res.steps_applied?.some((s) => s.success)) {
+      if (hasSuccess) {
         addMessage('success', `AI 清洗完成：${res.steps_applied.filter(s => s.success).length} 步，数据行数变化 ${res.rows_change > 0 ? '+' : ''}${res.rows_change}`);
-        // 更新全局行数/列数
-        dd({ type: 'SET_DATA', payload: { rows: res.rows, columns: res.columns?.length ?? 0 } });
-        // 统一通过 refreshAllData 刷新预览（避免短时间内多次 setPreview 导致 insertBefore 报错）
-        await refreshAllData();
+        setPreview(previewData);
+        dd({ type: 'SET_DATA', payload: {
+          rows: newRows,
+          columns: newColumnInfo.length,
+          columnInfo: newColumnInfo,
+          preview: previewData,
+        } });
+        window.dispatchEvent(new Event('columns-updated'));
       }
       if (res.note) {
         addMessage('error', res.note);
