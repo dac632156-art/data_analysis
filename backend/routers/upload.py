@@ -10,10 +10,9 @@ import numpy as np
 
 from src.data_loader import load_csv, load_excel, load_json, load_sqlite, get_data_info, get_column_info
 from backend.services.session_manager import manager
+from config import MAX_FILE_SIZE_BYTES, MAX_UPLOAD_SIZE_MB
 
 router = APIRouter()
-
-MAX_FILE_SIZE = 200 * 1024 * 1024  # 200MB
 
 
 def _parse_missing_rate(row) -> float:
@@ -47,8 +46,8 @@ async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
     """
     # 验证文件大小
     content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="文件大小超过 200MB 限制")
+    if len(content) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=f"文件大小超过 {MAX_UPLOAD_SIZE_MB}MB 限制")
 
     # 验证文件格式
     filename = file.filename.lower()

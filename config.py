@@ -2,6 +2,7 @@
 配置文件 - 数据分析智能体
 用户需要输入自己的 DeepSeek API Key 才能使用 AI 功能
 """
+import os
 
 # DeepSeek API 配置
 DEEPSEEK_API_URL = "https://api.deepseek.com"
@@ -14,7 +15,10 @@ APP_TITLE = "DataMind AI - 数据分析智能体"
 APP_ICON = "📊"
 
 # 文件上传配置
-MAX_FILE_SIZE_MB = 200
+# 通过环境变量 MAX_UPLOAD_SIZE_MB 控制，生产环境默认 200MB（永不更改！）
+# 本地开发在 .env 文件中设置，该文件为 git ignore，不会部署上线
+MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", 200))
+MAX_FILE_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 SUPPORTED_FORMATS = ["csv", "xlsx", "xls", "json", "db", "sqlite"]
 
 # 图表配色（清新浅绿渐变方案）

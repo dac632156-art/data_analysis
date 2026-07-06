@@ -5,14 +5,19 @@ DataMind AI - FastAPI 后端入口
 import os
 import sys
 import traceback
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
 
 # 添加项目根目录到 sys.path，以便导入现有模块
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
+
+# 加载 .env 环境变量（优先于 config 导入，本地开发可覆盖默认值，生产环境无 .env 文件自动用默认值）
+from dotenv import load_dotenv
+load_dotenv(os.path.join(project_root, ".env"))
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 
 # 导入路由
 from backend.routers import upload, data, clean, stats, chart, dashboard, insights, chat, report, analysis

@@ -3,6 +3,11 @@ import React, { useCallback, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { FiUploadCloud, FiFile } from 'react-icons/fi';
 
+const MAX_SIZE_MB = parseInt(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB || '200', 10);
+const MAX_SIZE_TEXT = MAX_SIZE_MB >= 1024
+  ? `${(MAX_SIZE_MB / 1024).toFixed(1)}GB`
+  : `${MAX_SIZE_MB}MB`;
+
 interface Props {
   onUpload: (file: File) => Promise<void>;
   disabled?: boolean;
@@ -87,7 +92,7 @@ export default function FileUploader({ onUpload, disabled }: Props) {
             : '点击能量核心或拖拽文件到此'}
         </p>
         <p className="text-xs text-slate-500">
-          支持 CSV · Excel · JSON · SQLite（最大 200MB）
+          支持 CSV · Excel · JSON · SQLite（最大 {MAX_SIZE_TEXT}）
         </p>
       </div>
 
