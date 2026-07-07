@@ -10,8 +10,9 @@ export default function Layout() {
     <div className="min-h-screen relative bg-[#020617]">
       <StarBackground />
       <Sidebar />
-      <main className="ml-64 min-h-screen p-6 relative z-10">
-        <div className="max-w-7xl mx-auto page-enter">
+      {/* translate="not" 阻止浏览器翻译插件修改此区域 DOM，防止 React 虚拟 DOM 引用失效导致 insertBefore 崩溃 */}
+      <main className="ml-64 min-h-screen p-6 relative z-10" translate="no">
+        <div className="max-w-7xl mx-auto page-enter notranslate">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

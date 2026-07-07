@@ -427,8 +427,8 @@ export default function CleanPage() {
             </div>
           </div>
 
-          {/* 数据预览 */}
-          <div>
+          {/* 数据预览 — notranslate 防止翻译插件篡改表格 DOM */}
+          <div translate="no" className="notranslate">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold text-[#f8fafc]">数据预览</h2>
               <button onClick={refreshAllData} className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors">
