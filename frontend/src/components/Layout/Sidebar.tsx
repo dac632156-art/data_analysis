@@ -16,6 +16,8 @@ export default function Sidebar() {
   const location = useLocation();
   const { state, dispatch } = useData();
   const hasData = state.rows > 0;
+  const currentProvider = AI_PROVIDERS.find(p => p.id === state.aiProvider);
+  const defaultModel = currentProvider?.model || '';
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-64 z-20 flex flex-col"
@@ -70,6 +72,17 @@ export default function Sidebar() {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
+        <label className="text-xs text-slate-500 block mt-2">模型名称（可选）</label>
+        <input
+          type="text"
+          value={state.customModel}
+          onChange={(e) => dispatch({ type: 'SET_CUSTOM_MODEL', customModel: e.target.value })}
+          placeholder={defaultModel || '默认模型'}
+          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+        />
+        <p className="text-[10px] text-slate-500 mt-0.5">
+          留空则使用默认模型（{defaultModel || '—'}），可填入其他模型名覆盖
+        </p>
         <label className="text-xs text-slate-500 block mt-2">API Key</label>
         <input
           type="password"

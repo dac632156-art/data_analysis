@@ -373,11 +373,21 @@ export default function DashboardPage() {
     const provider = AI_PROVIDERS.find(p => p.id === ds.aiProvider);
     const pk = ds.apiKey;
     const bu = provider?.baseUrl;
-    const md = provider?.model;
+    const md = ds.customModel || provider?.model;
 
     try {
-      // ★ 单次调用后端五阶段分析流水线
+      // ★ V3：基于 AnalysisPackage 生成报告（不重新分析数据）
       const result = await api.generateAIReport(ds.sessionId, pk, bu, md);
+
+      // Merge AI report charts with dashboard echarts
+      const aiCharts: EChartItem[] = (result.charts || []).map((c: { title: string; option: Record<string, unknown>; chart_type: string }, idx: number) => ({
+        id: `ai_chart_${idx}`,
+        title: c.title,
+        option: c.option as any,
+        chart_type: c.chart_type || '',
+        slot: `ai_slot_${idx}`,
+      }));
+      const mergedECharts = [...aiCharts, ...echarts];
       const sections: Array<{
         type: string; title: string; content?: string;
         insights?: Array<string | { chart_title: string; analysis: string }>;
@@ -398,7 +408,7 @@ export default function DashboardPage() {
       // 生成 HTML 并下载
       const filename = `数据分析报告_${displayTitle}_${new Date().toISOString().slice(0, 10)}.html`;
       const html = generateEChartsDashboardHTML(
-        'report', kpis, echarts, displayTitle, hideChartTitle,
+        'report', kpis, mergedECharts, displayTitle, hideChartTitle,
         navTabs, ringCharts, ds?.preview || [],
         // ★ 将 ReportSection 转为旧的兼容格式给 buildReportHTML
         sections.map((sec, i) => {
@@ -619,4 +629,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
 
