@@ -45,6 +45,7 @@ interface DataState {
   apiKey: string;
   aiProvider: string;  // ID of selected AI provider
   customModel: string;  // 用户自定义模型名（为空则用服务商预设默认值，如 qwen-plus → qwen-max）
+  customBaseUrl: string;  // 用户自定义 API 地址（为空则用服务商预设 baseUrl，用于百炼新版等需要 WorkspaceId 的场景）
   loading: boolean;
   error: string | null;
   analysis: AnalysisState;
@@ -58,6 +59,7 @@ type Action =
   | { type: 'SET_API_KEY'; apiKey: string }
   | { type: 'SET_AI_PROVIDER'; aiProvider: string }
   | { type: 'SET_CUSTOM_MODEL'; customModel: string }
+  | { type: 'SET_CUSTOM_BASE_URL'; customBaseUrl: string }
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_ERROR'; error: string | null }
   | { type: 'SET_ANALYSIS'; payload: Partial<AnalysisState> }
@@ -90,6 +92,7 @@ const initialState: DataState = {
   apiKey: '',
   aiProvider: 'deepseek',
   customModel: '',
+  customBaseUrl: '',
   loading: false,
   error: null,
   analysis: initialAnalysis,
@@ -108,9 +111,11 @@ function dataReducer(state: DataState, action: Action): DataState {
     case 'SET_API_KEY':
       return { ...state, apiKey: action.apiKey };
     case 'SET_AI_PROVIDER':
-      return { ...state, aiProvider: action.aiProvider, customModel: '' };  // 切换服务商时清空自定义模型
+      return { ...state, aiProvider: action.aiProvider, customModel: '', customBaseUrl: '' };  // 切换服务商时清空自定义配置
     case 'SET_CUSTOM_MODEL':
       return { ...state, customModel: action.customModel };
+    case 'SET_CUSTOM_BASE_URL':
+      return { ...state, customBaseUrl: action.customBaseUrl };
     case 'SET_LOADING':
       return { ...state, loading: action.loading };
     case 'SET_ERROR':
@@ -118,7 +123,7 @@ function dataReducer(state: DataState, action: Action): DataState {
     case 'SET_ANALYSIS':
       return { ...state, analysis: { ...state.analysis, ...action.payload } };
     case 'CLEAR_DATA':
-      return { ...initialState, sessionId: state.sessionId, apiKey: state.apiKey, aiProvider: state.aiProvider, customModel: state.customModel };
+      return { ...initialState, sessionId: state.sessionId, apiKey: state.apiKey, aiProvider: state.aiProvider, customModel: state.customModel, customBaseUrl: state.customBaseUrl };
     default:
       return state;
   }

@@ -78,7 +78,7 @@ export default function CleanPage() {
     setAiLoading(true);
     setAiResponse(null);
     try {
-      const res = await api.aiClean(ds.sessionId, aiInput, ds.apiKey, provider.baseUrl, ds.customModel || provider.model);
+      const res = await api.aiClean(ds.sessionId, aiInput, ds.apiKey, ds.customBaseUrl || provider.baseUrl, ds.customModel || provider.model);
 
       const hasSuccess = res.steps_applied?.some((s) => s.success);
 

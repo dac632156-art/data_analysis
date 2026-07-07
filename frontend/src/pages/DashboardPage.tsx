@@ -372,7 +372,7 @@ export default function DashboardPage() {
     setReportText('🔍 正在进行数据统计分析（阶段1-3）...');
     const provider = AI_PROVIDERS.find(p => p.id === ds.aiProvider);
     const pk = ds.apiKey;
-    const bu = provider?.baseUrl;
+    const bu = ds.customBaseUrl || provider?.baseUrl;
     const md = ds.customModel || provider?.model;
 
     try {

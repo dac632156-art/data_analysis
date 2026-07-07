@@ -294,7 +294,7 @@ export default function AnalysisPage() {
       
       const provider = AI_PROVIDERS.find(p => p.id === ds.aiProvider);
       if (!provider) { alert('请先在左上角选择 AI 模型提供商'); setLoading(false); return; }
-      const res = await api.chatAnalyze(ds.sessionId, reportPrompt, ds.apiKey, provider.baseUrl, ds.customModel || provider.model);
+      const res = await api.chatAnalyze(ds.sessionId, reportPrompt, ds.apiKey, ds.customBaseUrl || provider.baseUrl, ds.customModel || provider.model);
       if (res.answer) {
         setInsights(res.answer);
         setTab('chat');
@@ -316,7 +316,7 @@ export default function AnalysisPage() {
     setComputeResult('');
     try {
       const provider = getProviderConfig();
-      const res = await api.computeData(ds.sessionId, query, ds.apiKey, provider?.baseUrl, ds.customModel || provider?.model);
+      const res = await api.computeData(ds.sessionId, query, ds.apiKey, ds.customBaseUrl || provider?.baseUrl, ds.customModel || provider?.model);
       setComputeResult(`✅ ${res.message}`);
       // 自动刷新列列表
       window.dispatchEvent(new Event('columns-updated'));
@@ -392,7 +392,7 @@ export default function AnalysisPage() {
       setComputeResult('⏳ 正在调用 AI 生成分析计划...');
 
       const provider = getProviderConfig();
-      const res = await api.generateInsights(ds.sessionId, ds.apiKey, provider?.baseUrl, ds.customModel || provider?.model);
+      const res = await api.generateInsights(ds.sessionId, ds.apiKey, ds.customBaseUrl || provider?.baseUrl, ds.customModel || provider?.model);
 
       console.log('[handleApplyInsights] API 返回:', res);
       console.log('[handleApplyInsights] intents 数量:', res.intents?.length ?? 0, 'is_fallback:', res.is_fallback);
@@ -473,7 +473,7 @@ export default function AnalysisPage() {
     setLoading(true);
     try {
       const provider = getProviderConfig();
-      const res = await api.generateInsights(ds.sessionId, ds.apiKey, provider?.baseUrl, ds.customModel || provider?.model);
+      const res = await api.generateInsights(ds.sessionId, ds.apiKey, ds.customBaseUrl || provider?.baseUrl, ds.customModel || provider?.model);
       setInsights(res.insights || '');
       // ★ 同步提取 intents（后端三层兜底保证不为空）
       if (res.intents && res.intents.length > 0) {
@@ -505,7 +505,7 @@ export default function AnalysisPage() {
     setLoading(true);
     try {
       const provider = getProviderConfig();
-      const res = await api.chatAnalyze(ds.sessionId, question, ds.apiKey, provider?.baseUrl, ds.customModel || provider?.model);
+      const res = await api.chatAnalyze(ds.sessionId, question, ds.apiKey, ds.customBaseUrl || provider?.baseUrl, ds.customModel || provider?.model);
       
       // 确保 answer 是可读文本，不是原始 JSON
       let displayAnswer = res.answer || '';
