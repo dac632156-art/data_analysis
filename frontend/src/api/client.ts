@@ -18,6 +18,19 @@ const api = axios.create({
   // JSON 请求会自动设为 application/json，FormData 上传会自动设为 multipart/form-data
 });
 
+// 统一将 AI 模型名转为小写，避免大小写不匹配导致 model_not_found
+// （阿里云百炼 / DeepSeek / OpenAI 等 API 的模型 ID 均为小写，如 qwen3.7-plus、deepseek-chat）
+api.interceptors.request.use((config) => {
+  if (
+    config.data &&
+    typeof config.data === 'object' &&
+    typeof config.data.model === 'string'
+  ) {
+    config.data.model = config.data.model.toLowerCase();
+  }
+  return config;
+});
+
 // Render 后端休眠时的自动唤醒 + 重试
 let _wakePromise: Promise<void> | null = null;
 
