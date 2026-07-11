@@ -11,8 +11,8 @@ export default function Layout() {
       <StarBackground />
       <Sidebar />
       {/* translate="not" 阻止浏览器翻译插件修改此区域 DOM，防止 React 虚拟 DOM 引用失效导致 insertBefore 崩溃 */}
-      <main className="ml-64 min-h-screen p-6 relative z-10" translate="no">
-        <div className="max-w-7xl mx-auto page-enter notranslate">
+      <main className="ml-64 h-screen p-6 relative z-10 flex flex-col" translate="no">
+        <div className="max-w-7xl mx-auto w-full flex-1 page-enter notranslate">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

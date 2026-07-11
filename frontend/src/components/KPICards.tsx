@@ -1,5 +1,9 @@
-/* KPICards - 通用 KPI 卡片组件（带涨跌箭头） */
+/* KPICards - 通用 KPI 卡片组件（带涨跌箭头）
+   ★ 颜色统一来自 theme/（Galaxy Executive Dashboard） */
 import React from 'react';
+import { theme } from '../theme';
+
+const P = theme.palette;
 
 export interface KPIItem {
   title: string;
@@ -31,7 +35,7 @@ export default function KPICards({ kpis, maxCount = 6, style }: Props) {
   return (
     <div className="flex flex-wrap justify-center gap-3" style={style}>
       {display.map((kpi, i) => {
-        const color = kpi.color || '#8b5cf6';
+        const color = kpi.color || P.primary;
         const isUp = kpi.trend === 'up';
         const isDown = kpi.trend === 'down';
         const hasTrend = kpi.trend !== 'flat' && kpi.change != null && kpi.change !== 0;
@@ -41,7 +45,7 @@ export default function KPICards({ kpis, maxCount = 6, style }: Props) {
             key={i}
             className="relative flex flex-col items-center rounded-xl p-3 min-w-[120px] flex-1 max-w-[180px]"
             style={{
-              background: `rgba(15, 23, 42, 0.8)`,
+              background: P.card,
               border: `1px solid ${color}33`,
               backdropFilter: 'blur(8px)',
             }}
@@ -59,7 +63,7 @@ export default function KPICards({ kpis, maxCount = 6, style }: Props) {
               <div className="flex items-center gap-1 mt-1">
                 <span
                   className="text-xs font-semibold"
-                  style={{ color: isUp ? '#4ade80' : '#f87171' }}
+                  style={{ color: isUp ? P.success : P.danger }}
                 >
                   {isUp ? '↑' : '↓'} {formatChange(kpi.change)}
                 </span>

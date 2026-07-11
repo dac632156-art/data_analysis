@@ -1,39 +1,25 @@
+﻿"""
+报告生成 API 路由（V3 — 基于 AnalysisPackage）
+
+唯一对外端点：
+- POST /report/ai-analyze — AI 驱动的分析报告（DataMind 五阶段流水线）
+
+说明：旧版 HTML 模板报告（/report/generate）与 V3 规则版报告
+（/report/professional、/report/professional-advanced）及其前端调用均未被使用，
+仅移除死端点。其底层的 src.report.* 引擎包经排查无任何活跃引用，已一并删除；
+本端点实际只复用 report_builder.build_input() 与 src.report_analyzer。
 """
-报告生成 API 路由
-"""
-import uuid
-import threading
-import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from backend.services.session_manager import manager
-from src.report_generator import generate_html_report
+from backend.utils.ai_error import enhance_ai_error
 from src.ai_agent.agent import DataAnalysisAgent
 
 router = APIRouter()
-
-# ===== 异步任务存储（Render 实例存活期间有效） =====
-TASK_STORE: Dict[str, Dict[str, Any]] = {}
-TASK_STORE_LOCK = threading.Lock()
-TASK_TTL_SECONDS = 600  # 任务结果保留 10 分钟
-
-
-def _cleanup_expired_tasks():
-    """清理过期任务"""
-    with TASK_STORE_LOCK:
-        now = time.time()
-        expired = [tid for tid, t in TASK_STORE.items() if now - t.get("created_at", 0) > TASK_TTL_SECONDS]
-        for tid in expired:
-            del TASK_STORE[tid]
-
-
-class ReportRequest(BaseModel):
-    session_id: str
-    title: Optional[str] = "数据分析报告"
 
 
 class AIReportRequest(BaseModel):
@@ -43,149 +29,76 @@ class AIReportRequest(BaseModel):
     model: Optional[str] = None
 
 
-@router.post("/report/generate")
-async def api_generate_report(req: ReportRequest):
-    """生成 HTML 分析报告"""
-    df = manager.get_data(req.session_id)
-    if df is None:
-        raise HTTPException(status_code=404, detail="未找到数据")
-    
-    cleaning_history = manager.get_cleaning_history(req.session_id)
-    
-    try:
-        html = generate_html_report(
-            df=df,
-            title=req.title,
-            insights=None,
-            cleaning_history=cleaning_history if cleaning_history else None
-        )
-        return {"success": True, "html": html}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"报告生成失败: {str(e)}")
-
-
-def _run_ai_report_task(task_id: str, api_key: str, base_url: Optional[str],
-                         model: Optional[str], df, saved_charts):
-    """后台线程：执行 AI 报告生成"""
-    try:
-        with TASK_STORE_LOCK:
-            TASK_STORE[task_id]["status"] = "processing"
-            TASK_STORE[task_id]["progress"] = 10
-            TASK_STORE[task_id]["message"] = "🔍 阶段1-2：字段识别与图表规划..."
-
-        kwargs: Dict[str, Any] = {"api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
-        if model:
-            kwargs["model"] = model
-        agent = DataAnalysisAgent(**kwargs)
-
-        with TASK_STORE_LOCK:
-            TASK_STORE[task_id]["progress"] = 30
-            TASK_STORE[task_id]["message"] = "📊 阶段3：pandas 统计分析..."
-
-        result = agent.generate_report(df, saved_charts)
-
-        with TASK_STORE_LOCK:
-            TASK_STORE[task_id]["progress"] = 80
-            TASK_STORE[task_id]["message"] = "🤖 阶段4-5：LLM 生成洞察与报告内容..."
-
-        with TASK_STORE_LOCK:
-            TASK_STORE[task_id]["status"] = "done"
-            TASK_STORE[task_id]["progress"] = 100
-            TASK_STORE[task_id]["message"] = "✅ 报告生成完成"
-            TASK_STORE[task_id]["result"] = {
-                "success": True,
-                "sections": result.get("sections", []),
-                "warning": result.get("warning"),
-            }
-
-    except Exception as e:
-        import traceback
-        print(f"[Task {task_id}] 报告生成失败: {e}")
-        traceback.print_exc()
-        with TASK_STORE_LOCK:
-            TASK_STORE[task_id]["status"] = "failed"
-            TASK_STORE[task_id]["error"] = str(e)
-            TASK_STORE[task_id]["message"] = f"❌ 失败: {e}"
-
-
 @router.post("/report/ai-analyze")
 async def api_ai_report_submit(req: AIReportRequest):
-    """提交 AI 报告生成任务（异步模式）
+    """生成 AI 分析报告（V3 — 基于 AnalysisPackage，同步模式）
 
-    立即返回 task_id，前端轮询 /report/ai-analyze/status/{task_id}
+    数据来源：session 中的 saved_packages（AnalysisPackage）。
+    不再调用 run_full_analysis() 重新分析数据。
+    报告 AI 的唯一职责是读取 AnalysisPackage 并组织语言生成专业报告。
     """
-    df = manager.get_data(req.session_id)
-    if df is None:
-        raise HTTPException(status_code=404, detail="未找到数据")
+    saved_packages = manager.get_saved_packages(req.session_id)
+
+    if not saved_packages:
+        raise HTTPException(
+            status_code=400,
+            detail="没有已保存的分析结果。请先在分析页面执行分析并保存（点击「保存到仪表盘」），再生成报告。"
+        )
 
     api_key = req.api_key or manager.get_api_key(req.session_id)
     if not api_key:
         raise HTTPException(status_code=400, detail="需要 AI API Key")
 
-    saved_charts = manager.get_saved_charts(req.session_id)
+    df = manager.get_data(req.session_id)
+    data_profile = None
+    if df is not None:
+        from src.column_classifier import ColumnClassifier
+        try:
+            cc = ColumnClassifier()
+            data_profile = cc.classify_all(df)
+        except Exception:
+            pass
 
-    # 清理过期任务
-    _cleanup_expired_tasks()
+    kwargs: Dict[str, Any] = {"api_key": api_key}
+    if req.base_url:
+        kwargs["base_url"] = req.base_url
+    if req.model:
+        kwargs["model"] = req.model
 
-    # 创建任务
-    task_id = uuid.uuid4().hex[:12]
-    with TASK_STORE_LOCK:
-        TASK_STORE[task_id] = {
-            "status": "pending",
-            "progress": 0,
-            "message": "📝 任务已提交，等待处理...",
-            "created_at": time.time(),
-            "result": None,
-            "error": None,
-        }
+    try:
+        agent = DataAnalysisAgent(**kwargs)
 
-    # 后台线程执行
-    thread = threading.Thread(
-        target=_run_ai_report_task,
-        args=(task_id, api_key, req.base_url, req.model, df, saved_charts if saved_charts else None),
-        daemon=True,
-    )
-    thread.start()
+        loop = asyncio.get_running_loop()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            result = await loop.run_in_executor(
+                executor,
+                agent.generate_report_from_packages,
+                saved_packages,
+                data_profile,
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=enhance_ai_error(e, model=req.model or "", base_url=req.base_url or ""))
 
-    return {"task_id": task_id, "status": "pending"}
+    if result.get("success"):
+        # 从 saved_packages 中提取图表 option 数据供前端报告渲染
+        chart_options = []
+        for pkg in saved_packages:
+            charts = pkg.get("charts", [])
+            for chart in charts:
+                if isinstance(chart, dict) and chart.get("option"):
+                    chart_options.append({
+                        "title": chart.get("title", ""),
+                        "option": chart["option"],
+                        "chart_type": chart.get("chart_type", ""),
+                        "role": chart.get("role", ""),
+                    })
 
-
-@router.get("/report/ai-analyze/status/{task_id}")
-def api_ai_report_status(task_id: str):
-    """查询任务状态（前端每 3 秒轮询一次）"""
-    with TASK_STORE_LOCK:
-        task = TASK_STORE.get(task_id)
-
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在或已过期")
-
-    return {
-        "task_id": task_id,
-        "status": task["status"],       # pending | processing | done | failed
-        "progress": task.get("progress", 0),
-        "message": task.get("message", ""),
-        "error": task.get("error"),
-    }
-
-
-@router.get("/report/ai-analyze/result/{task_id}")
-def api_ai_report_result(task_id: str):
-    """获取任务结果（任务完成后调用）"""
-    with TASK_STORE_LOCK:
-        task = TASK_STORE.get(task_id)
-
-    if task is None:
-        raise HTTPException(status_code=404, detail="任务不存在或已过期")
-
-    if task["status"] == "failed":
         return {
-            "success": False,
-            "detail": task.get("error", "未知错误"),
+            "success": True,
+            "sections": result.get("sections", []),
+            "packages_used": result.get("packages_used", 0),
+            "charts": chart_options,
+            "warning": result.get("warning"),
         }
-
-    if task["status"] != "done":
-        raise HTTPException(status_code=400, detail="任务尚未完成，请继续等待")
-
-    return task["result"]
+    else:
+        raise HTTPException(status_code=500, detail=str(result.get("warning", "报告生成失败")))

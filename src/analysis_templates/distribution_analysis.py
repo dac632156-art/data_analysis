@@ -1,23 +1,23 @@
-"""
+﻿"""
 分布分析模板 —— 数值的分布形态与频次统计
 
-V2：使用 TemplateMeta + TemplateRuntime，拆分 build_*() 方法
+V3：全面升级为 Business Template，所有业务计算委托 DistributionCalculator
 """
 
-import pandas as pd
-import numpy as np
 from src.analysis_templates.base import (
     AnalysisTemplate, TemplateMeta, TemplateRuntime,
     KPIItem, TableData, ChartData,
 )
+from src.calculators import DistributionCalculator, BusinessMetrics
+from src.domain import Direction, Severity, FindingCategory
 
 
 class DistributionAnalysis(AnalysisTemplate):
     meta = TemplateMeta(
         analysis_type="distribution_analysis",
         display_name="分布分析",
-        version="2.0",
-        description="分析数值数据的分布形态（偏态、峰度、区间分布）",
+        version="3.0",
+        description="分析数值数据的分布形态（均值/中位数/标准差/偏度/峰度/分位数/直方图）",
     )
 
     runtime = TemplateRuntime(
@@ -33,99 +33,110 @@ class DistributionAnalysis(AnalysisTemplate):
 
     _cache: dict = {}
 
-    def _compute(self, df, metric):
+    def _compute(self, df, metric, bins=10):
+        """V3：委托 DistributionCalculator"""
         series = df[metric].dropna()
-        mean_val = series.mean()
-        median_val = series.median()
-        std_val = self._safe_agg(series, "std", 0)
-        skew_val = self._safe_agg(series, "skew", 0)
-        kurt_val = self._safe_agg(series, "kurt", 0)
-
-        # 区间分布（分箱为10个区间）
-        bins = np.histogram_bin_edges(series, bins=10)
-        hist, edges = np.histogram(series, bins=bins)
-
-        self._cache["series"] = series
+        m: BusinessMetrics = DistributionCalculator.execute(series, bins)
+        self._cache["metrics"] = m
         self._cache["metric"] = metric
-        self._cache["mean"] = mean_val
-        self._cache["median"] = median_val
-        self._cache["std"] = std_val
-        self._cache["skew"] = skew_val
-        self._cache["kurt"] = kurt_val
-        self._cache["hist"] = hist
-        self._cache["edges"] = edges
-        self._cache["min_val"] = series.min()
-        self._cache["max_val"] = series.max()
-        self._cache["count"] = len(series)
+        self._cache["_calculator_used"] = "DistributionCalculator"
+        return m
 
     def build_kpis(self, df, dimension, metric, algorithm):
         metric = metric or self._get_numeric_columns(df)[0]
-        self._compute(df, metric)
+        m = self._compute(df, metric)
 
         return [
-            KPIItem(label="均值", value=f"{self._cache['mean']:,.2f}", change="", kpi_type="avg"),
-            KPIItem(label="中位数", value=f"{self._cache['median']:,.2f}", change="", kpi_type="avg"),
-            KPIItem(label="标准差", value=f"{self._cache['std']:,.2f}", change="", kpi_type="rate"),
-            KPIItem(label="偏度", value=f"{self._cache['skew']:.2f}" if self._cache['skew'] else "0", change="", kpi_type="rate"),
+            KPIItem(label="均值", value=f"{m.mean:.2f}" if m.mean else "N/A", change="", kpi_type="avg"),
+            KPIItem(label="中位数", value=f"{m.median:.2f}" if m.median else "N/A", change="", kpi_type="avg"),
+            KPIItem(label="标准差", value=f"{m.std:.2f}" if m.std else "N/A", change="", kpi_type="rate"),
+            KPIItem(label="偏度", value=f"{m.skew:.2f}" if m.skew is not None else "N/A", change="", kpi_type="rate"),
+            KPIItem(label="IQR", value=f"{m.iqr:.2f}" if m.iqr else "N/A", change="", kpi_type="rate"),
         ]
 
     def build_tables(self, df, dimension, metric, algorithm):
-        edges = self._cache.get("edges")
-        hist = self._cache.get("hist")
-        if edges is None:
+        m: BusinessMetrics = self._cache.get("metrics")
+        if m is None:
             return []
 
-        rows = [[f"{edges[i]:.1f} - {edges[i+1]:.1f}", int(hist[i])] for i in range(len(hist))]
+        rows = []
+        for i in range(len(m.histogram_counts)):
+            lo = m.histogram_bins[i] if i < len(m.histogram_bins) else "—"
+            hi = m.histogram_bins[i+1] if i+1 < len(m.histogram_bins) else "—"
+            rows.append([f"[{lo:.1f}, {hi:.1f})" if isinstance(lo, float) else str(lo),
+                         m.histogram_counts[i]])
+
         return [TableData(
-            title=f"{self._cache['metric']}区间分布",
+            title=f"{metric}区间分布",
             table_type="summary",
             columns=["区间", "频次"],
             rows=rows,
         )]
 
     def build_charts(self, df, dimension, metric, algorithm):
-        series = self._cache.get("series")
-        if series is None:
+        m: BusinessMetrics = self._cache.get("metrics")
+        if m is None:
             return []
-        metric = self._cache["metric"]
 
-        # histogram 用 x=metric, y="" 表示单变量直方图
-        hist_data = self._cache["hist"]
-        edges = self._cache["edges"]
-        chart_data = []
-        for i in range(len(hist_data)):
-            chart_data.append({
-                "x": f"{edges[i]:.1f}-{edges[i+1]:.1f}",
-                "y": int(hist_data[i]),
-            })
+        hist_data = []
+        for i in range(len(m.histogram_counts)):
+            lo = m.histogram_bins[i] if i < len(m.histogram_bins) else 0
+            hi = m.histogram_bins[i+1] if i+1 < len(m.histogram_bins) else lo+1
+            hist_data.append({"x": f"{lo:.1f}", "y": m.histogram_counts[i]})
 
-        return [ChartData(
-            slot="distribution", chart_type="histogram",
-            title=f"{metric}分布直方图", x=metric, y="频次",
-            data=chart_data,
-        )]
+        return [ChartData(slot="distribution", chart_type="bar",
+                          title=f"{metric}分布直方图", x=dimension, y=metric, data=hist_data)]
 
     def build_insights(self, df, dimension, metric, algorithm, kpis, chart_data):
-        mean_val = self._cache.get("mean", 0)
-        median_val = self._cache.get("median", 0)
-        skew_val = self._cache.get("skew", 0) or 0
-        std_val = self._cache.get("std", 0) or 0
-        metric = self._cache.get("metric", "")
+        m: BusinessMetrics = self._cache.get("metrics")
+        if m is None:
+            return []
 
-        insights = [f"{metric}均值为{mean_val:,.2f}，标准差{std_val:,.2f}"]
-
-        if abs(skew_val) > 1:
-            direction = "右偏" if skew_val > 0 else "左偏"
-            insights.append(f"数据呈{direction}分布（偏度={skew_val:.2f}），存在较长的{direction}尾部")
+        skew_val = m.skew or 0
+        if skew_val > 0.5:
+            skew_desc = "右偏（长尾在右侧，多数值偏小）"
+        elif skew_val < -0.5:
+            skew_desc = "左偏（长尾在左侧，多数值偏大）"
         else:
-            insights.append("数据分布接近对称")
+            skew_desc = "近似对称分布"
 
-        if mean_val > median_val * 1.1 and median_val > 0:
-            insights.append("均值显著高于中位数，说明少数高值拉高了整体水平")
-        return insights
+        return [
+            f"{metric}均值为 {m.mean:.2f}，中位数为 {m.median:.2f}，分布呈{skew_desc}",
+            f"标准差 {m.std:.2f}，IQR={m.iqr:.2f}，数据离散程度{'较高' if m.std and m.mean and m.std/m.mean > 0.5 else '适中'}",
+        ]
 
     def build_conclusion(self, df, dimension, metric, algorithm, insights):
-        return insights[:1]
+        m: BusinessMetrics = self._cache.get("metrics")
+        if m is None:
+            return ["无法得出分布结论"]
+
+        skew_val = m.skew or 0
+        conclusions = [f"summary: {metric}均值 {m.mean:.2f}（中位数 {m.median:.2f}）"]
+        if abs(skew_val) > 1:
+            conclusions.append("risk: 偏度较大，数据分布不均衡，可能影响平均值代表性")
+            conclusions.append("recommendation: 使用中位数替代均值进行决策")
+        return conclusions
+
+
+
+    def build_findings(self, df, dimension, metric, algorithm, kpis, chart_data):
+        m = self._cache.get("metrics")
+        f = self.factory
+        findings = []
+        if m is None:
+            return [f.summary("分布分析完成")]
+        skew_val = m.skew or 0
+        skew_desc = "右偏" if skew_val > 0.5 else "左偏" if skew_val < -0.5 else "近似对称"
+        findings.append(f.distribution(
+            title=f"{metric}均值为{m.mean:.2f}（中位数{m.median:.2f}），分布呈{skew_desc}",
+            metric=metric, confidence=0.95,
+            business_meaning=f"数据分布{skew_desc}，{'多数值偏小' if skew_val > 0.5 else '多数值偏大' if skew_val < -0.5 else '分布均匀'}"))
+        findings.append(f.summary(f"标准差{m.std:.2f}，IQR={m.iqr:.2f}"))
+        if abs(skew_val) > 1:
+            findings.append(f.risk(f"偏度较大（{skew_val:.2f}），数据分布不均衡",
+                                   business_impact="可能影响平均值代表性",
+                                   recommendation="使用中位数替代均值进行决策"))
+        return findings
 
     def execute(self, df, dimension, metric, algorithm=None):
         metric = metric or self._get_numeric_columns(df)[0]

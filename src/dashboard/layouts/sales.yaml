@@ -1,0 +1,29 @@
+name: sales
+description: 销售分析布局 - 趋势 + 排名 + KPI 组合场景
+columns: 12
+hero_cols: 12
+
+section_order:
+  - header
+  - hero
+  - main
+  - secondary
+  - footer
+
+size_grid:
+  hero:    [12, 3]
+  large:   [6,  3]
+  medium:  [4,  3]
+  small:   [3,  2]
+
+section_gap: 2
+widget_gap: 1
+page_margin: 1
+max_section_weight: 24
+rebalance_enabled: true
+main_per_row: 3
+
+default_filter: time
+cross_filter_groups:
+  - region
+  - product

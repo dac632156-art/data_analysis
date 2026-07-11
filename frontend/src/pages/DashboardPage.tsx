@@ -1,17 +1,20 @@
-﻿/* DashboardPage - 大屏仪表盘（3模板 + AI推荐 + ECharts引擎） */
+/* DashboardPage - 大屏仪表盘（3模板 + AI推荐 + ECharts引擎） */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import html2canvas from 'html2canvas';
-import { FiDownload, FiFileText, FiGrid, FiRadio, FiActivity, FiSave } from 'react-icons/fi';
+import { FiDownload, FiFileText, FiGrid, FiRadio, FiActivity, FiSave, FiLayout } from 'react-icons/fi';
 import EGridLayout from '../components/BigScreen/EGridLayout';
 import CommandScreen from '../components/BigScreen/CommandScreen';
-import BigScreenDashboard from '../components/BigScreen/MedicalDashboard';
+import MedicalDashboard from '../components/BigScreen/MedicalDashboard';
+import { DashboardRenderer } from '../components/DashboardRenderer';
+import type { CardItem, CardMeta } from '../components/CardGrid';
 import KPICards, { type KPIItem } from '../components/KPICards';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
 import * as api from '../api/client';
 import { generateEChartsDashboardHTML, downloadEChartsHTML } from '../utils/exportEChartsDashboard';
-import type { EChartItem, CardItem, CardMeta } from '../types/api';
+import type { EChartItem } from '../types/api';
+import type { DashboardSchema } from '../types/dashboard';
 
-type TemplateType = 'command' | 'grid' | 'medical' | 'report';
+type TemplateType = 'command' | 'grid' | 'medical' | 'report' | 'schema';
 
 /** 根据数据列名推断行业/业务领域，生成对应的报告标题 */
 function inferIndustryTitle(columns: string[]): string {
@@ -54,7 +57,11 @@ const TEMPLATES: { id: TemplateType; label: string; icon: typeof FiGrid; desc: s
   { id: 'medical', label: '数据看板', icon: FiActivity, desc: 'KPI数字 + 趋势图 + 雷达图 + 数据表格' },
   { id: 'grid', label: '经典网格', icon: FiGrid, desc: 'KPI条 + 2x3图表 + 联动高亮' },
   { id: 'report', label: '分析报告', icon: FiFileText, desc: '专业图文报告 + AI分析 + 导出' },
+  { id: 'schema', label: '可视化看板', icon: FiLayout, desc: 'DashboardSchema 管线（LayoutEngine + DashboardRenderer）' },
 ];
+
+/** 第5选项「可视化看板」使用的固定布局（与布局库 YAML 对应） */
+const SCHEMA_LAYOUT = 'wide';
 
 export default function DashboardPage() {
   const { state: ds } = useData();
@@ -72,8 +79,17 @@ export default function DashboardPage() {
   const [hideChartTitle, setHideChartTitle] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [savedTableData, setSavedTableData] = useState<Record<string, unknown>[]>([]);
+
+  // ──── 第5选项「可视化看板」状态（独立链路，不干扰旧三模板） ────
+  const [schema, setSchema] = useState<DashboardSchema | null>(null);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
+
+  // ──── 数据看板（medical / BigScreenDashboard）状态：来自 /dashboard/cards ────
   const [cards, setCards] = useState<CardItem[]>([]);
-  const [cardMeta, setCardMeta] = useState<CardMeta | null>(null);
+  const [cardsMeta, setCardsMeta] = useState<CardMeta | undefined>(undefined);
+  const [cardsLoading, setCardsLoading] = useState(false);
+
 
   const screenRef = useRef<HTMLDivElement>(null);
   const hasData = ds.rows > 0;
@@ -102,23 +118,56 @@ export default function DashboardPage() {
     loadEChartsDashboard();
   }, [loadEChartsDashboard]);
 
-  // ===== V5: 加载 Cards（从 saved_packages 提取） =====
-  const loadCards = useCallback(async () => {
+  // ===== 加载 Dashboard Schema（第5选项专用链路） =====
+  const loadSchema = useCallback(async () => {
     if (!hasData) return;
+    setSchemaLoading(true);
+    setSchemaError(null);
     try {
-      const res = await api.generateCards(ds.sessionId);
-      if (res.success && res.cards) {
-        setCards(res.cards as CardItem[]);
-        setCardMeta(res.meta || null);
+      const title = inferIndustryTitle(
+        ds.preview?.[0] ? Object.keys(ds.preview[0]) : ds.columnInfo?.map(c => c.name) || [],
+      );
+      const res = await api.getDashboardSchema(ds.sessionId, title, SCHEMA_LAYOUT);
+      if (res && res.schema) {
+        setSchema(res.schema as unknown as DashboardSchema);
+      } else {
+        setSchema(null);
+        setSchemaError('Schema 返回为空');
       }
     } catch (err) {
-      console.error("[Cards] load failed:", err);
+      const msg = err instanceof Error ? err.message : '加载 Schema 看板失败';
+      console.error('[Schema] 加载失败:', msg);
+      setSchemaError(msg);
+      setSchema(null);
+    } finally {
+      setSchemaLoading(false);
+    }
+  }, [hasData, ds.sessionId, ds.preview, ds.columnInfo]);
+
+  // ===== 加载数据看板卡片（medical / BigScreenDashboard，来自已保存分析包） =====
+  const loadCards = useCallback(async () => {
+    if (!hasData) { setCards([]); return; }
+    setCardsLoading(true);
+    try {
+      const res = await api.generateCards(ds.sessionId);
+      if (res && res.success) {
+        setCards((res.cards as CardItem[]) || []);
+        setCardsMeta(res.meta as CardMeta | undefined);
+      } else {
+        setCards([]);
+      }
+    } catch (err) {
+      console.error('[Cards] 数据看板加载失败:', err);
+      setCards([]);
+    } finally {
+      setCardsLoading(false);
     }
   }, [hasData, ds.sessionId]);
 
+  // 切到「数据看板」时自动加载卡片
   useEffect(() => {
-    loadCards();
-  }, [loadCards]);
+    if (template === 'medical') loadCards();
+  }, [template, loadCards]);
 
   // ===== 加载已保存分析包（从分析页收藏） =====
   const handleLoadSaved = async () => {
@@ -199,80 +248,7 @@ export default function DashboardPage() {
           const kpiRes = await api.getDashboardKPIs(ds.sessionId);
           if (kpiRes.kpis) setKpis(kpiRes.kpis);
         }
-      
-        // ===== V5: 同时将 packages 转换为 cards =====
-        const allCards: CardItem[] = [];
-        for (const pkg of res.packages) {
-          const pkgKpis = pkg.rendered_kpis || pkg.kpis || [];
-          for (const k of pkgKpis) {
-            if (k && k.label) {
-              const kpiType = k.kpi_type || "sum";
-              const pm: Record<string, number> = { sum: 7, rate: 9, change: 8, avg: 5, count: 6 };
-              allCards.push({
-                id: "kpi_" + k.label + "_" + Math.random().toString(36).slice(2, 8),
-                type: "kpi",
-                title: k.label,
-                priority: pm[kpiType] || 5,
-                size: "m",
-                score: (pm[kpiType] || 5) / 10,
-                data: { value: k.formatted || k.value, change: k.change, kpi_type: kpiType },
-              });
-            }
-          }
-          const pkgCharts = pkg.rendered_charts || pkg.charts || [];
-          for (const ch of pkgCharts) {
-            if (ch && ch.option) {
-              const rp = ch.role === "primary" ? 9 : ch.role === "secondary" ? 6 : 4;
-              allCards.push({
-                id: "chart_" + (ch.title || Math.random().toString(36)).slice(0, 8),
-                type: "chart",
-                title: ch.title || "",
-                priority: rp,
-                size: "l",
-                score: rp / 10,
-                data: ch.option,
-                chart_type: ch.chart_type || "",
-              });
-            }
-          }
-          const pkgTables = pkg.rendered_tables || pkg.tables || [];
-          for (const t of pkgTables) {
-            if (t && t.rows && t.columns) {
-              allCards.push({
-                id: "table_" + (t.title || Math.random().toString(36)).slice(0, 8),
-                type: "table",
-                title: t.title || "数据表格",
-                priority: 5,
-                size: "m",
-                score: 0.5,
-                data: { columns: t.columns, rows: t.rows },
-              });
-            }
-          }
-          const pkgInsights = pkg.rendered_insights || pkg.insights || [];
-          for (const ins of pkgInsights) {
-            const text = typeof ins === "string" ? ins : (ins as any).text || "";
-            if (text) {
-              allCards.push({
-                id: "insight_" + Math.random().toString(36).slice(2, 8),
-                type: "insight",
-                title: "洞察",
-                priority: 4,
-                size: "s",
-                score: 0.4,
-                data: { text },
-              });
-            }
-          }
-        }
-        if (allCards.length > 0) {
-          setCards(allCards);
-          setCardMeta({
-            total_cards: allCards.length,
-            insight_strength: 0.6,
-            data_quality: 0.8,
-          });
-        }} else {
+      } else {
         // V2 无数据 → fallback 到旧接口
         const oldRes = await api.getSavedCharts(ds.sessionId);
         if (oldRes.charts && oldRes.charts.length > 0) {
@@ -306,15 +282,11 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error('加载保存分析失败', err);
-    } finally { setLoading(false); }
-  };
-
-  // ===== 报告生成 =====
-  const generateReport = async () => {
-    setGenerating(true);
-    try { const res = await api.generateReport(ds.sessionId); setReportHtml(res.html); }
-    catch { /* ignore */ }
-    finally { setGenerating(false); }
+    } finally {
+      setLoading(false);
+      // 同步刷新数据看板卡片（卡片来自已保存分析包）
+      loadCards();
+    }
   };
 
   // ===== PNG 截图 =====
@@ -338,6 +310,10 @@ export default function DashboardPage() {
   const handleExportHTML = () => {
     if (template === 'report') {
       handleExportReport();
+      return;
+    }
+    if (template === 'schema') {
+      alert('Schema 看板暂不支持 HTML 导出，请使用「PNG截图」');
       return;
     }
     if (template !== 'command' && echarts.length === 0) {
@@ -372,22 +348,12 @@ export default function DashboardPage() {
     setReportText('🔍 正在进行数据统计分析（阶段1-3）...');
     const provider = AI_PROVIDERS.find(p => p.id === ds.aiProvider);
     const pk = ds.apiKey;
-    const bu = ds.customBaseUrl || provider?.baseUrl;
-    const md = ds.customModel || provider?.model;
+    const bu = provider?.baseUrl;
+    const md = provider?.model;
 
     try {
-      // ★ V3：基于 AnalysisPackage 生成报告（不重新分析数据）
+      // ★ 单次调用后端五阶段分析流水线
       const result = await api.generateAIReport(ds.sessionId, pk, bu, md);
-
-      // Merge AI report charts with dashboard echarts
-      const aiCharts: EChartItem[] = (result.charts || []).map((c: { title: string; option: Record<string, unknown>; chart_type: string }, idx: number) => ({
-        id: `ai_chart_${idx}`,
-        title: c.title,
-        option: c.option as any,
-        chart_type: c.chart_type || '',
-        slot: `ai_slot_${idx}`,
-      }));
-      const mergedECharts = [...aiCharts, ...echarts];
       const sections: Array<{
         type: string; title: string; content?: string;
         insights?: Array<string | { chart_title: string; analysis: string }>;
@@ -408,7 +374,7 @@ export default function DashboardPage() {
       // 生成 HTML 并下载
       const filename = `数据分析报告_${displayTitle}_${new Date().toISOString().slice(0, 10)}.html`;
       const html = generateEChartsDashboardHTML(
-        'report', kpis, mergedECharts, displayTitle, hideChartTitle,
+        'report', kpis, echarts, displayTitle, hideChartTitle,
         navTabs, ringCharts, ds?.preview || [],
         // ★ 将 ReportSection 转为旧的兼容格式给 buildReportHTML
         sections.map((sec, i) => {
@@ -443,6 +409,7 @@ export default function DashboardPage() {
       }),
         summaryText,
         conclusionText,
+        ds?.rows ?? 0,
       );
 
       // 同时将 HTML 写入后端返回的结构化 sections 中
@@ -511,10 +478,13 @@ export default function DashboardPage() {
             {TEMPLATES.map((tpl) => (
               <button
                 key={tpl.id}
-                onClick={() => setTemplate(tpl.id)}
+                onClick={() => {
+                  setTemplate(tpl.id);
+                  if (tpl.id === 'schema') loadSchema();
+                }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${
                   template === tpl.id
-                    ? 'bg-[#8b5cf6]/20 text-[#a78bfa]'
+                    ? 'bg-[#8B5CF6]/20 text-[#A78BFA]'
                     : 'text-slate-500 hover:text-slate-300'
                 }`}
                 title={tpl.desc}
@@ -528,14 +498,14 @@ export default function DashboardPage() {
 
         <div className="flex items-center gap-2">
           {/* 恢复默认 */}
-          <button onClick={loadEChartsDashboard}
+          <button onClick={() => template === 'schema' ? loadSchema() : loadEChartsDashboard()}
             className="px-2 py-1.5 text-xs rounded text-slate-500 hover:text-slate-300 transition-colors">
             恢复默认
           </button>
 
           {/* 加载已保存图表 */}
           <button onClick={handleLoadSaved} disabled={loading}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded bg-[#22d3ee]/10 border border-[#22d3ee]/20 text-[#22d3ee] hover:bg-[#22d3ee]/20 transition-colors">
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded bg-[#A78BFA]/10 border border-[#A78BFA]/20 text-[#A78BFA] hover:bg-[#A78BFA]/20 transition-colors">
             <FiSave className="w-3 h-3" />
             已制作图表
           </button>
@@ -550,13 +520,13 @@ export default function DashboardPage() {
 
           {/* PNG截图 + HTML导出 */}
           <button onClick={handleDownloadScreen} disabled={downloading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-l-lg bg-[#22d3ee]/20 border border-[#22d3ee]/20 text-[#22d3ee] hover:bg-[#22d3ee]/30 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-l-lg bg-[#A78BFA]/20 border border-[#A78BFA]/20 text-[#A78BFA] hover:bg-[#A78BFA]/30 transition-colors"
             title="导出为 PNG 图片">
             <FiDownload className="w-3.5 h-3.5" />
             {downloading ? '截图中...' : 'PNG截图'}
           </button>
           <button onClick={handleExportHTML}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-r-lg bg-[#22d3ee]/20 border border-l-0 border-[#22d3ee]/20 text-[#22d3ee] hover:bg-[#22d3ee]/30 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-r-lg bg-[#A78BFA]/20 border border-l-0 border-[#A78BFA]/20 text-[#A78BFA] hover:bg-[#A78BFA]/30 transition-colors"
             title="导出为可交互 HTML 文件">
             📄 HTML
           </button>
@@ -565,12 +535,24 @@ export default function DashboardPage() {
 
       {/* 大屏内容 */}
       <div className="flex-1 overflow-hidden" ref={screenRef}>
-        {loading ? (
-          <div className="flex items-center justify-center h-full"><div className="w-8 h-8 rounded-full border-2 border-[#8b5cf6] border-t-transparent animate-spin" /></div>
+        {template === 'schema' ? (
+          /* ══════════ 第5选项：Schema 看板（独立新链路，不干扰旧三模板） ══════════ */
+          <DashboardRenderer
+            schema={schema}
+            theme="dark"
+            loading={schemaLoading}
+            error={schemaError || undefined}
+          />
+        ) : loading ? (
+          <div className="flex items-center justify-center h-full"><div className="w-8 h-8 rounded-full border-2 border-[#8B5CF6] border-t-transparent animate-spin" /></div>
         ) : template === 'command' ? (
             <CommandScreen kpis={kpis} dataPreview={ds.preview} echarts={echarts} />
         ) : template === 'medical' ? (
-            <BigScreenDashboard cards={cards} meta={cardMeta || undefined} title={displayTitle} />
+            cardsLoading ? (
+              <div className="flex items-center justify-center h-full"><div className="w-8 h-8 rounded-full border-2 border-[#8B5CF6] border-t-transparent animate-spin" /></div>
+            ) : (
+              <MedicalDashboard cards={cards} meta={cardsMeta} title={displayTitle} />
+            )
         ) : template === 'report' ? (
           /* 分析报告生成面板 */
           <div className="flex-1 flex items-center justify-center p-8" style={{ background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)' }}>
@@ -629,5 +611,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-

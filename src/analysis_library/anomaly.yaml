@@ -1,15 +1,17 @@
-# 异常分析 —— 检测数据中的离群值和异常点
+﻿# 异常分析 —— Z-Score/IQR异常检测
+# V3：扩展为完整分析知识
 intent: anomaly
 display_name: 异常分析
-description: 检测数据中的异常值、离群点和突变波动
+description: 检测数据中的异常值、离群点和突变波动（Z-Score/IQR双方法）
 level: L1
 
 template: anomaly_analysis
+template_module: src.analysis_templates.anomaly_analysis.AnomalyAnalysis
+calculator: src.calculators.anomaly.AnomalyCalculator
 default_algorithm: zscore
 supported_algorithms:
   - zscore
   - iqr
-  - isolation_forest
 
 keywords:
   - 异常
@@ -20,17 +22,53 @@ keywords:
   - 异常值
   - outlier
   - 突变点
+  - 异常检测
+
+business_questions:
+  - 数据中有异常值吗？
+  - 哪些记录看起来不正常？
+  - 最近有没有突变波动？
+  - 是否存在数据质量问题？
 
 priority: 72
 
+schema_requirements:
+  dimension_type: category
+  metric_type: numeric
+  min_dimension: 1
+  min_metric: 1
+  min_rows: 5
+  min_distinct_values: 3
+
+required_fields:
+  - 销售额
+  - 数量
+  - 金额
+
 outputs:
   charts:
-    - scatter      # 异常点标注图
+    - name: anomaly_scatter
+      label: 异常检测散点图
+      description: 标注正常/异常的数据点
   tables:
-    - anomaly_table   # 异常明细表
+    - name: anomaly_detail
+      label: 异常明细表
+      description: 异常分类、指标值、Z-Score
   kpis:
-    - anomaly_count
-    - anomaly_rate
+    - name: anomaly_count
+      label: 异常值数量
+      description: 检测到的异常数据点数量
+    - name: anomaly_rate
+      label: 异常率
+      description: 异常值占总数据的百分比
+    - name: detection_method
+      label: 检测方法
+      description: 使用的异常检测算法
+
+derived_metrics:
+  - z_score
+  - anomaly_indices
+  - anomaly_rate
 
 examples:
   - 数据中有异常值吗？
@@ -39,3 +77,10 @@ examples:
 
 fallback:
   - structure
+
+generator_rules:
+  - requires: ["numeric"]
+    priority: low
+    reason: 识别数据中的离群点
+    question_template: "{num0}是否存在异常值？"
+    goal_template: "{num0}的异常值检测"

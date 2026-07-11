@@ -1,0 +1,25 @@
+name: wide
+description: 宽屏布局 - BI 大屏层次感：Hero全宽 → Large左右 → Medium三列 → Small底部
+columns: 12
+hero_cols: 12
+
+section_order:
+  - header
+  - hero
+  - main
+  - secondary
+  - footer
+
+size_grid:
+  hero:    [12, 3]   # 全宽 × 3 行 — 核心指标或总览
+  large:   [6,  2]   # 半宽 × 2 行 — 趋势/对比图
+  medium:  [4,  2]   # 1/3宽 × 2 行 — 分类/结构图
+  small:   [3,  2]   # 1/4宽 × 2 行 — 辅助 KPI
+
+section_gap: 2
+widget_gap: 1
+page_margin: 1
+max_section_weight: 24
+rebalance_enabled: true
+hero_max: 1
+main_per_row: 3

@@ -555,9 +555,9 @@ export default function AnalysisPage() {
     );
   }
 
-  const inputClass = "w-full px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8b5cf6]/50 transition-colors";
-  const btnClass = "px-4 py-2 text-sm rounded-lg bg-[#8b5cf6]/80 text-white hover:bg-[#8b5cf6] disabled:opacity-50 transition-colors";
-  const btnFullClass = "w-full px-4 py-2 text-sm rounded-lg bg-[#8b5cf6]/80 text-white hover:bg-[#8b5cf6] disabled:opacity-50 transition-colors";
+  const inputClass = "w-full px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors";
+  const btnClass = "px-4 py-2 text-sm rounded-lg bg-[#8B5CF6]/80 text-white hover:bg-[#8B5CF6] disabled:opacity-50 transition-colors";
+  const btnFullClass = "w-full px-4 py-2 text-sm rounded-lg bg-[#8B5CF6]/80 text-white hover:bg-[#8B5CF6] disabled:opacity-50 transition-colors";
 
   /** IntentChecklist — 分析计划勾选列表（overview Tab 和 chat Tab 共用） */
   const IntentChecklist = () => {
@@ -567,7 +567,7 @@ export default function AnalysisPage() {
         <h3 className="text-sm font-semibold text-slate-300">
           📋 分析计划（勾选要执行的项目）
           {computeResult && computeResult.includes('自动推荐') && (
-            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[#22d3ee]/20 text-[#22d3ee]">自动推荐</span>
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-[#A78BFA]/20 text-[#A78BFA]">自动推荐</span>
           )}
         </h3>
         <div className="space-y-2">
@@ -603,7 +603,7 @@ export default function AnalysisPage() {
           <button
             onClick={handleRunAnalysis}
             disabled={computing || !intents.some(i => i.checked)}
-            className="ml-auto flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-lg bg-gradient-to-r from-[#8b5cf6]/80 to-[#a78bfa]/80 text-white hover:from-[#8b5cf6] hover:to-[#a78bfa] disabled:opacity-30 transition-all"
+            className="ml-auto flex items-center gap-1.5 px-4 py-1.5 text-xs rounded-lg bg-gradient-to-r from-[#8B5CF6]/80 to-[#A78BFA]/80 text-white hover:from-[#8B5CF6] hover:to-[#A78BFA] disabled:opacity-30 transition-all"
           >
             <FiTrendingUp className="w-3.5 h-3.5" />
             {computing ? '执行中...' : '⚡ 执行分析'}
@@ -636,7 +636,7 @@ export default function AnalysisPage() {
             onClick={() => setTab(id)}
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all border-b-2 ${
               tab === id
-                ? 'text-[#f8fafc] border-[#8b5cf6]'
+                ? 'text-[#f8fafc] border-[#8B5CF6]'
                 : 'text-slate-500 border-transparent hover:text-slate-300'
             }`}
           >
@@ -694,7 +694,7 @@ export default function AnalysisPage() {
                 <button
                   onClick={() => handleApplyInsights()}
                   disabled={loading || computing}
-                  className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-gradient-to-r from-[#22d3ee]/20 to-[#a78bfa]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:from-[#22d3ee]/30 hover:to-[#a78bfa]/30 disabled:opacity-50 transition-all"
+                  className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-gradient-to-r from-[#A78BFA]/20 to-[#A78BFA]/20 border border-[#A78BFA]/30 text-[#A78BFA] hover:from-[#A78BFA]/30 hover:to-[#A78BFA]/30 disabled:opacity-50 transition-all"
                 >
                   <FiZap className="w-4 h-4" />
                   {computing ? '生成中...' : '🚀 一键生成分析计划'}
@@ -709,7 +709,7 @@ export default function AnalysisPage() {
             {insights && !insights.startsWith('⚠️') && (
               <div className="glass-card p-4 space-y-3">
                 <div 
-                  className="text-sm text-slate-300 leading-relaxed prose-a:text-[#8b5cf6] prose-strong:text-[#f8fafc] max-h-80 overflow-y-auto pr-2"
+                  className="text-sm text-slate-300 leading-relaxed prose-a:text-[#8B5CF6] prose-strong:text-[#f8fafc] max-h-80 overflow-y-auto pr-2"
                   style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(139,92,246,0.3) transparent' }}
                   dangerouslySetInnerHTML={{ __html: renderMarkdown(insights) }}
                 />
@@ -730,7 +730,7 @@ export default function AnalysisPage() {
                       const ids = analysisPackages.filter(p => p.id).map(p => p.id as string);
                       if (ids.length > 0) handleSavePackages(ids);
                     }}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30 transition-all"
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-[#A78BFA]/20 border border-[#A78BFA]/30 text-[#A78BFA] hover:bg-[#A78BFA]/30 transition-all"
                   >
                     <FiSave className="w-3.5 h-3.5" />
                     保存到仪表盘
@@ -762,7 +762,7 @@ export default function AnalysisPage() {
                         }
                       }}
                       className={`w-full text-left px-3 py-2 text-xs rounded mb-1 transition-all duration-200 ${
-                        i===selectedPkgIndex ? 'bg-[#22d3ee]/10 border border-[#22d3ee]/20 text-[#22d3ee]' : 'bg-white/[0.03] text-slate-400 hover:text-white'
+                        i===selectedPkgIndex ? 'bg-[#A78BFA]/10 border border-[#A78BFA]/20 text-[#A78BFA]' : 'bg-white/[0.03] text-slate-400 hover:text-white'
                       }`}>
                       <span className="block truncate">{pkg.business_question as string}</span>
                       <span className="text-[10px] text-slate-500">{pkg.analysis_type as string}</span>
@@ -773,7 +773,7 @@ export default function AnalysisPage() {
                     const ids = analysisPackages.filter(p=>p.id).map(p=>p.id as string);
                     if (ids.length>0) handleSavePackages(ids);
                   }}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30">
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs rounded-lg bg-[#A78BFA]/20 border border-[#A78BFA]/30 text-[#A78BFA] hover:bg-[#A78BFA]/30">
                   <FiSave className="w-3.5 h-3.5"/>保存到仪表盘
                 </button>
               </div>
@@ -820,7 +820,7 @@ export default function AnalysisPage() {
                   {chartFigure && chartType !== 'table' && (<>
                     <EChartView option={chartFigure} height={420}/>
                     <button onClick={handleSaveChart} disabled={!chartInfo}
-                      className="flex items-center gap-2 px-4 py-2 text-xs rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30">
+                      className="flex items-center gap-2 px-4 py-2 text-xs rounded-lg bg-[#A78BFA]/20 border border-[#A78BFA]/30 text-[#A78BFA] hover:bg-[#A78BFA]/30">
                       <FiSave className="w-3.5 h-3.5"/>保存到仪表盘
                     </button>
                   </>)}
@@ -835,14 +835,14 @@ export default function AnalysisPage() {
           {/* 两按钮并排：生成洞察 + 一键生成分析计划 */}
           <div className="flex gap-3">
             {(!insights || insights.startsWith('⚠️')) && (
-              <button onClick={generateInsights} disabled={loading} className="flex-1 px-6 py-3 text-sm rounded-lg bg-[#8b5cf6]/80 text-white hover:bg-[#8b5cf6] disabled:opacity-50 transition-colors">
+              <button onClick={generateInsights} disabled={loading} className="flex-1 px-6 py-3 text-sm rounded-lg bg-[#8B5CF6]/80 text-white hover:bg-[#8B5CF6] disabled:opacity-50 transition-colors">
                 {loading ? '分析中...' : '📊 生成数据洞察'}
               </button>
             )}
             <button
               onClick={() => handleApplyInsights()}
               disabled={loading || computing}
-              className="flex items-center justify-center gap-2 px-6 py-3 text-sm rounded-lg bg-gradient-to-r from-[#22d3ee]/20 to-[#a78bfa]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:from-[#22d3ee]/30 hover:to-[#a78bfa]/30 disabled:opacity-50 transition-all"
+              className="flex items-center justify-center gap-2 px-6 py-3 text-sm rounded-lg bg-gradient-to-r from-[#A78BFA]/20 to-[#A78BFA]/20 border border-[#A78BFA]/30 text-[#A78BFA] hover:from-[#A78BFA]/30 hover:to-[#A78BFA]/30 disabled:opacity-50 transition-all"
             >
               <FiZap className="w-4 h-4" />
               {computing ? '生成中...' : '🚀 一键生成分析计划'}
@@ -853,7 +853,7 @@ export default function AnalysisPage() {
             <div className="glass-card p-4 space-y-3">
               <h3 className="text-sm font-semibold text-slate-300 mb-2">📊 数据洞察报告</h3>
               <div 
-                className="text-sm text-slate-300 leading-relaxed prose-a:text-[#8b5cf6] prose-strong:text-[#f8fafc] max-h-96 overflow-y-auto pr-2"
+                className="text-sm text-slate-300 leading-relaxed prose-a:text-[#8B5CF6] prose-strong:text-[#f8fafc] max-h-96 overflow-y-auto pr-2"
                 style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(139,92,246,0.3) transparent' }}
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(insights) }}
               />
@@ -876,7 +876,7 @@ export default function AnalysisPage() {
                     const ids = analysisPackages.filter(p => p.id).map(p => p.id as string);
                     if (ids.length > 0) handleSavePackages(ids);
                   }}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30 transition-all"
+                  className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-[#A78BFA]/20 border border-[#A78BFA]/30 text-[#A78BFA] hover:bg-[#A78BFA]/30 transition-all"
                 >
                   <FiSave className="w-3.5 h-3.5" />
                   保存到仪表盘
@@ -892,7 +892,7 @@ export default function AnalysisPage() {
                 <div
                   className={`max-w-[80%] p-3 rounded-lg text-sm ${
                     msg.role === 'user'
-                      ? 'bg-[#8b5cf6]/30 text-slate-200'
+                      ? 'bg-[#8B5CF6]/30 text-slate-200'
                       : 'glass-card text-slate-300'
                   }`}
                 >
@@ -900,7 +900,7 @@ export default function AnalysisPage() {
                     <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
                   ) : (
                     <div>
-                      <div className="leading-relaxed prose-a:text-[#8b5cf6] prose-strong:text-[#f8fafc] max-h-64 overflow-y-auto pr-1"
+                      <div className="leading-relaxed prose-a:text-[#8B5CF6] prose-strong:text-[#f8fafc] max-h-64 overflow-y-auto pr-1"
                         style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(139,92,246,0.3) transparent' }}
                         dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
                       />
@@ -908,7 +908,7 @@ export default function AnalysisPage() {
                         <button
                           onClick={() => handleApplyInsights(msg.content)}
                           disabled={loading || computing}
-                          className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-[#22d3ee]/10 border border-[#22d3ee]/20 text-[#22d3ee] hover:bg-[#22d3ee]/20 disabled:opacity-50 transition-colors"
+                          className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-[#A78BFA]/10 border border-[#A78BFA]/20 text-[#A78BFA] hover:bg-[#A78BFA]/20 disabled:opacity-50 transition-colors"
                           title="基于这条建议自动计算并生成图表"
                         >
                           <FiZap className="w-3 h-3" />
@@ -928,12 +928,12 @@ export default function AnalysisPage() {
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendChat()}
               placeholder="输入你的数据分析问题..."
-              className="flex-1 px-4 py-3 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+              className="flex-1 px-4 py-3 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
             />
             <button
               onClick={sendChat}
               disabled={loading || !chatInput.trim() || !ds.apiKey}
-              className="px-6 py-3 text-sm rounded-lg bg-[#8b5cf6]/80 text-white hover:bg-[#8b5cf6] disabled:opacity-50 transition-colors"
+              className="px-6 py-3 text-sm rounded-lg bg-[#8B5CF6]/80 text-white hover:bg-[#8B5CF6] disabled:opacity-50 transition-colors"
             >
               发送
             </button>

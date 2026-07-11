@@ -1,37 +1,77 @@
-# 地理空间分析 —— 区域数据的可视化展示
+﻿# 地理空间分析 —— 区域数据的可视化展示
+# V3：扩展为完整分析知识
 intent: geo
 display_name: 地理空间分析
 description: 分析数据在地理空间上的分布特征，生成中国地图可视化
 level: L2
 
 template: geo_analysis
+template_module: src.analysis_templates.geo_analysis.GeoAnalysis
+calculator: ""
 default_algorithm: null
 supported_algorithms: []
 
 keywords:
   - 地理
   - 地图
-  - 区域
   - 省份
   - 城市
-  - 分布
   - 热力
   - 空间
   - 地域
   - 省市
+  - 区域分布
+  - 地理空间
+  - 地理分布
+  - 地区分布
+
+business_questions:
+  - 各省份销售金额的地理分布如何？
+  - 哪些地区是销售高地？
+  - 客户分布在哪些城市？
+  - 退货数在哪些省份集中？
 
 priority: 85
 
+schema_requirements:
+  dimension_type: category
+  metric_type: numeric
+  min_dimension: 1
+  min_metric: 1
+  min_rows: 3
+  min_distinct_values: 2
+
+required_fields:
+  - 省份
+  - 城市
+  - 地区
+
 outputs:
   charts:
-    - map      # 省级填充地图（Choropleth）
-    - scatter  # 散点地图（Bubble Map）
+    - name: choropleth_map
+      label: 省级填充地图
+      description: 中国省级区域的指标填充地图
+    - name: bubble_map
+      label: 散点地图
+      description: 城市级的气泡散点地图
   tables:
-    - geo_summary    # 区域汇总表
-    - geo_ranking    # 区域排名表
+    - name: geo_summary
+      label: 区域汇总表
+      description: 各区域的指标汇总
+    - name: geo_ranking
+      label: 区域排名表
+      description: 按指标降序的区域排名
   kpis:
-    - geo_coverage
-    - top_region
+    - name: geo_coverage
+      label: 地理覆盖
+      description: 数据覆盖的区域数量
+    - name: top_region
+      label: 最高区域
+      description: 指标值最高的区域
+
+derived_metrics:
+  - geo_coverage
+  - top_region
 
 examples:
   - 各省份销售金额的地理分布如何？
@@ -42,3 +82,10 @@ examples:
 fallback:
   - ranking
   - structure
+
+generator_rules:
+  - requires: ["geo", "numeric"]
+    priority: high
+    reason: 发现地理相关列，可进行地理空间分析
+    question_template: "各地区的{num0}分布如何？"
+    goal_template: "{num0}的地理空间分布分析"

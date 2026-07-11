@@ -1,0 +1,28 @@
+name: finance
+description: 财务分析布局 - KPI 卡片突出，图表辅助
+columns: 12
+hero_cols: 10
+
+section_order:
+  - header
+  - hero
+  - main
+  - secondary
+  - footer
+
+size_grid:
+  hero:    [10, 2]
+  large:   [5,  2]
+  medium:  [3,  2]
+  small:   [2,  2]
+
+section_gap: 2
+widget_gap: 0
+page_margin: 1
+max_section_weight: 20
+rebalance_enabled: true
+main_per_row: 4
+
+default_filter: time
+cross_filter_groups:
+  - region

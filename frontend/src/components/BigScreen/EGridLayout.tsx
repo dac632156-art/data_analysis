@@ -1,6 +1,6 @@
 /* EGridLayout - ECharts 网格大屏（DataV 发光边框 + AnimatedNumber + 图表 + 表格） */
 import React, { useState, useMemo } from 'react';
-import { BorderBox1, Decoration5, Decoration8 } from '@jiaminghi/data-view-react';
+import { BorderBox1 } from '@jiaminghi/data-view-react';
 import EChartView, { EChartsOption } from '../EChartView';
 import GLMapView from '../GLMapView';
 import AnimatedNumber from '../AnimatedNumber';
@@ -71,12 +71,12 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
       <div className="relative flex items-center justify-between px-8 py-4 border-b border-[#1a1f3a]/50">
         {/* 顶部装饰线 */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2" style={{ width: '60%' }}>
-          <Decoration8 style={{ width: '100%', height: '20px' }} />
+          <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-[#7DD3FC]/40 to-transparent" />
         </div>
         <div className="flex items-center gap-4 pt-2">
-          <div className="w-2 h-8 bg-gradient-to-b from-[#22d3ee] to-[#8b5cf6] rounded-full" />
+          <div className="w-2 h-8 bg-gradient-to-b from-[#7DD3FC] to-[#38BDF8] rounded-full" />
           <h1 className="text-2xl font-bold text-white tracking-wider"
-            style={{ textShadow: '0 0 30px rgba(34,211,238,0.5)' }}>
+            style={{ textShadow: '0 0 30px rgba(125,211,252,0.5)' }}>
             {title}
           </h1>
         </div>
@@ -85,7 +85,7 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
             <button onClick={() => setShowTable(!showTable)}
               className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
                 showTable
-                  ? 'bg-[#22d3ee]/15 text-[#22d3ee] border border-[#22d3ee]/20'
+                  ? 'bg-[#7DD3FC]/15 text-[#7DD3FC] border border-[#7DD3FC]/20'
                   : 'bg-transparent text-slate-500 hover:text-slate-300 border border-[#1a1f3a]'
               }`}>
               📋 数据表格 {showTable ? '▲' : '▼'}
@@ -105,12 +105,12 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
       {/* ★ 联动高亮状态提示 */}
       {highlightLabel && (
         <div className="flex items-center justify-center gap-3 px-4 py-2"
-          style={{ background: 'rgba(34,211,238,0.12)', borderBottom: '1px solid rgba(34,211,238,0.15)' }}>
-          <span className="text-xs text-[#22d3ee]">
+          style={{ background: 'rgba(125,211,252,0.12)', borderBottom: '1px solid rgba(125,211,252,0.15)' }}>
+          <span className="text-xs text-[#7DD3FC]">
             🔗 联动高亮：<strong className="text-white">{highlightLabel}</strong>
           </span>
           <button onClick={() => setHighlightLabel(null)}
-            className="px-2 py-0.5 text-xs rounded bg-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/50 transition-colors border border-[#22d3ee]/30">
+            className="px-2 py-0.5 text-xs rounded bg-[#7DD3FC]/30 text-[#7DD3FC] hover:bg-[#7DD3FC]/50 transition-colors border border-[#7DD3FC]/30">
             ✕ 清除
           </button>
         </div>
@@ -121,14 +121,14 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
         <div className="relative px-6 py-4 border-b border-[#1a1f3a]/30">
           <div className="grid grid-cols-5 gap-4">
             {kpis.slice(0, 5).map((kpi, i) => {
-              const color = kpi.color || '#22d3ee';
+              const color = kpi.color || '#7DD3FC';
               const numVal = typeof kpi.value === 'number' ? kpi.value : parseFloat(String(kpi.value));
               const isNum = !isNaN(numVal);
               return (
                 <div key={i} className="relative p-4 rounded-lg"
                   style={{
-                    background: 'rgba(34,211,238,0.04)',
-                    border: '1px solid rgba(34,211,238,0.08)',
+                    background: 'rgba(125,211,252,0.04)',
+                    border: '1px solid rgba(125,211,252,0.08)',
                   }}>
                   {/* 角落装饰 */}
                   <div className="absolute top-0 left-0 w-3 h-3 border-t border-l" style={{ borderColor: color }} />
@@ -144,7 +144,7 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
                         {isNum ? <AnimatedNumber value={numVal} duration={1.2} decimals={numVal % 1 !== 0 ? 2 : 0} /> : String(kpi.value)}
                       </p>
                       {kpi.trend && kpi.trend !== 'flat' && kpi.change != null && kpi.change !== 0 && (
-                        <p className="text-[10px] font-semibold mt-0.5" style={{ color: kpi.trend === 'up' ? '#4ade80' : '#f87171' }}>
+                        <p className="text-[10px] font-semibold mt-0.5" style={{ color: kpi.trend === 'up' ? '#34D399' : '#FB7185' }}>
                           {kpi.trend === 'up' ? '↑' : '↓'} {Math.abs(kpi.change) >= 100 ? Math.abs(kpi.change).toFixed(0) : Math.abs(kpi.change).toFixed(1)}%
                         </p>
                       )}
@@ -160,7 +160,7 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
       {/* ★ V2 分析包区域 */}
       {packages && packages.length > 0 && (
         <div className="px-6 py-4 border-b border-[#1a1f3a]/30" style={{ animation: 'fadeIn 0.4s ease' }}>
-          <h2 className="text-sm font-semibold text-[#22d3ee] mb-3">📊 AI 分析结果</h2>
+          <h2 className="text-sm font-semibold text-[#7DD3FC] mb-3">📊 AI 分析结果</h2>
           <VisualizationRenderer packages={packages} />
         </div>
       )}
@@ -168,24 +168,24 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
       {/* ★ 图表网格 - DataV BorderBox1 发光边框 */}
       <div className={`grid grid-cols-3 gap-4 p-6 ${showTable ? '' : 'flex-1'} overflow-auto`}>
         {echarts.length > 0 ? (
-          echarts.slice(0, 6).map((chart, i) => {
+          echarts.map((chart, i) => {
             const isGL = isGLOption(chart.option);
             const isAnalysisTable = chart.chart_type === 'analysis_table' && chart.table_data;
             const gridSpan = isGL ? { gridColumn: 'span 3' } : isAnalysisTable ? { gridColumn: 'span 3' } : {};
 
             return (
               <div key={i} style={gridSpan}>
-                <BorderBox1 color={['#22d3ee', '#8b5cf6']} style={{ padding: '6px' }}>
+                <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '6px' }}>
                   {isGL ? (
                     <GLMapView option={chart.option} height={520} title={hideChartTitle ? undefined : chart.title} />
                   ) : isAnalysisTable ? (
                     <div style={{ padding: '12px', background: 'rgba(10,14,30,0.95)', borderRadius: '8px', maxHeight: '380px', overflow: 'auto' }}>
                       {!hideChartTitle && chart.title && (
-                        <h3 className="text-sm font-semibold text-[#a78bfa] mb-4">{chart.title}</h3>
+                        <h3 className="text-sm font-semibold text-[#7DD3FC] mb-4">{chart.title}</h3>
                       )}
                       <table className="w-full text-xs">
                         <thead>
-                          <tr style={{ background: 'rgba(34,211,238,0.1)' }}>
+                          <tr style={{ background: 'rgba(125,211,252,0.1)' }}>
                             {chart.table_data.columns.map((col: string, ci: number) => (
                               <th key={ci} className="px-3 py-2 text-left text-slate-400 font-semibold">{col}</th>
                             ))}
@@ -193,7 +193,7 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
                         </thead>
                         <tbody>
                           {chart.table_data.rows.map((row: unknown[], ri: number) => (
-                            <tr key={ri} style={{ borderBottom: '1px solid rgba(34,211,238,0.04)', background: ri % 2 === 0 ? 'rgba(15,23,42,0.5)' : undefined }}>
+                            <tr key={ri} style={{ borderBottom: '1px solid rgba(125,211,252,0.04)', background: ri % 2 === 0 ? 'rgba(15,23,42,0.5)' : undefined }}>
                               {row.map((cell: unknown, ci: number) => (
                                 <td key={ci} className="px-3 py-2 text-slate-300">{cell !== null && cell !== undefined ? String(cell) : '-'}</td>
                               ))}
@@ -227,11 +227,11 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
       {/* ★ 数据表格 */}
       {showTable && displayRows.length > 0 && (
         <div className="px-6 pb-6 overflow-auto" style={{ maxHeight: '320px' }}>
-          <BorderBox1 color={['#22d3ee', '#8b5cf6']} style={{ padding: '4px' }}>
+          <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '4px' }}>
             <div className="rounded-lg" style={{ background: 'rgba(10,14,30,0.95)' }}>
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10">
-                  <tr style={{ background: 'rgba(34,211,238,0.12)' }}>
+                  <tr style={{ background: 'rgba(125,211,252,0.12)' }}>
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">#</th>
                     {columns.map((col) => (
                       <th key={col} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -242,7 +242,7 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
                 </thead>
                 <tbody>
                   {displayRows.map((row, i) => (
-                    <tr key={i} className="border-t border-white/[0.03] hover:bg-[#22d3ee]/[0.05] transition-colors">
+                    <tr key={i} className="border-t border-white/[0.03] hover:bg-[#7DD3FC]/[0.05] transition-colors">
                       <td className="px-4 py-2 text-xs text-slate-500">{i + 1}</td>
                       {columns.map((col) => (
                         <td key={col} className="px-4 py-2 text-xs text-slate-300 whitespace-nowrap">
@@ -264,7 +264,7 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
       {/* ★ 同环比表格（从已保存图表中提取） */}
       {tbHbCharts.length > 0 && tbHbCharts.map((tb, idx) => (
         <div key={idx} className="px-6 pb-6">
-          <BorderBox1 color={['#22d3ee', '#8b5cf6']} style={{ padding: '8px' }}>
+          <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '8px' }}>
             <div className="rounded-lg p-4" style={{ background: 'rgba(10,14,30,0.95)' }}>
               <TbHbTable
                 data={tb.rows}
@@ -281,7 +281,7 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
 
       {/* ★ 底部装饰线 */}
       <div className="px-8 pb-2">
-        <Decoration5 style={{ width: '100%', height: '20px', opacity: 0.3 }} />
+        <div className="w-full h-px bg-gradient-to-r from-transparent via-[#38BDF8]/30 to-transparent" />
       </div>
     </div>
   );

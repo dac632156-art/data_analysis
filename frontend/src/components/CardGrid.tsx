@@ -50,10 +50,10 @@ function KPICard({ card }: { card: CardItem }) {
   const change = d?.change as string | null;
   const kpiType = d?.kpi_type as string;
   const colorMap: Record<string, string> = {
-    sum: "#06b6d4", rate: "#10b981", change: "#f43f5e",
-    avg: "#8b5cf6", count: "#f59e0b",
+    sum: "#8B5CF6", rate: "#34D399", change: "#FB7185",
+    avg: "#8B5CF6", count: "#FBBF24",
   };
-  const color = colorMap[kpiType] || "#06b6d4";
+  const color = colorMap[kpiType] || "#8B5CF6";
   const isUp = change && !String(change).startsWith("-") && String(change) !== "0";
   const isDown = change && String(change).startsWith("-");
   return (
@@ -66,7 +66,7 @@ function KPICard({ card }: { card: CardItem }) {
       <p className="text-3xl font-bold font-mono mb-2" style={{ color }}>{value}</p>
       {change && (
         <div className="flex items-center gap-1.5">
-          <span className="text-xs font-bold" style={{ color: isUp ? "#10b981" : isDown ? "#f43f5e" : "#94a3b8" }}>
+          <span className="text-xs font-bold" style={{ color: isUp ? "#34D399" : isDown ? "#FB7185" : "#94a3b8" }}>
             {isUp ? "\\u25B2" : isDown ? "\\u25BC" : "\\u2014"} {String(change).replace(/[+%]/g, "")}%
           </span>
         </div>
@@ -81,7 +81,7 @@ function ChartCard({ card }: { card: CardItem }) {
     return (
       <div className="p-8 flex items-center justify-center rounded-2xl" style={{
         background: "rgba(15,23,42,0.4)",
-        border: "1px solid rgba(34,211,238,0.08)",
+        border: "1px solid rgba(167,139,250,0.08)",
         color: "#475569",
       }}>
         <p className="text-xs">图表数据缺失</p>
@@ -103,7 +103,7 @@ function ChartCard({ card }: { card: CardItem }) {
   return (
     <div className="p-4 rounded-2xl" style={{
       background: "rgba(15,23,42,0.6)",
-      border: "1px solid rgba(34,211,238,0.1)",
+      border: "1px solid rgba(167,139,250,0.1)",
       boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
     }}>
       <h3 className="text-sm font-semibold text-cyan-400 mb-3">{card.title}</h3>
@@ -120,7 +120,7 @@ function TableCard({ card }: { card: CardItem }) {
     return (
       <div className="p-8 flex items-center justify-center rounded-2xl" style={{
         background: "rgba(15,23,42,0.4)",
-        border: "1px solid rgba(34,211,238,0.08)",
+        border: "1px solid rgba(167,139,250,0.08)",
         color: "#475569",
       }}>
         <p className="text-xs">表格数据为空</p>
@@ -130,16 +130,16 @@ function TableCard({ card }: { card: CardItem }) {
   return (
     <div className="p-4 rounded-2xl" style={{
       background: "rgba(15,23,42,0.6)",
-      border: "1px solid rgba(34,211,238,0.1)",
+      border: "1px solid rgba(167,139,250,0.1)",
       boxShadow: "0 4px 24px rgba(0,0,0,0.2)",
     }}>
       <h3 className="text-sm font-semibold text-violet-400 mb-3">{card.title}</h3>
       <div style={{ overflow: "auto", maxHeight: getChartHeight(card.size) - 40 }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
           <thead>
-            <tr style={{ background: "rgba(34,211,238,0.08)" }}>
+            <tr style={{ background: "rgba(167,139,250,0.08)" }}>
               {columns.map((col, i) => (
-                <th key={i} style={{ padding: "8px 12px", textAlign: "left", color: "#94a3b8", fontSize: 10, borderBottom: "1px solid rgba(34,211,238,0.15)", fontWeight: 600 }}>{col}</th>
+                <th key={i} style={{ padding: "8px 12px", textAlign: "left", color: "#94a3b8", fontSize: 10, borderBottom: "1px solid rgba(167,139,250,0.15)", fontWeight: 600 }}>{col}</th>
               ))}
             </tr>
           </thead>
@@ -147,7 +147,7 @@ function TableCard({ card }: { card: CardItem }) {
             {rows.slice(0, 30).map((row, ri) => (
               <tr key={ri} style={ri % 2 === 0 ? { background: "rgba(15,23,42,0.3)" } : undefined}>
                 {(row as unknown[]).map((cell, ci) => (
-                  <td key={ci} style={{ padding: "6px 12px", color: "#cbd5e1", borderBottom: "1px solid rgba(34,211,238,0.04)" }}>
+                  <td key={ci} style={{ padding: "6px 12px", color: "#cbd5e1", borderBottom: "1px solid rgba(167,139,250,0.041)" }}>
                     {formatCellValue(typeof cell === "object" && cell !== null && "value" in cell ? (cell as any).value : cell)}
                   </td>
                 ))}
@@ -177,8 +177,8 @@ function InsightCard({ card }: { card: CardItem }) {
   }
   return (
     <div className="p-4 rounded-2xl" style={{
-      background: isConclusion ? "rgba(139,92,246,0.08)" : "rgba(34,211,238,0.05)",
-      border: "1px solid " + (isConclusion ? "rgba(139,92,246,0.2)" : "rgba(34,211,238,0.15)"),
+      background: isConclusion ? "rgba(139,92,246,0.08)" : "rgba(167,139,250,0.05)",
+      border: "1px solid " + (isConclusion ? "rgba(139,92,246,0.2)" : "rgba(167,139,250,0.15)"),
     }}>
       <p className="text-xs text-slate-300 leading-relaxed">{String(text)}</p>
     </div>

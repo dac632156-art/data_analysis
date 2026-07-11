@@ -62,6 +62,9 @@ export default function FileUploader({ onUpload, disabled }: Props) {
         {/* 中环 - 旋转光圈 */}
         <div className="portal-ring-middle" />
 
+        {/* 第四环 - 第二道光圈（双环感） */}
+        <div className="portal-ring-quad" />
+
         {/* 内环 */}
         <div className="portal-ring-inner" />
 
@@ -75,9 +78,9 @@ export default function FileUploader({ onUpload, disabled }: Props) {
         {/* 能量核心 */}
         <div className="portal-core">
           {uploading ? (
-            <div className="w-8 h-8 rounded-full border-2 border-[#8b5cf6] border-t-transparent animate-spin" />
+            <div className="w-8 h-8 rounded-full border-2 border-[#a78bfa] border-t-transparent animate-spin" />
           ) : isDragActive ? (
-            <FiUploadCloud className="w-8 h-8 text-[#22d3ee]" />
+            <FiUploadCloud className="w-8 h-8 text-[#c4b5fd]" />
           ) : (
             <FiFile className="w-8 h-8 text-[#8b5cf6]" />
           )}

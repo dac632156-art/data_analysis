@@ -20,8 +20,17 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
 # 导入路由
-from backend.routers import upload, data, clean, stats, chart, dashboard, insights, chat, report, analysis
+from backend.routers import upload, data, clean, stats, chart, dashboard, insights, chat, report, analysis, reasoning
 from backend.services.session_manager import manager
+
+# ===== 强制 UTF-8 编码，避免 Windows 环境下 print() 中文报错 =====
+import sys as _sys
+if hasattr(_sys.stdout, 'reconfigure'):
+    try:
+        _sys.stdout.reconfigure(encoding='utf-8')
+        _sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 app = FastAPI(
     title="DataMind AI",
@@ -49,6 +58,7 @@ app.include_router(insights.router, prefix="/api", tags=["AI 洞察"])
 app.include_router(chat.router, prefix="/api", tags=["AI 对话"])
 app.include_router(report.router, prefix="/api", tags=["报告生成"])
 app.include_router(analysis.router, prefix="/api", tags=["分析执行"])
+app.include_router(reasoning.router, prefix="/api", tags=["业务推理"])
 
 
 # 全局异常处理器：捕获所有未处理的异常，返回详细错误信息
@@ -56,8 +66,8 @@ app.include_router(analysis.router, prefix="/api", tags=["分析执行"])
 async def global_exception_handler(request: Request, exc: Exception):
     """全局异常捕获：避免 500 时前端只看到 Network Error"""
     tb = traceback.format_exc()
-    print(f"[ERROR] {exc.__class__.__name__}: {str(exc)}")
-    print(f"[TRACEBACK]\n{tb}")
+    import logging as _logging; _logging.getLogger("uvicorn.error").error(f"{exc.__class__.__name__}: {exc}", exc_info=True)
+    # traceback logged via logging above
     return JSONResponse(
         status_code=500,
         content={

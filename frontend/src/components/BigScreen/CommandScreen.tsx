@@ -172,14 +172,14 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
         const ratio = maxVal > 0 ? d.value / maxVal : 0;
         const colors = [
           'rgba(15,12,41,0.6)', 'rgba(45,27,105,0.55)', 'rgba(74,45,138,0.5)',
-          'rgba(99,102,241,0.45)', 'rgba(59,130,246,0.4)', 'rgba(6,182,212,0.38)',
-          'rgba(34,211,238,0.35)', 'rgba(103,232,249,0.3)',
+          'rgba(59,130,246,0.45)', 'rgba(59,130,246,0.4)', 'rgba(6,182,212,0.38)',
+          'rgba(125,211,252,0.35)', 'rgba(103,232,249,0.3)',
         ];
         const idx = Math.min(Math.floor(ratio * (colors.length - 1)), colors.length - 1);
         return {
           name: d.geoName,
           itemStyle: { areaColor: colors[idx] },
-          label: { show: true, color: '#c4b5fd', fontSize: 10 },
+          label: { show: true, color: '#BFDBFE', fontSize: 10 },
         };
       })
     : [];
@@ -188,7 +188,7 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
     tooltip: {
       trigger: 'item',
       backgroundColor: 'rgba(15,12,41,0.95)',
-      borderColor: '#6366f1',
+      borderColor: '#3B82F6',
       borderWidth: 1,
       textStyle: { color: '#e0e7ff', fontSize: 12 },
     },
@@ -200,17 +200,17 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
       aspectScale: 0.85,
       regions,
       itemStyle: {
-        areaColor: '#0f0c29',
+        areaColor: '#0B1025',
         borderColor: '#312e81',
         borderWidth: 1,
         shadowBlur: 6,
-        shadowColor: 'rgba(99,102,241,0.25)',
+        shadowColor: 'rgba(59,130,246,0.25)',
       },
       emphasis: {
         itemStyle: {
           areaColor: '#4f46e5',
           shadowBlur: 25,
-          shadowColor: 'rgba(99,102,241,0.7)',
+          shadowColor: 'rgba(59,130,246,0.7)',
         },
         label: { show: true, color: '#f0e6ff', fontSize: 14, fontWeight: 'bold' },
       },
@@ -227,9 +227,9 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
           brushType: 'stroke',
           scale: 4,
           period: 4,
-          color: '#818cf8',
+          color: '#7DD3FC',
         },
-        itemStyle: { color: '#e0e7ff', shadowBlur: 10, shadowColor: 'rgba(129,140,248,0.8)' },
+        itemStyle: { color: '#e0e7ff', shadowBlur: 10, shadowColor: 'rgba(125,211,252,0.8)' },
         label: {
           show: true,
           position: 'top',
@@ -252,14 +252,14 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
         type: 'lines',
         coordinateSystem: 'geo',
         data: linesData,
-        lineStyle: { color: '#818cf8', width: 1, opacity: 0.4, curveness: 0.2 },
+        lineStyle: { color: '#7DD3FC', width: 1, opacity: 0.4, curveness: 0.2 },
         effect: {
           show: true,
           period: 5,
           trailLength: 0.3,
           trailWidth: 1.5,
           symbolSize: 4,
-          color: '#818cf8',
+          color: '#7DD3FC',
         },
         zlevel: 1,
       },
@@ -339,10 +339,10 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
   }, [packages]);
 
   const KPIRow = ({ kpi }: { kpi: Props['kpis'][0] }) => {
-    const color = kpi.color || '#22d3ee';
+    const color = kpi.color || '#7DD3FC';
     const numVal = typeof kpi.value === 'number' ? kpi.value : parseFloat(String(kpi.value));
     return (
-      <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid rgba(34,211,238,0.06)' }}>
+      <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid rgba(125,211,252,0.06)' }}>
         <span className="text-[11px] text-slate-400 truncate">{kpi.title}</span>
         <span className="text-sm font-bold font-mono" style={{ color, textShadow: `0 0 12px ${color}40` }}>
           <AnimatedNumber value={isNaN(numVal) ? 0 : numVal} duration={1.5} decimals={numVal % 1 !== 0 ? 2 : 0} />
@@ -360,14 +360,14 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
       }}
     >
       {/* 顶部标题栏 */}
-      <div className="flex items-center justify-between px-6 py-3" style={{ borderBottom: '1px solid rgba(34,211,238,0.12)' }}>
+      <div className="flex items-center justify-between px-6 py-3" style={{ borderBottom: '1px solid rgba(125,211,252,0.12)' }}>
         <div className="flex items-center gap-4">
-          <div className="w-1.5 h-6 bg-gradient-to-b from-[#22d3ee] to-[#8b5cf6] rounded-full" />
-          <h1 className="text-xl font-bold text-white tracking-widest" style={{ textShadow: '0 0 30px rgba(34,211,238,0.6)' }}>数据智能指挥中心</h1>
+          <div className="w-1.5 h-6 bg-gradient-to-b from-[#7DD3FC] to-[#38BDF8] rounded-full" />
+          <h1 className="text-xl font-bold text-white tracking-widest" style={{ textShadow: '0 0 30px rgba(125,211,252,0.6)' }}>数据智能指挥中心</h1>
         </div>
         <div className="flex items-center gap-8 text-xs">
-          <span className="flex items-center gap-2 text-[#22d3ee]">
-            <span className="w-2 h-2 rounded-full bg-[#22d3ee] animate-pulse shadow-[0_0_8px_#22d3ee]" />系统运行中
+          <span className="flex items-center gap-2 text-[#7DD3FC]">
+            <span className="w-2 h-2 rounded-full bg-[#7DD3FC] animate-pulse shadow-[0_0_8px_#7DD3FC]" />系统运行中
           </span>
           <span className="text-slate-400 font-mono">{new Date().toLocaleString('zh-CN')}</span>
         </div>
@@ -379,30 +379,30 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
         {/* 左侧面板 */}
         <div className="flex flex-col gap-3" style={{ width: '22%', minWidth: 240 }}>
           <div className="flex-1 flex flex-col gap-2" style={{
-            background: 'rgba(34,211,238,0.03)',
-            border: '1px solid rgba(34,211,238,0.08)',
+            background: 'rgba(125,211,252,0.03)',
+            border: '1px solid rgba(125,211,252,0.08)',
             borderRadius: '8px',
             padding: '10px 14px',
           }}>
-            <div className="text-xs text-[#22d3ee] font-semibold mb-2 tracking-wider">📊 数据总览</div>
+            <div className="text-xs text-[#7DD3FC] font-semibold mb-2 tracking-wider">📊 数据总览</div>
             <div className="flex flex-col gap-0.5">
               {kpis.slice(0, 4).map((kpi, i) => <KPIRow key={i} kpi={kpi} />)}
             </div>
             <div className="flex-1" />
-            <div className="text-xs text-[#a78bfa] font-semibold mb-2 tracking-wider">📋 数据预览</div>
+            <div className="text-xs text-[#7DD3FC] font-semibold mb-2 tracking-wider">📋 数据预览</div>
             <div className="overflow-auto" style={{ height: '160px' }}>
               {/* ... 数据预览表格 ... */}
               {dataPreview && dataPreview.length > 0 ? (
                 <table className="w-full text-[10px]">
                   <thead>
-                    <tr style={{ background: 'rgba(139,92,246,0.1)' }}>
+                    <tr style={{ background: 'rgba(56,189,248,0.1)' }}>
                       <th className="px-2 py-1.5 text-left text-slate-500">#</th>
                       {Object.keys(dataPreview[0]).slice(0, 3).map((k) => <th key={k} className="px-2 py-1.5 text-left text-slate-500">{k}</th>)}
                     </tr>
                   </thead>
                   <tbody>
                     {dataPreview.slice(0, 6).map((row, i) => (
-                      <tr key={i} className="border-t border-white/[0.03] hover:bg-[#22d3ee]/[0.05]">
+                      <tr key={i} className="border-t border-white/[0.03] hover:bg-[#7DD3FC]/[0.05]">
                         <td className="px-2 py-1 text-slate-600">{i + 1}</td>
                         {Object.keys(dataPreview[0]).slice(0, 3).map((k) => <td key={k} className="px-2 py-1 text-slate-300">{String(row[k] ?? '-')}</td>)}
                       </tr>
@@ -416,7 +416,7 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
             {/* V2: AI 摘要 */}
             {aiSummary.length > 0 && (
               <div className="mt-3 pt-2 border-t border-white/[0.06]">
-                <div className="text-xs text-[#f59e0b] font-semibold mb-2 tracking-wider">🤖 AI 摘要</div>
+                <div className="text-xs text-[#FBBF24] font-semibold mb-2 tracking-wider">🤖 AI 摘要</div>
                 <div className="overflow-auto" style={{ maxHeight: '120px' }}>
                   {aiSummary.map((ins, i) => (
                     <p key={i} className="text-[10px] text-slate-400 mb-1 leading-relaxed">{ins}</p>
@@ -429,15 +429,15 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
 
         {/* 中间主屏 - 中国数据态势 */}
         <div className="flex-1 relative" style={{
-          background: 'rgba(34,211,238,0.02)',
-          border: '1px solid rgba(34,211,238,0.08)',
+          background: 'rgba(125,211,252,0.02)',
+          border: '1px solid rgba(125,211,252,0.08)',
           borderRadius: '8px',
           overflow: 'hidden',
         }}>
-          <div className="absolute top-3 left-4 z-10 text-xs text-[#22d3ee] tracking-wider">🇨🇳 国内数据态势</div>
+          <div className="absolute top-3 left-4 z-10 text-xs text-[#7DD3FC] tracking-wider">🇨🇳 国内数据态势</div>
           {!mapLoaded ? (
             <div className="flex items-center justify-center h-full text-slate-500 text-xs">
-              <div className="w-6 h-6 rounded-full border-2 border-[#22d3ee] border-t-transparent animate-spin mr-3" />
+              <div className="w-6 h-6 rounded-full border-2 border-[#7DD3FC] border-t-transparent animate-spin mr-3" />
               加载地图数据...
             </div>
           ) : (
@@ -448,17 +448,17 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
         {/* 右侧面板 */}
         <div className="flex flex-col gap-3" style={{ width: '22%', minWidth: 240 }}>
           <div className="flex-1 flex flex-col gap-2" style={{
-            background: 'rgba(34,211,238,0.03)',
-            border: '1px solid rgba(34,211,238,0.08)',
+            background: 'rgba(125,211,252,0.03)',
+            border: '1px solid rgba(125,211,252,0.08)',
             borderRadius: '8px',
             padding: '10px 14px',
           }}>
-            <div className="text-xs text-[#22d3ee] font-semibold mb-2 tracking-wider">⚡ 关键指标</div>
+            <div className="text-xs text-[#7DD3FC] font-semibold mb-2 tracking-wider">⚡ 关键指标</div>
             <div className="flex flex-col gap-0.5">
               {kpis.slice(4, 8).map((kpi, i) => <KPIRow key={i} kpi={kpi} />)}
             </div>
             <div className="flex-1" />
-            <div className="text-xs text-[#a78bfa] font-semibold mb-2 tracking-wider">🏆 数据排行 TOP5</div>
+            <div className="text-xs text-[#7DD3FC] font-semibold mb-2 tracking-wider">🏆 数据排行 TOP5</div>
             <div style={{ height: '150px', minHeight: 150 }}>
               {rankingData.length > 0 ? (
                 <ScrollRankingBoard
@@ -468,7 +468,7 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
                     sort: true,
                     waitTime: 3000,
                     carousel: 'single',
-                    color: ['#22d3ee', '#8b5cf6'],
+                    color: ['#7DD3FC', '#38BDF8'],
                   }}
                   style={{ width: '100%', height: '100%' }}
                 />
@@ -479,7 +479,7 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
             {/* V2: 异常预警 */}
             {anomalyAlerts.length > 0 && (
               <div className="mt-3 pt-2 border-t border-white/[0.06]">
-                <div className="text-xs text-[#f87171] font-semibold mb-2 tracking-wider">⚠️ 异常预警</div>
+                <div className="text-xs text-[#FB7185] font-semibold mb-2 tracking-wider">⚠️ 异常预警</div>
                 <div className="overflow-auto" style={{ maxHeight: '100px' }}>
                   {anomalyAlerts.map((alert, i) => (
                     <p key={i} className="text-[10px] text-red-400/70 mb-1 leading-relaxed">{alert}</p>
@@ -495,7 +495,7 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
       {tbHbCharts.length > 0 && (
         <div className="px-3 pb-3">
           {tbHbCharts.map((tb, idx) => (
-            <div key={idx} className="p-4 rounded-lg" style={{ background: 'rgba(10,14,30,0.95)', border: '1px solid rgba(34,211,238,0.12)' }}>
+            <div key={idx} className="p-4 rounded-lg" style={{ background: 'rgba(10,14,30,0.95)', border: '1px solid rgba(125,211,252,0.12)' }}>
               <TbHbTable
                 data={tb.rows}
                 valueColumn={tb.value_column}
@@ -511,8 +511,8 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
 
       {/* 底部信息条 */}
       <div className="px-6 py-2 flex items-center gap-6 text-xs"
-        style={{ background: 'rgba(34,211,238,0.04)', borderTop: '1px solid rgba(34,211,238,0.08)' }}>
-        <span className="text-[#22d3ee] font-semibold">数据源</span>
+        style={{ background: 'rgba(125,211,252,0.04)', borderTop: '1px solid rgba(125,211,252,0.08)' }}>
+        <span className="text-[#7DD3FC] font-semibold">数据源</span>
         <span className="text-slate-600">|</span>
         <span className="text-slate-400">{dataPreview ? `共 ${dataPreview.length} 条记录` : '实时监控中'}</span>
         <span className="text-slate-600">•</span>

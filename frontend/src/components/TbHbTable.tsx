@@ -56,7 +56,7 @@ function formatRate(rate: number | null, isFirstRowMoM = false): { html: string;
   const formatted = Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(2)}%`;
 
   if (rate > 0.001) {       // 增长（>0.1%）
-    return { html: `🔺 +${formatted}`, color: '#ef4444' };
+    return { html: `🔺 +${formatted}`, color: '#FB7185' };
   } else if (rate < -0.001) { // 下降（<-0.1%）
     return { html: `🔻 ${formatted}`, color: '#22c55e' };
   } else {                  // 持平（±0.1%以内）
@@ -183,7 +183,7 @@ export default function TbHbTable({ data, valueColumn, currentYear, previousYear
 
       {/* 图例 */}
       <div className="flex items-center gap-4 text-[11px] text-slate-500">
-        <span style={{ color: '#ef4444' }}>🔺 增长</span>
+        <span style={{ color: '#FB7185' }}>🔺 增长</span>
         <span style={{ color: '#22c55e' }}>🔻 下降</span>
         <span style={{ color: '#9ca3af' }}>➖ 持平 / 无数据</span>
       </div>

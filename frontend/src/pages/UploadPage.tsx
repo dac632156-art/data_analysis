@@ -72,12 +72,17 @@ export default function UploadPage() {
     <ErrorBoundary>
       <div className="page-enter space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#f8fafc]"
-            style={{ textShadow: '0 0 15px rgba(139,92,246,0.3)' }}
+          <h1 className="text-4xl font-extrabold text-[#f8fafc] tracking-wide"
+            style={{ textShadow: '0 0 18px rgba(167,139,250,0.45), 0 0 36px rgba(196,181,253,0.25)' }}
           >
             数据上传
           </h1>
-          <p className="text-[#94a3b8] text-sm mt-1">支持 CSV、Excel、JSON、SQLite 格式</p>
+          <p
+            className="mt-2 text-sm font-medium"
+            style={{ color: '#c4b5fd', textShadow: '0 0 10px rgba(196,181,253,0.4)' }}
+          >
+            支持 CSV、Excel、JSON、SQLite 格式
+          </p>
         </div>
 
         {/* 宇宙传送门上传 */}
@@ -91,7 +96,7 @@ export default function UploadPage() {
 
         {state.loading && (
           <div className="flex items-center justify-center py-12">
-            <div className="w-8 h-8 rounded-full border-2 border-[#8b5cf6] border-t-transparent animate-spin" />
+            <div className="w-8 h-8 rounded-full border-2 border-[#a78bfa] border-t-transparent animate-spin" />
             <span className="ml-3 text-[#94a3b8]">正在加载数据...</span>
           </div>
         )}
@@ -102,8 +107,8 @@ export default function UploadPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <MetricCard title="总行数" value={String(state.rows)} icon="database" />
               <MetricCard title="总列数" value={state.columns} icon="columns" />
-              <MetricCard title="内存占用" value={memoryUsage || '-'} icon="database" color="#22d3ee" />
-              <MetricCard title="文件名" value={state.fileName || '-'} icon="target" color="#38bdf8" />
+              <MetricCard title="内存占用" value={memoryUsage || '-'} icon="database" color="#c4b5fd" />
+              <MetricCard title="文件名" value={state.fileName || '-'} icon="target" color="#8b5cf6" />
             </div>
 
             {/* 数据预览 */}
@@ -121,7 +126,7 @@ export default function UploadPage() {
                 <div className="glass-card overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr style={{ background: 'rgba(139, 92, 246, 0.12)' }}>
+                      <tr style={{ background: 'rgba(196,181,253,0.25)' }}>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase">列名</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase">类型</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase">缺失值</th>
@@ -135,7 +140,7 @@ export default function UploadPage() {
                         <tr key={col.name} className="border-t border-white/[0.04] hover:bg-[#8b5cf6]/[0.06]">
                           <td className="px-4 py-2.5 text-slate-200 font-medium">{col.name}</td>
                           <td className="px-4 py-2.5">
-                            <span className="px-2 py-0.5 text-xs rounded bg-[#8b5cf6]/20 text-[#a78bfa]">
+                            <span className="px-2 py-0.5 text-xs rounded bg-[#a78bfa]/20 text-[#c4b5fd]">
                               {col.dtype}
                             </span>
                           </td>

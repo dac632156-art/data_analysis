@@ -1,10 +1,13 @@
-# 占比分析 —— 各部分在整体中的百分比份额
+﻿# 占比分析 —— 各部分在整体中的百分比份额
+# V3：扩展为完整分析知识
 intent: proportion
 display_name: 占比分析
 description: 计算各部分在整体中的百分比份额，支持饼图和百分比表格
 level: L1
 
 template: proportion_analysis
+template_module: src.analysis_templates.proportion_analysis.ProportionAnalysis
+calculator: src.calculators.ranking.RankingCalculator
 default_algorithm: null
 supported_algorithms: []
 
@@ -17,17 +20,47 @@ keywords:
   - 占多少
   - 份额
 
-priority: 82
+business_questions:
+  - 各产品占比如何？
+  - 市场份额分别占多少？
+  - 哪个品类占比最高？
+  - 占比分布是否均衡？
+
+priority: 80
+
+schema_requirements:
+  dimension_type: category
+  metric_type: numeric
+  min_dimension: 1
+  min_metric: 1
+  min_rows: 2
+  min_distinct_values: 2
+
+required_fields:
+  - 分类
+  - 产品
+  - 地区
 
 outputs:
   charts:
-    - pie          # 饼图
-    - donut        # 环形图
+    - name: proportion_pie
+      label: 占比饼图
+      description: 各分类的百分比占比饼图
   tables:
-    - proportion_table  # 占比明细表
+    - name: proportion_detail
+      label: 占比明细表
+      description: 分类、指标值、占比%
   kpis:
-    - top3_share
-    - category_count
+    - name: total_metric
+      label: 总指标值
+      description: 指标总和
+    - name: top3_share
+      label: Top3合计占比
+      description: 前3名的合计占比
+
+derived_metrics:
+  - share
+  - top3_share
 
 examples:
   - 各产品占比如何？
@@ -37,3 +70,10 @@ examples:
 fallback:
   - structure
   - ranking
+
+generator_rules:
+  - requires: ["category", "numeric"]
+    priority: medium
+    reason: 了解各分类占比
+    question_template: "各{cat0}的{num0}占比如何？"
+    goal_template: "{cat0}的{num0}占比分析"

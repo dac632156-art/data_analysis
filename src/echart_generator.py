@@ -3,29 +3,69 @@ ECharts 图表生成模块 - 输出 ECharts option JSON
 支持与 Plotly chart_generator 相同的图表类型 + ECharts 独有的 brush/timeline 等交互
 """
 import json
+import math
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, Optional, List
 
-# 暖色调配色方案（与 chart_generator 一致）
-WARM_COLORS = [
-    "#E8833A", "#F4A261", "#D4825A", "#FFA726",
-    "#66BB6A", "#42A5F5", "#AB47BC", "#EC407A",
-    "#FF7043", "#FFCA28", "#26C6DA", "#EF5350"
-]
+# ========== 降采样护栏常量 ==========
+_MAX_SERIES_POINTS = 2000   # 线/散/柱/面积单序列点上限
+_MAX_CATEGORY = 50          # 类目轴类别上限
+_MAX_PIE_SLICES = 20        # 饼图/树图/词云扇区上限
 
-# ECharts 深色主题基础配置
+# ★ Galaxy AI Analytics 统一配色（与前端 frontend/src/theme 模块保持一致）
+# 10 色有序分类色板，禁止彩虹 / 每图随机配色。后端无法 import TS，此为常数镜像，
+# 修改颜色时务必同步 frontend/src/theme/Palette.ts 与 ChartStyle.ts。
+# BLUE_PALETTE 必须与前端 ChartStyle.series 完全一致（蓝→靛→青→金→粉→橙→青柠→淡紫→天空蓝→湖绿，暖色前置，AI 紫禁入图表）。
+BLUE_PALETTE = [
+    "#38BDF8", "#818CF8", "#22D3EE", "#FBBF24",
+    "#F472B6", "#FB923C", "#84CC16", "#C084FC",
+    "#60A5FA", "#2DD4BF",
+]
+# 向后兼容别名（Chart Factory 内统一使用 BLUE_PALETTE）
+WARM_COLORS = BLUE_PALETTE
+
+# Galaxy 主题常量（Single Source of Truth 的 Python 镜像）
+GALAXY = {
+    "page_bg": "#020617",
+    "card_bg": "#0F172A",
+    "text_primary": "#F8FAFC",
+    "text_secondary": "#94A3B8",
+    "text_muted": "#94A3B8",
+    "axis": "rgba(248,250,252,0.55)",
+    "primary": "#38BDF8",
+    "primary_hover": "#7DD3FC",
+    "primary_active": "#0EA5E9",
+    "primary_bright": "#67E8F9",
+    "sky": "#0ea5e9",
+    "sky_mid": "#0369a1",
+    "sky_deep": "#0c4a6e",
+    "ai": "#8B5CF6",
+    "interaction": "#22D3EE",
+    "map_normal": "#23304E",
+    "heat_start": "#13243F",
+    "success": "#34D399",
+    "danger": "#FB7185",
+    "warning": "#FBBF24",
+    "grid": "rgba(255,255,255,0.08)",
+    "border": "rgba(255,255,255,0.08)",
+    "tooltip_bg": "#0F172A",
+    "tooltip_border": "rgba(255,255,255,0.08)",
+    "tooltip_content": "#CBD5E1",
+}
+
+# ECharts 深色主题基础配置（统一 Galaxy 蓝）
 DARK_THEME = {
     "backgroundColor": "transparent",
-    "textStyle": {"color": "#94a3b8"},
-    "title": {"textStyle": {"color": "#cbd5e1"}},
+    "textStyle": {"color": GALAXY["text_secondary"]},
+    "title": {"textStyle": {"color": GALAXY["text_primary"]}},
     "tooltip": {
-        "backgroundColor": "#1e1e3a",
-        "borderColor": "#8b5cf6",
-        "textStyle": {"color": "#e2e8f0"}
+        "backgroundColor": GALAXY["tooltip_bg"],
+        "borderColor": GALAXY["tooltip_border"],
+        "textStyle": {"color": GALAXY["text_primary"]}
     },
     "legend": {
-        "textStyle": {"color": "#94a3b8"},
+        "textStyle": {"color": GALAXY["text_secondary"]},
         "top": "bottom"
     },
     "toolbox": {
@@ -38,7 +78,7 @@ DARK_THEME = {
 
 
 def _get_default_title(title: str) -> dict:
-    return {"text": title, "left": "center", "top": 8, "textStyle": {"color": "#cbd5e1", "fontSize": 14}}
+    return {"text": title, "left": "center", "top": 8, "textStyle": {"color": GALAXY["text_primary"], "fontSize": 14}}
 
 
 def _sort_data(df, x, y):
@@ -147,12 +187,12 @@ def create_bar_chart(df: pd.DataFrame, x: str, y: Optional[str] = None,
     }
 
     if orientation == "h":
-        option["yAxis"] = {"type": "category", "data": x_data, "axisLine": {"lineStyle": {"color": "#475569"}}}
-        option["xAxis"] = {"type": "value", "axisLine": {"lineStyle": {"color": "#475569"}}}
+        option["yAxis"] = {"type": "category", "data": x_data, "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
+        option["xAxis"] = {"type": "value", "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
     else:
         option["xAxis"] = {"type": "category", "data": x_data, "axisLabel": {"rotate": 30 if len(x_data) > 8 else 0},
-                           "axisLine": {"lineStyle": {"color": "#475569"}}}
-        option["yAxis"] = {"type": "value", "axisLine": {"lineStyle": {"color": "#475569"}}}
+                           "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
+        option["yAxis"] = {"type": "value", "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
 
     if color and color in df.columns:
         groups = df_plot[color].unique()
@@ -198,8 +238,8 @@ def create_line_chart(df: pd.DataFrame, x: str, y: Optional[str] = None,
         "toolbox": DARK_THEME["toolbox"],
         "grid": {"top": 60, "left": 50, "right": 20, "bottom": 40},
         "xAxis": {"type": "category", "data": x_data, "boundaryGap": False,
-                  "axisLine": {"lineStyle": {"color": "#475569"}}},
-        "yAxis": {"type": "value", "axisLine": {"lineStyle": {"color": "#475569"}}},
+                  "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
+        "yAxis": {"type": "value", "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
     }
 
     if color and color in df.columns:
@@ -247,8 +287,8 @@ def create_scatter_chart(df: pd.DataFrame, x: str, y: Optional[str] = None,
         "legend": DARK_THEME["legend"],
         "toolbox": DARK_THEME["toolbox"],
         "grid": {"top": 60, "left": 50, "right": 20, "bottom": 40},
-        "xAxis": {"type": "value", "axisLine": {"lineStyle": {"color": "#475569"}}},
-        "yAxis": {"type": "value", "axisLine": {"lineStyle": {"color": "#475569"}}},
+        "xAxis": {"type": "value", "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
+        "yAxis": {"type": "value", "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
     }
 
     if color and color in df.columns:
@@ -323,7 +363,7 @@ def create_pie_chart(df: pd.DataFrame, names: Optional[str] = None, values: Opti
             },
             "data": pie_data,
             "label": {"color": "#94a3b8"},
-            "labelLine": {"lineStyle": {"color": "#475569"}},
+            "labelLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}},
         }]
     }
 
@@ -356,11 +396,11 @@ def create_histogram(df: pd.DataFrame, x: str, title: str = "直方图", **ignor
         "xAxis": {
             "type": "category", "data": labels, "name": x,
             "axisLabel": {"rotate": 30, "fontSize": 10},
-            "axisLine": {"lineStyle": {"color": "#475569"}}
+            "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}
         },
         "yAxis": {
             "type": "value", "name": "频次",
-            "axisLine": {"lineStyle": {"color": "#475569"}}
+            "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}
         },
         "series": [{
             "name": "频次", "type": "bar",
@@ -391,8 +431,8 @@ def create_box_plot(df: pd.DataFrame, y: str, x: Optional[str] = None,
                 "name": str(g),
                 "value": group_vals,
             })
-        option["xAxis"] = {"type": "category", "data": x_data, "axisLine": {"lineStyle": {"color": "#475569"}}}
-        option["yAxis"] = {"type": "value", "axisLine": {"lineStyle": {"color": "#475569"}}}
+        option["xAxis"] = {"type": "category", "data": x_data, "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
+        option["yAxis"] = {"type": "value", "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
         option["series"] = [{
             "name": y, "type": "boxplot",
             "data": [
@@ -413,8 +453,8 @@ def create_box_plot(df: pd.DataFrame, y: str, x: Optional[str] = None,
         }]
     else:
         vals = df[y].dropna().tolist()
-        option["xAxis"] = {"type": "category", "data": [y], "axisLine": {"lineStyle": {"color": "#475569"}}}
-        option["yAxis"] = {"type": "value", "axisLine": {"lineStyle": {"color": "#475569"}}}
+        option["xAxis"] = {"type": "category", "data": [y], "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
+        option["yAxis"] = {"type": "value", "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
         option["series"] = [{
             "name": y, "type": "boxplot",
             "data": [[
@@ -450,12 +490,12 @@ def create_heatmap(df: pd.DataFrame, title: str = "相关性热力图", **ignore
         "toolbox": DARK_THEME["toolbox"],
         "grid": {"top": 60, "left": 80, "right": 40, "bottom": 40},
         "xAxis": {"type": "category", "data": x_data, "axisLabel": {"rotate": 30},
-                  "axisLine": {"lineStyle": {"color": "#475569"}}, "position": "top"},
+                  "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}, "position": "top"},
         "yAxis": {"type": "category", "data": y_data,
-                  "axisLine": {"lineStyle": {"color": "#475569"}}},
+                  "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
         "visualMap": {
             "min": -max_val, "max": max_val,
-            "inRange": {"color": ["#1A0F0A", "#E8833A", "#F4A261"]},
+            "inRange": {"color": ["#23304E", "#1E3A8A", "#0369a1", "#38BDF8", "#7DD3FC"]},
             "text": ["正相关", "负相关"],
             "textStyle": {"color": "#94a3b8"},
             "calculable": True,
@@ -523,8 +563,8 @@ def create_radar_chart(df: pd.DataFrame, x: Optional[str] = None, y: Optional[st
             "indicator": indicator,
             "center": ["50%", "55%"],
             "radius": "65%",
-            "axisLine": {"lineStyle": {"color": "#475569"}},
-            "splitArea": {"areaStyle": {"color": ["rgba(139,92,246,0.03)", "rgba(139,92,246,0.06)"]}},
+            "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}},
+            "splitArea": {"areaStyle": {"color": ["rgba(56,189,248,0.03)", "rgba(56,189,248,0.06)"]}},
         },
         "series": series_list,
     }
@@ -565,14 +605,14 @@ def create_waterfall(df: pd.DataFrame, x: str, y: Optional[str] = None,
         "toolbox": DARK_THEME["toolbox"],
         "grid": {"top": 60, "left": 60, "right": 20, "bottom": 40},
         "xAxis": {"type": "category", "data": x_data,
-                  "axisLine": {"lineStyle": {"color": "#475569"}}},
-        "yAxis": {"type": "value", "axisLine": {"lineStyle": {"color": "#475569"}}},
+                  "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
+        "yAxis": {"type": "value", "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
         "series": [
             {"name": "占位", "type": "bar", "stack": "waterfall",
              "data": base, "itemStyle": {"color": "transparent"},
              "label": {"show": False}},
             {"name": "变化", "type": "bar", "stack": "waterfall",
-             "data": [{"value": v, "itemStyle": {"color": WARM_COLORS[0] if v >= 0 else WARM_COLORS[11]}}
+             "data": [{"value": v, "itemStyle": {"color": GALAXY["primary"] if v >= 0 else GALAXY["danger"]}}
                       for v in values]}
         ]
     }
@@ -598,8 +638,8 @@ def create_bubble_chart(df: pd.DataFrame, x: str, y: Optional[str] = None,
         "tooltip": DARK_THEME["tooltip"],
         "toolbox": DARK_THEME["toolbox"],
         "grid": {"top": 60, "left": 50, "right": 20, "bottom": 40},
-        "xAxis": {"type": "value", "name": x, "axisLine": {"lineStyle": {"color": "#475569"}}},
-        "yAxis": {"type": "value", "name": y, "axisLine": {"lineStyle": {"color": "#475569"}}},
+        "xAxis": {"type": "value", "name": x, "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
+        "yAxis": {"type": "value", "name": y, "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
     }
 
     if color and color in df.columns:
@@ -701,7 +741,7 @@ def create_wordcloud(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str]
             "textStyle": {
                 "fontFamily": "sans-serif",
                 "fontWeight": "bold",
-                "color": "function() { return ['#E8833A','#F4A261','#D4825A','#FFA726','#66BB6A','#42A5F5','#AB47BC','#EC407A'][Math.floor(Math.random()*8)]; }"
+                "color": "function() { return ['#38BDF8','#818CF8','#22D3EE','#FBBF24','#F472B6','#FB923C','#84CC16','#C084FC','#60A5FA','#2DD4BF'][Math.floor(Math.random()*10)]; }"
             },
             "emphasis": {"textStyle": {"fontSize": 56}},
             "data": cloud_data,
@@ -847,7 +887,7 @@ def _province_short_name(params: dict) -> str:
 def _build_geo3d_regions(map_data: list, min_val: float, max_val: float) -> list:
     """为 geo3D 构建 regions 配置，按数据值给省份上色"""
     val_range = max_val - min_val or 1
-    gradient_colors = ["#0d1a3a", "#1a3a6a", "#3a7bd5", "#22d3ee", "#facc15", "#f97316"]
+    gradient_colors = ["#13243F", "#0c4a6e", "#0369a1", "#0ea5e9", "#38BDF8", "#67E8F9", "#22D3EE"]
     regions = []
     for item in map_data:
         name = item["name"]
@@ -882,17 +922,17 @@ def _format_number(n: float) -> str:
 def _color_by_value(val: float, min_val: float, max_val: float) -> str:
     """星空渐变色：深空紫 → 星云蓝 → 星光青 → 超新星白"""
     gradient = [
-        "#0f0c29",  # 深空
-        "#1a0f3c",  # 暗星云
-        "#2d1b69",  # 紫星云
-        "#4a2d8a",  # 亮紫星云
-        "#6c3fb5",  # 紫微星
-        "#8b5cf6",  # 亮紫
-        "#6366f1",  # 蓝紫星
-        "#3b82f6",  # 蓝星
-        "#06b6d4",  # 青星光
-        "#22d3ee",  # 亮青
-        "#67e8f9",  # 星白
+        "#020617",  # 深空
+        "#0B1B3A",  # 暗星云蓝
+        "#0c4a6e",  # 蓝星云
+        "#0369a1",  # 蓝星
+        "#0ea5e9",  # 亮蓝
+        "#38BDF8",  # 星光蓝
+        "#22D3EE",  # 极光青
+        "#67E8F9",  # 亮星蓝
+        "#7DD3FC",  # 星白蓝
+        "#BFE9FF",  # 浅蓝
+        "#E6F7FF",  # 星白
     ]
     ratio = (val - min_val) / (max_val - min_val) if max_val != min_val else 0.5
     idx = int(ratio * (len(gradient) - 1))
@@ -1041,7 +1081,7 @@ def create_gl_map(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str] = 
             "itemStyle": {"areaColor": color},
             "label": {
                 "show": True,
-                "color": "#c4b5fd",
+                "color": "#7DD3FC",
                 "fontSize": 11,
             },
         })
@@ -1097,15 +1137,15 @@ def create_gl_map(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str] = 
             "text": title,
             "left": "center",
             "top": 8,
-            "textStyle": {"color": "#c4b5fd", "fontSize": 18, "fontWeight": "bold",
-                          "textShadowBlur": 10, "textShadowColor": "rgba(99,102,241,0.5)"},
+            "textStyle": {"color": "#7DD3FC", "fontSize": 18, "fontWeight": "bold",
+                          "textShadowBlur": 10, "textShadowColor": "rgba(59,130,246,0.5)"},
         },
         "tooltip": {
             "trigger": "item",
             "backgroundColor": "rgba(15,12,41,0.95)",
-            "borderColor": "#6366f1",
+            "borderColor": "#38BDF8",
             "borderWidth": 1,
-            "textStyle": {"color": "#e0e7ff", "fontSize": 13},
+            "textStyle": {"color": "#F8FAFC", "fontSize": 13},
             "formatter": tooltip_fmt,
         },
         "visualMap": {
@@ -1113,8 +1153,8 @@ def create_gl_map(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str] = 
             "min": min_val,
             "max": max_val,
             "calculable": False,
-            "inRange": {"color": ["#0f0c29", "#2d1b69", "#4a2d8a", "#6366f1", "#06b6d4", "#67e8f9"]},
-            "textStyle": {"color": "#818cf8"},
+            "inRange": {"color": ["#13243F", "#0c4a6e", "#0369a1", "#0ea5e9", "#38BDF8", "#67E8F9", "#22D3EE"]},
+            "textStyle": {"color": "#7DD3FC"},
             "orient": "horizontal",
             "left": "center",
             "bottom": 10,
@@ -1127,25 +1167,25 @@ def create_gl_map(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str] = 
             "aspectScale": 0.85,
             "regions": regions,
             "itemStyle": {
-                "areaColor": "#0f0c29",
-                "borderColor": "#312e81",
+                "areaColor": "#23304E",
+                "borderColor": "rgba(255,255,255,0.08)",
                 "borderWidth": 1,
                 "shadowBlur": 6,
-                "shadowColor": "rgba(99,102,241,0.25)",
+                "shadowColor": "rgba(56,189,248,0.25)",
             },
             "emphasis": {
                 "itemStyle": {
-                    "areaColor": "#4f46e5",
+                    "areaColor": "#38BDF8",
                     "shadowBlur": 25,
-                    "shadowColor": "rgba(99,102,241,0.7)",
+                    "shadowColor": "rgba(56,189,248,0.7)",
                 },
                 "label": {
                     "show": True,
-                    "color": "#f0e6ff",
+                    "color": "#F8FAFC",
                     "fontSize": 14,
                     "fontWeight": "bold",
                     "textShadowBlur": 8,
-                    "textShadowColor": "rgba(99,102,241,0.8)",
+                    "textShadowColor": "rgba(56,189,248,0.8)",
                 },
             },
         },
@@ -1161,24 +1201,24 @@ def create_gl_map(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str] = 
                     "brushType": "stroke",
                     "scale": 4,
                     "period": 4,
-                    "color": "#818cf8",
+                    "color": "#7DD3FC",
                 },
-                "itemStyle": {"color": "#e0e7ff", "shadowBlur": 10, "shadowColor": "rgba(129,140,248,0.8)"},
+                "itemStyle": {"color": "#F8FAFC", "shadowBlur": 10, "shadowColor": "rgba(56,189,248,0.8)"},
                 "label": {
                     "show": True,
                     "position": "top",
                     "distance": 10,
-                    "color": "#67e8f9",
+                    "color": "#7DD3FC",
                     "fontSize": 11,
                     "fontWeight": "bold",
                     "formatter": "{c}",
                     "textShadowBlur": 6,
-                    "textShadowColor": "rgba(6,182,212,0.6)",
+                    "textShadowColor": "rgba(56,189,248,0.6)",
                 },
                 "emphasis": {
                     "scale": 2,
-                    "itemStyle": {"color": "#f0e6ff", "shadowBlur": 20, "shadowColor": "rgba(240,230,255,0.9)"},
-                    "label": {"fontSize": 15, "color": "#f0e6ff"},
+                    "itemStyle": {"color": "#F8FAFC", "shadowBlur": 20, "shadowColor": "rgba(56,189,248,0.9)"},
+                    "label": {"fontSize": 15, "color": "#F8FAFC"},
                 },
             },
         ],
@@ -1195,13 +1235,139 @@ def create_gl_map(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str] = 
             "show": True,
             "fontSize": 15,
             "fontWeight": "bold",
-            "color": "#f0e6ff",
+            "color": "#F8FAFC",
             "formatter": "{b}\n{c}",
             "textShadowBlur": 10,
-            "textShadowColor": "rgba(99,102,241,0.9)",
+            "textShadowColor": "rgba(56,189,248,0.9)",
         })
 
     return result
+
+
+# ==================== 降采样工具函数 ====================
+
+def _downsample_indices(n: int, max_n: int) -> list:
+    """返回 [0, n) 内均匀分布的 <=max_n 个下标（含首尾，按 np.linspace 取整去重）。"""
+    if n <= max_n:
+        return list(range(n))
+    indices = np.linspace(0, n - 1, max_n, dtype=int)
+    return sorted(set(int(i) for i in indices))
+
+
+def _cap_option_data(option: dict) -> dict:
+    """统一护栏：对类目轴 / 数值散点 / 饼图 / 热力图超大序列做均匀降采样。
+    仅在超出阈值时原地修改 option，小数据零影响。
+    """
+    if not option:
+        return option
+
+    series_list = option.get("series", [])
+    if not series_list:
+        return option
+
+    # ---- 1. 类目轴图表（bar / line / area / histogram / waterfall / stacked_bar） ----
+    x_axis = option.get("xAxis")
+    if isinstance(x_axis, dict):
+        x_data = x_axis.get("data")
+    elif isinstance(x_axis, list) and len(x_axis) > 0:
+        x_data = x_axis[0].get("data") if isinstance(x_axis[0], dict) else None
+    else:
+        x_data = None
+
+    if x_data and isinstance(x_data, list) and len(x_data) > _MAX_CATEGORY:
+        keep_idxs = _downsample_indices(len(x_data), _MAX_CATEGORY)
+        # 裁剪 xAxis.data
+        x_axis["data"] = [x_data[i] for i in keep_idxs]
+        # 同步裁剪每个 series.data
+        for s in series_list:
+            s_data = s.get("data")
+            if isinstance(s_data, list):
+                s["data"] = [s_data[i] for i in keep_idxs if i < len(s_data)]
+        return option
+
+    # ---- 2. 数值轴散点/气泡（data 为 [x,y] 或 [x,y,size] 数组） ----
+    #    无 xAxis.data 但有系列 data 超过上限 → 均匀采样
+    for s in series_list:
+        s_type = str(s.get("type", ""))
+        s_data = s.get("data", [])
+        if not isinstance(s_data, list) or len(s_data) <= _MAX_SERIES_POINTS:
+            continue
+        # 只对散点/气泡类做采样（折线/柱状的数值轴情况 → 通常类目轴已处理，此处仅保护）
+        if s_type in ("scatter", "bubble", "effectScatter"):
+            keep_idxs = _downsample_indices(len(s_data), _MAX_SERIES_POINTS)
+            s["data"] = [s_data[i] for i in keep_idxs]
+        elif s_type in ("bar", "line", "area"):
+            # 无类目轴的数值型 → 仍需采样
+            keep_idxs = _downsample_indices(len(s_data), _MAX_SERIES_POINTS)
+            s["data"] = [s_data[i] for i in keep_idxs]
+        # 箱线图 series.data 通常很小，跳过
+        # 其他类型：仅当 data 是纯数组时采样
+        elif all(isinstance(d, (int, float)) for d in s_data[:10] if d is not None):
+            keep_idxs = _downsample_indices(len(s_data), _MAX_SERIES_POINTS)
+            s["data"] = [s_data[i] for i in keep_idxs]
+
+    # ---- 3. 饼图 / 树图 / 词云：Top N + "其他" ----
+    for s in series_list:
+        s_type = str(s.get("type", ""))
+        if s_type not in ("pie", "treemap", "wordCloud"):
+            continue
+        s_data = s.get("data", [])
+        if not isinstance(s_data, list) or len(s_data) <= _MAX_PIE_SLICES:
+            continue
+        # 按 value 降序取 Top N
+        def _val(d):
+            if isinstance(d, dict):
+                return float(d.get("value", 0) or 0)
+            return float(d) if isinstance(d, (int, float)) else 0
+        sorted_data = sorted(s_data, key=_val, reverse=True)
+        top = sorted_data[:_MAX_PIE_SLICES - 1]
+        rest = sorted_data[_MAX_PIE_SLICES - 1:]
+        other_val = sum(_val(d) for d in rest)
+        if other_val > 0:
+            top.append({"name": "其他(合计)", "value": other_val,
+                        "itemStyle": {"color": "rgba(255,255,255,0.08)"}})
+        s["data"] = top
+
+    # ---- 4. 热力图：缩小类目矩阵 ----
+    has_heatmap = any(str(s.get("type")) == "heatmap" for s in series_list)
+    if has_heatmap:
+        for axis_key in ("xAxis", "yAxis"):
+            ax = option.get(axis_key)
+            if isinstance(ax, dict):
+                ax_data = ax.get("data")
+                if isinstance(ax_data, list) and len(ax_data) > _MAX_CATEGORY:
+                    keep_idxs = _downsample_indices(len(ax_data), _MAX_CATEGORY)
+                    idx_set = set(keep_idxs)
+                    ax["data"] = [ax_data[i] for i in keep_idxs]
+                    # 同步裁剪 heatmap series.data（格式 [col_idx, row_idx, val]）
+                    for s in series_list:
+                        if str(s.get("type")) != "heatmap":
+                            continue
+                        hd = s.get("data", [])
+                        if isinstance(hd, list):
+                            s["data"] = [
+                                d for d in hd
+                                if (isinstance(d, (list, tuple)) and len(d) >= 2
+                                    and d[0] in idx_set and d[1] in idx_set)
+                            ]
+            elif isinstance(ax, list) and len(ax) > 0 and isinstance(ax[0], dict):
+                ax_data = ax[0].get("data")
+                if isinstance(ax_data, list) and len(ax_data) > _MAX_CATEGORY:
+                    keep_idxs = _downsample_indices(len(ax_data), _MAX_CATEGORY)
+                    idx_set = set(keep_idxs)
+                    ax[0]["data"] = [ax_data[i] for i in keep_idxs]
+                    for s in series_list:
+                        if str(s.get("type")) != "heatmap":
+                            continue
+                        hd = s.get("data", [])
+                        if isinstance(hd, list):
+                            s["data"] = [
+                                d for d in hd
+                                if (isinstance(d, (list, tuple)) and len(d) >= 2
+                                    and d[0] in idx_set and d[1] in idx_set)
+                            ]
+
+    return option
 
 
 # ==================== 统一入口 ====================
@@ -1227,8 +1393,11 @@ CHART_FUNCTIONS = {
 
 
 def create_chart(df: pd.DataFrame, chart_type: str, **kwargs) -> Optional[Dict[str, Any]]:
-    """统一 ECharts 图表创建入口，返回 ECharts option 字典"""
+    """统一 ECharts 图表创建入口，返回 ECharts option 字典（自动降采样护栏）"""
     if chart_type not in CHART_FUNCTIONS:
         raise ValueError(f"不支持的图表类型: {chart_type}。支持: {list(CHART_FUNCTIONS.keys())}")
 
-    return CHART_FUNCTIONS[chart_type](df, **kwargs)
+    option = CHART_FUNCTIONS[chart_type](df, **kwargs)
+    if option is not None:
+        option = _cap_option_data(option)
+    return option

@@ -10,11 +10,11 @@ import math
 
 @dataclass
 class Card:
-    id: str
-    type: str  # kpi | chart | table | insight | warning | fallback
-    title: str
-    priority: int  # 1-10
-    size: str  # s | m | l | xl
+    id: str = ""  # 不传时由 __post_init__ 自动生成 uuid 前 8 位
+    type: str = ""  # kpi | chart | table | insight | warning | fallback
+    title: str = ""
+    priority: int = 5  # 1-10
+    size: str = "m"  # s | m | l | xl
     data: Any = None
     chart_type: Optional[str] = None
     fallback_chain: list = field(default_factory=list)

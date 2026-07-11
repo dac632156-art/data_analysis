@@ -10,6 +10,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from backend.services.session_manager import manager
+from backend.utils.ai_error import enhance_ai_error
 from src.data_cleaner import (
     get_missing_value_report, handle_missing_values,
     detect_data_type_issues, convert_column_type,
@@ -227,7 +228,11 @@ async def api_ai_clean(req: AICleanRequest):
         raise HTTPException(status_code=400, detail="请在页面左上角选择 AI 模型提供商")
 
     # 先对大规模 DataFrame 做采样，避免上下文过大
-    data_preview = df.head(20).to_string()
+    # Use to_csv with UTF-8 to avoid GBK encoding issues on Windows
+    import io
+    buf = io.StringIO()
+    df.head(20).to_csv(buf, index=False, encoding='utf-8')
+    data_preview = buf.getvalue()
     original_rows = len(df)
 
     # 构建数据摘要
@@ -278,6 +283,7 @@ async def api_ai_clean(req: AICleanRequest):
         llm_kwargs = {
             "api_key": api_key,
             "base_url": base_url,
+            "timeout": 90.0,  # AI 清洗需要 LLM 返回结构化 JSON + 可能含执行步骤说明，90 秒足够
         }
         client = openai.OpenAI(**llm_kwargs)
 
@@ -376,9 +382,4 @@ async def api_ai_clean(req: AICleanRequest):
             "note": "AI 返回的建议无法自动执行，已展示给用户参考"
         }
     except Exception as e:
-        err_msg = str(e)
-        if "401" in err_msg or "403" in err_msg:
-            err_msg = f"API Key 无效或权限不足，请检查：\n1. Key 是否正确\n2. Key 是否有额度\n3. 左上角选择的 AI 提供商是否与 Key 匹配\n原始错误: {err_msg}"
-        elif "timeout" in err_msg.lower():
-            err_msg = f"AI 请求超时，请重试（{err_msg}）"
-        raise HTTPException(status_code=500, detail=err_msg)
+        raise HTTPException(status_code=500, detail=enhance_ai_error(e, model=req.model or "", base_url=req.base_url or ""))

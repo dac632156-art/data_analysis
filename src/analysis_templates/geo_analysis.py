@@ -8,8 +8,11 @@ V2：使用 TemplateMeta + TemplateRuntime，拆分 build_*() 方法
 import pandas as pd
 from src.analysis_templates.base import (
     AnalysisTemplate, TemplateMeta, TemplateRuntime,
-    KPIItem, TableData, ChartData,
+    KPIItem, TableData, ChartData, AnalysisPackage,
 )
+from src.domain import FindingCategory, Severity, Direction
+from src.domain.business_finding import BusinessFinding
+from typing import List
 
 
 class GeoAnalysis(AnalysisTemplate):
@@ -186,6 +189,59 @@ class GeoAnalysis(AnalysisTemplate):
 
     def build_conclusion(self, df, dimension, metric, algorithm, insights):
         return insights[:1]
+
+
+    # ===== V3：业务发现与证据 =====
+
+    def build_findings(self, df, dimension, metric, algorithm,
+                        kpis, chart_data):
+        """V3 Domain Model：使用 FindingFactory 创建地理空间发现"""
+        grouped = self._cache.get("grouped")
+        f = self.factory
+        findings = []
+        if grouped is None or len(grouped) == 0:
+            return [f.summary("地理空间分析完成")]
+
+        geo_col = self._cache["geo_col"]
+        metric_name = self._cache["metric"]
+        coverage = self._cache.get("coverage", 0)
+        total = self._cache.get("total", 0)
+
+        findings.append(f.summary(
+            title="{0}分布覆盖{1}个区域，{2}总计{3:,.2f}".format(geo_col, coverage, metric_name, total),
+            description="地理空间分析完成，共{0}个区域纳入统计".format(coverage)))
+
+        # Top 区域
+        top1_val = grouped.iloc[0][metric_name]
+        top1_name = str(grouped.iloc[0][geo_col])
+        findings.append(f.ranking(
+            entity=top1_name, metric=metric_name, value=top1_val, rank=1, confidence=1.0,
+            title="{0}的{1}最高：{2:,.2f}".format(top1_name, metric_name, top1_val)))
+
+        # Bottom 区域
+        if len(grouped) > 1:
+            bottom_val = grouped.iloc[-1][metric_name]
+            bottom_name = str(grouped.iloc[-1][geo_col])
+            findings.append(f.ranking(
+                entity=bottom_name, metric=metric_name, value=bottom_val,
+                title="{0}的{1}最低：{2:,.2f}".format(bottom_name, metric_name, bottom_val),
+                severity=Severity.INFO))
+
+        # 集中度
+        if total > 0:
+            share = top1_val / total
+            if share > 0.5:
+                pct = share * 100
+                findings.append(f.concentration(
+                    title="{0}占{1}的{2:.1f}%，高度集中在单一区域".format(top1_name, metric_name, pct),
+                    metric=metric_name, value=share, unit="%",
+                    confidence=1.0,
+                    business_meaning="{0}占据了{1:.1f}%的{2}，区域集中度很高".format(top1_name, pct, metric_name),
+                    business_impact="区域单一依赖风险，建议开拓其他区域市场",
+                    recommendation="关注区域均衡发展，培育新增长极"))
+
+        return findings
+
 
     def execute(self, df, dimension, metric, algorithm=None):
         metric = metric or self._get_numeric_columns(df)[0]

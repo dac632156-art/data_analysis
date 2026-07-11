@@ -8,6 +8,7 @@ TableRenderer —— 统一表格渲染层
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 from src.analysis_templates.base import TableData
+from src.echart_generator import GALAXY
 
 
 @dataclass
@@ -68,7 +69,7 @@ class TableRenderer:
                 cell = RenderedCell(value=val)
                 # 增长率列通常在第3列（index=2）或有"率"字的列
                 if i >= 2 and isinstance(val, (int, float)):
-                    cell.color = "#10B981" if val > 0 else "#EF4444" if val < 0 else None
+                    cell.color = GALAXY["success"] if val > 0 else GALAXY["danger"] if val < 0 else None
                 cells.append(cell)
             rows.append(cells)
         return RenderedTable(

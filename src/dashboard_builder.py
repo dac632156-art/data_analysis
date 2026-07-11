@@ -53,17 +53,17 @@ def calculate_kpis(df: pd.DataFrame) -> List[Dict[str, Any]]:
     kpis.append({
         "title": "总记录数",
         "value": f"{len(df):,}",
-        "icon": "📊",
-        "color": "#E8833A",
+            "icon": "📊",
+            "color": "#38BDF8",
         "change": 0,
         "trend": "flat",
     })
     
     kpis.append({
-        "title": "字段数",
-        "value": f"{len(df.columns)}",
-        "icon": "📋",
-        "color": "#F4A261",
+            "title": "字段数",
+            "value": f"{len(df.columns)}",
+            "icon": "📋",
+            "color": "#7DD3FC",
         "change": 0,
         "trend": "flat",
     })
@@ -86,7 +86,7 @@ def calculate_kpis(df: pd.DataFrame) -> List[Dict[str, Any]]:
                 "title": f"{col} 平均值",
                 "value": fmt_mean,
                 "icon": "📈",
-                "color": "#E76F51",
+                "color": "#0ea5e9",
                 "change": change,
                 "trend": trend,
             })
@@ -99,7 +99,7 @@ def calculate_kpis(df: pd.DataFrame) -> List[Dict[str, Any]]:
                 "title": f"{col} 总和",
                 "value": fmt_total,
                 "icon": "💰",
-                "color": "#D4825A",
+                "color": "#7DD3FC",
                 "change": change,
                 "trend": trend,
             })
@@ -112,7 +112,7 @@ def calculate_kpis(df: pd.DataFrame) -> List[Dict[str, Any]]:
             "title": f"{first_cat} 唯一值个数",
             "value": f"{df[first_cat].nunique()}",
             "icon": "🏷️",
-            "color": "#8B6F47",
+            "color": "#67E8F9",
             "change": 0,
             "trend": "flat",
         })
@@ -123,63 +123,50 @@ def calculate_kpis(df: pd.DataFrame) -> List[Dict[str, Any]]:
 
 
 def get_default_echart_configs(df: pd.DataFrame) -> List[Dict[str, Any]]:
-    """获取默认 ECharts 仪表盘图表配置（覆盖更全面的 BI 图表类型）"""
+    """获取默认 ECharts 仪表盘图表配置（仅在无分析结果时作为兜底）
+
+    精简策略：只生成最核心的 4-5 种图表类型，而非堆砌 12 种。
+    这样不同数据集的图表会因列结构不同而有所差异，避免"千篇一律"。
+    """
     configs = []
     numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
     cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+    # 识别时间列
+    time_cols = [c for c in df.columns if any(
+        kw in str(c).lower() for kw in ['日期', '时间', '月份', '年份', 'date', 'month', 'year']
+    )]
 
-    # 1. 柱状图：分类对比
-    if cat_cols and numeric_cols:
+    # 1. 趋势图：有时间列优先用折线图
+    if time_cols and numeric_cols:
+        configs.append({"chart_type": "line", "x": time_cols[0], "y": numeric_cols[0],
+                        "title": f"{numeric_cols[0]} 趋势变化"})
+
+    # 2. 分类柱状图：无时间列但有分类列时用柱状图
+    if (not time_cols) and cat_cols and numeric_cols:
         configs.append({"chart_type": "bar", "x": cat_cols[0], "y": numeric_cols[0],
-                        "title": f"{cat_cols[0]} × {numeric_cols[0]} 柱状图"})
-    # 2. 饼图：类别占比
-    if cat_cols:
+                        "title": f"{cat_cols[0]} × {numeric_cols[0]}"})
+
+    # 3. 饼图：类别不太多时有意义（≤10个分类）
+    if cat_cols and numeric_cols and len(df[cat_cols[0]].unique()) <= 10:
         configs.append({"chart_type": "pie", "x": cat_cols[0],
-                        "title": f"{cat_cols[0]} 占比饼图"})
-    # 3. 直方图：数值分布
-    if numeric_cols:
-        configs.append({"chart_type": "histogram", "x": numeric_cols[0],
-                        "title": f"{numeric_cols[0]} 分布直方图"})
-    # 4. 箱线图：异常值检测
-    if numeric_cols:
-        if cat_cols:
-            configs.append({"chart_type": "box", "x": cat_cols[0],
-                            "y": numeric_cols[0], "title": f"{numeric_cols[0]} 箱线图"})
-        else:
-            configs.append({"chart_type": "box", "x": numeric_cols[0],
-                            "y": numeric_cols[0], "title": f"{numeric_cols[0]} 分布箱线图"})
-    # 5. 散点图：数值关系
+                        "title": f"{cat_cols[0]} 占比分布"})
+
+    # 4. 纯数值序列：仅数值列时用折线展示
+    if not cat_cols and numeric_cols:
+        configs.append({"chart_type": "line", "x": numeric_cols[0],
+                        "title": f"{numeric_cols[0]} 序列变化"})
+
+    # 5. 散点图：两个数值列时展示相关性
     if len(numeric_cols) >= 2:
         configs.append({"chart_type": "scatter", "x": numeric_cols[0],
-                        "y": numeric_cols[1], "title": f"{numeric_cols[0]} vs {numeric_cols[1]} 散点图"})
-    # 6. 折线图：趋势
-    if cat_cols and numeric_cols:
-        configs.append({"chart_type": "line", "x": cat_cols[0], "y": numeric_cols[0],
-                        "title": f"{numeric_cols[0]} 趋势折线图"})
-    # 7. 面积图
-    if cat_cols and numeric_cols:
-        configs.append({"chart_type": "area", "x": cat_cols[0], "y": numeric_cols[0],
-                        "title": f"{numeric_cols[0]} 面积趋势图"})
-    # 8. 堆叠柱状图
-    if cat_cols and len(numeric_cols) >= 2:
-        configs.append({"chart_type": "stacked_bar", "x": cat_cols[0], "y": numeric_cols[0],
-                        "title": f"{cat_cols[0]} × {numeric_cols[0]} 堆叠柱状图"})
-    # 9. 雷达图：多维度对比
-    if len(numeric_cols) >= 3:
-        configs.append({"chart_type": "radar", "x": cat_cols[0] if cat_cols else None,
-                        "title": "多维度雷达图"})
-    # 10. 热力图：相关性
-    if len(numeric_cols) >= 3:
-        configs.append({"chart_type": "heatmap", "title": "特征相关性热力图"})
-    # 11. 树状图：层级占比
-    if cat_cols:
-        configs.append({"chart_type": "treemap", "x": cat_cols[0],
-                        "title": f"{cat_cols[0]} 树状分布图"})
-    # 12. 3D 地图：地理空间可视化（ECharts GL）
-    if cat_cols and numeric_cols:
-        configs.append({"chart_type": "gl_map", "x": cat_cols[0], "y": numeric_cols[0],
-                        "title": "3D 数据地图"})
+                        "y": numeric_cols[1], "title": f"{numeric_cols[0]} vs {numeric_cols[1]}"})
 
-    return configs
+    # 6. 第二指标柱状图：有多指标数据时展示更多维度
+    if cat_cols and numeric_cols and len(numeric_cols) >= 2:
+        configs.append({"chart_type": "bar", "x": cat_cols[0], "y": numeric_cols[1],
+                        "title": f"{cat_cols[0]} × {numeric_cols[1]}"})
+
+    # 最多 5 个图表兜底
+    return configs[:5]
 
 

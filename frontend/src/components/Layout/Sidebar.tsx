@@ -26,14 +26,14 @@ export default function Sidebar() {
         background: 'rgba(15, 23, 42, 0.85)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
-        borderRight: '1px solid rgba(139, 92, 246, 0.1)',
+        borderRight: '1px solid rgba(139,92,246,0.1)',
         boxShadow: '4px 0 20px rgba(0, 0, 0, 0.3)',
       }}
     >
       {/* Logo */}
       <div className="px-5 py-6 border-b border-white/[0.06]">
         <h1 className="text-xl font-bold text-[#f8fafc] tracking-tight"
-          style={{ textShadow: '0 0 20px rgba(139, 92, 246, 0.4)' }}
+          style={{ textShadow: '0 0 20px rgba(139,92,246,0.4)' }}
         >
           DataMind AI
         </h1>
@@ -50,8 +50,8 @@ export default function Sidebar() {
               onClick={() => navigate(path)}
               className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all ${
                 active
-                  ? 'bg-[#8b5cf6]/20 text-[#f8fafc] border border-[#8b5cf6]/30 shadow-[0_0_12px_rgba(139,92,246,0.15)]'
-                  : 'text-[#94a3b8] hover:text-[#f8fafc] hover:bg-[#8b5cf6]/8'
+                  ? 'bg-[#8B5CF6]/20 text-[#f8fafc] border border-[#8B5CF6]/30 shadow-[0_0_12px_rgba(139,92,246,0.15)]'
+                  : 'text-[#94a3b8] hover:text-[#f8fafc] hover:bg-[#8B5CF6]/8'
               }`}
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
@@ -67,7 +67,7 @@ export default function Sidebar() {
         <select
           value={state.aiProvider}
           onChange={(e) => dispatch({ type: 'SET_AI_PROVIDER', aiProvider: e.target.value })}
-          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
         >
           {AI_PROVIDERS.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
@@ -79,21 +79,37 @@ export default function Sidebar() {
           value={state.customModel}
           onChange={(e) => dispatch({ type: 'SET_CUSTOM_MODEL', customModel: e.target.value })}
           placeholder={defaultModel || '默认模型'}
-          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
         />
         <p className="text-[10px] text-slate-500 mt-0.5">
           留空则使用默认模型（{defaultModel || '—'}），可填入其他模型名覆盖
         </p>
+        {state.aiProvider === 'qwen' && (
+          <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+            常用：qwen3.7-plus / qwen3.7-max / qwen-plus / qwen-max / qwen-turbo<br/>
+            新模型需在百炼控制台开通权限，否则会报 model_not_found
+          </p>
+        )}
+        {state.aiProvider === 'deepseek' && (
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            常用：deepseek-chat / deepseek-reasoner
+          </p>
+        )}
+        {state.aiProvider === 'zhipu' && (
+          <p className="text-[10px] text-slate-400 mt-0.5">
+            常用：glm-4-flash / glm-4-plus / glm-4-long
+          </p>
+        )}
         <label className="text-xs text-slate-500 block mt-2">API 地址（可选）</label>
         <input
           type="text"
           value={state.customBaseUrl}
           onChange={(e) => dispatch({ type: 'SET_CUSTOM_BASE_URL', customBaseUrl: e.target.value })}
           placeholder={defaultBaseUrl || '默认地址'}
-          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
         />
         <p className="text-[10px] text-slate-500 mt-0.5">
-          百炼新版需填：https://{空间ID}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+          百炼新版需填：https://{'{'}空间ID{'}'}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
         </p>
         <label className="text-xs text-slate-500 block mt-2">API Key</label>
         <input
@@ -101,7 +117,7 @@ export default function Sidebar() {
           value={state.apiKey}
           onChange={(e) => dispatch({ type: 'SET_API_KEY', apiKey: e.target.value })}
           placeholder="输入 API Key..."
-          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
         />
         <p className="text-[10px] text-slate-600 leading-relaxed">
           选择模型后输入对应服务商的 API Key 即可使用

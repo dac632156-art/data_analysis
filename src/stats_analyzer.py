@@ -7,6 +7,8 @@ from typing import Dict, Any, Optional
 
 def get_descriptive_stats(df: pd.DataFrame) -> pd.DataFrame:
     """获取描述性统计"""
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated()]
     numeric_df = df.select_dtypes(include=[np.number])
     if len(numeric_df.columns) == 0:
         return pd.DataFrame()
@@ -32,6 +34,8 @@ def get_descriptive_stats(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_group_stats(df: pd.DataFrame, group_col: str, agg_cols: Optional[list] = None) -> pd.DataFrame:
     """分组统计分析"""
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated()]
     if group_col not in df.columns:
         return pd.DataFrame()
     

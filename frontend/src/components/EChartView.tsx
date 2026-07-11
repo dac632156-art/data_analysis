@@ -13,6 +13,8 @@ import {
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import 'echarts-wordcloud';
+// ★ Theme Engine（Single Source of Truth for colors）
+import { theme as GALAXY_THEME } from '../theme';
 // ★ echarts-gl 3D 扩展
 import 'echarts-gl';
 
@@ -28,6 +30,10 @@ echarts.use([
 
 // 中国地图 GeoJSON URL（阿里云 DataV）
 const CHINA_GEO_URL = 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json';
+
+// ★ 统一强调色（来自 theme/ Theme Engine，禁止写死）
+const EMPHASIS_GLOW = GALAXY_THEME.chart.emphasisGlow; // 银河紫辉光（图表 hover 强调）
+const EMPHASIS_BORDER = '#A78BFA'; // 银河紫（极光青边框改为紫色强调）
 // 地图是否已注册
 let chinaMapRegistered = false;
 let chinaMapLoading: Promise<void> | null = null;
@@ -143,6 +149,14 @@ function wrapDataItem(d: unknown, extraStyle: Record<string, unknown>): unknown 
  */
 function enhanceOptionForInteraction(option: EChartsOption): EChartsOption {
   const result: Record<string, unknown> = { ...option, backgroundColor: 'transparent' };
+  // ★ 缺省 tooltip 时补一个默认提示，保证悬停可见数据（不覆盖已有 tooltip）
+  if (!result.tooltip) {
+    const series = (result.series as Array<Record<string, unknown>>) || [];
+    const useItem = series.some(s =>
+      ['pie', 'map', 'scatter', 'bubble', 'radar', 'treemap', 'wordCloud'].includes(String(s.type || ''))
+    );
+    result.tooltip = { trigger: useItem ? 'item' : 'axis', confine: true };
+  }
   const originalSeries = (result.series as Array<Record<string, unknown>>) || [];
 
   result.series = originalSeries.map((s) => {
@@ -160,7 +174,7 @@ function enhanceOptionForInteraction(option: EChartsOption): EChartsOption {
         scaleSize: 15,
         itemStyle: {
           shadowBlur: 25,
-          shadowColor: '#8b5cf6',
+          shadowColor: EMPHASIS_GLOW,
           ...(existingEmphasis.itemStyle as Record<string, unknown>),
         },
       };
@@ -170,9 +184,9 @@ function enhanceOptionForInteraction(option: EChartsOption): EChartsOption {
         lineStyle: { width: 4 },
         itemStyle: {
           shadowBlur: 15,
-          shadowColor: '#8b5cf6',
+          shadowColor: EMPHASIS_GLOW,
           borderWidth: 3,
-          borderColor: '#a78bfa',
+          borderColor: EMPHASIS_BORDER,
           ...(existingEmphasis.itemStyle as Record<string, unknown>),
         },
       };
@@ -183,7 +197,7 @@ function enhanceOptionForInteraction(option: EChartsOption): EChartsOption {
         areaStyle: { opacity: 0.45 },
         itemStyle: {
           shadowBlur: 12,
-          shadowColor: '#8b5cf6',
+          shadowColor: EMPHASIS_GLOW,
         },
       };
     } else if (type === 'boxplot') {
@@ -191,8 +205,8 @@ function enhanceOptionForInteraction(option: EChartsOption): EChartsOption {
         ...existingEmphasis,
         itemStyle: {
           shadowBlur: 15,
-          shadowColor: '#8b5cf6',
-          borderColor: '#a78bfa',
+          shadowColor: EMPHASIS_GLOW,
+          borderColor: EMPHASIS_BORDER,
           borderWidth: 2,
           ...(existingEmphasis.itemStyle as Record<string, unknown>),
         },
@@ -202,8 +216,8 @@ function enhanceOptionForInteraction(option: EChartsOption): EChartsOption {
         ...existingEmphasis,
         itemStyle: {
           shadowBlur: 20,
-          shadowColor: '#8b5cf6',
-          borderColor: '#a78bfa',
+          shadowColor: EMPHASIS_GLOW,
+          borderColor: EMPHASIS_BORDER,
           borderWidth: 2,
           ...(existingEmphasis.itemStyle as Record<string, unknown>),
         },
@@ -691,9 +705,9 @@ export default function EChartView({
   const displayTitle = hideTitle ? '' : (title || extractTitle(option));
 
   return (
-    <div className="glass-card p-4" data-echart-wrapper>
+    <div className="glass-card p-4" data-echart-wrapper style={{ overflow: 'hidden' }}>
       {displayTitle && <h3 className="text-sm font-medium text-slate-300 mb-3">{displayTitle}</h3>}
-      <div ref={domRef} style={{ height: `${height}px`, width: '100%' }} />
+      <div ref={domRef} style={{ height: `${height}px`, width: '100%', minWidth: 0 }} />
     </div>
   );
 }

@@ -4,7 +4,7 @@ import axios from 'axios';
 import type {
   UploadResponse, PreviewResponse, StatsResponse,
   InsightsResponse, ChatResponse,
-  ReportResponse, AIReportResponse, KPIResponse, EChartResponse, EChartItem,
+  AIReportResponse, KPIResponse, EChartResponse, EChartItem,
 } from '../types/api';
 import type { ChartConfig } from '../types';
 
@@ -13,13 +13,13 @@ const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 const api = axios.create({
   baseURL: API_BASE,
-  timeout: 60000,
+  timeout: 300000,  // 5 分钟，AI 清洗/报告生成需要更长时间
   // 不设置全局 Content-Type，让 axios 自动处理：
   // JSON 请求会自动设为 application/json，FormData 上传会自动设为 multipart/form-data
 });
 
 // 统一将 AI 模型名转为小写，避免大小写不匹配导致 model_not_found
-// （阿里云百炼 / DeepSeek / OpenAI 等 API 的模型 ID 均为小写，如 qwen3.7-plus、deepseek-chat）
+// （阿里云百炼 / DeepSeek / OpenAI 等 API 的模型 ID 均为小写格式，如 qwen3.7-plus、deepseek-chat）
 api.interceptors.request.use((config) => {
   if (
     config.data &&
@@ -31,18 +31,16 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Render 后端休眠时的自动唤醒 + 重试
+// 后端休眠/无响应时的自动重试（同时支持 Render 部署版和本地 dev）
 let _wakePromise: Promise<void> | null = null;
 
-async function wakeUpBackend(): Promise<void> {
+async function wakeUpBackend(reason: string): Promise<void> {
   if (_wakePromise) return _wakePromise;
   _wakePromise = (async () => {
-    console.warn('🔧 Render 后端可能已休眠，正在唤醒（冷启动约 35 秒）...');
-    // 发一个轻量 ping 触发冷启动（不限时的 GET，让 Render 收到请求并开始启动）
-    try { await axios.get(`${API_BASE}/health`, { timeout: 5000 }); } catch { /* 预期可能失败 */ }
-    // 等待冷启动完成
-    await new Promise(r => setTimeout(r, 35000));
-    console.log('✅ 唤醒等待结束，即将重试请求');
+    console.warn(`🔧 检测到后端无响应（${reason}），等待 5 秒后重试...`);
+    // 等待一段时间让后端恢复（本地 vite proxy / Render 冷启动都适用）
+    await new Promise(r => setTimeout(r, 5000));
+    console.log('✅ 等待结束，即将重试请求');
   })();
   await _wakePromise;
   _wakePromise = null;
@@ -51,14 +49,14 @@ async function wakeUpBackend(): Promise<void> {
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
-    // 检测网络/超时错误（Render 休眠的典型症状）
+    // 检测网络/超时错误
     const isNetworkError = !err.response &&
       (err.code === 'ECONNABORTED' || err.code === 'ERR_NETWORK' ||
        err.message?.includes('timeout') || err.message?.includes('Network Error'));
 
     if (isNetworkError && err.config && !err.config._retried) {
       err.config._retried = true;
-      await wakeUpBackend();
+      await wakeUpBackend(err.message || err.code || 'unknown');
       return api(err.config);  // 重试
     }
 
@@ -68,7 +66,11 @@ api.interceptors.response.use(
       msg = msg.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join('; ');
     }
     if (typeof msg !== 'string') msg = String(msg);
-    console.error('[API Error]', msg);
+    // 详细诊断日志：url + status + code
+    const url = err.config?.url || '?';
+    const status = err.response?.status ?? 'N/A';
+    const code = err.code || 'N/A';
+    console.error(`[API Error] ${url} → ${status} (${code}):`, msg);
     return Promise.reject(new Error(msg));
   }
 );
@@ -112,6 +114,12 @@ export const getColumnInfo = async (sessionId: string) => {
 
 export const getColumnTypes = async (sessionId: string) => {
   const { data } = await api.post('/data/column-types', { session_id: sessionId });
+  return data;
+};
+
+/** 获取数据摘要统计（describe 全量指标） */
+export const getDataSummary = async (sessionId: string): Promise<{ success: boolean; summary: Record<string, unknown> }> => {
+  const { data } = await api.post('/data/summary', { session_id: sessionId });
   return data;
 };
 
@@ -296,28 +304,9 @@ export const getDashboardKPIs = async (sessionId: string) => {
   return data;
 };
 
-export const getDashboardCharts = async (sessionId: string, chartConfigs?: Record<string, unknown>[]) => {
-  const { data } = await api.post('/dashboard/charts', { session_id: sessionId, charts: chartConfigs });
-  return data;
-};
-
 /** 获取仪表盘图表（ECharts 格式） */
 export const getDashboardECharts = async (sessionId: string, chartConfigs?: Record<string, unknown>[]): Promise<{ success: boolean; charts: EChartItem[] }> => {
   const { data } = await api.post('/dashboard/echarts', { session_id: sessionId, charts: chartConfigs });
-  return data;
-};
-
-export const getDashboardRecommend = async (sessionId: string, apiKey: string, baseUrl?: string, model?: string) => {
-  const { data } = await api.post('/dashboard/recommend', {
-    session_id: sessionId, api_key: apiKey, base_url: baseUrl, model,
-  });
-  return data;
-};
-
-export const getAiLayout = async (sessionId: string, apiKey: string, baseUrl?: string, model?: string) => {
-  const { data } = await api.post('/dashboard/ai-layout', {
-    session_id: sessionId, api_key: apiKey, base_url: baseUrl, model,
-  });
   return data;
 };
 
@@ -361,6 +350,49 @@ export const getSavedPackages = async (sessionId: string): Promise<{
   return data;
 };
 
+/* ===== Dashboard Schema (V2 Generator) ===== */
+export const getDashboardSchema = async (
+  sessionId: string,
+  title?: string,
+  layoutName?: string,
+): Promise<{ success: boolean; schema: Record<string, unknown> }> => {
+  const { data } = await api.post('/dashboard/schema', {
+    session_id: sessionId,
+    title: title || '',
+    layout_name: layoutName || undefined,
+  });
+  return data;
+};
+
+/* ===== V7: Dashboard 标题 AI 命名 + 持久化 ===== */
+export const generateDashboardTitle = async (
+  sessionId: string,
+  apiKey: string,
+  baseUrl?: string,
+  model?: string,
+): Promise<{ success: boolean; title: string; source: 'ai' | 'fallback' }> => {
+  const { data } = await api.post('/dashboard/schema/naming', {
+    session_id: sessionId,
+    api_key: apiKey,
+    base_url: baseUrl || '',
+    model: model || '',
+  });
+  return data;
+};
+
+export const saveDashboardTitle = async (
+  sessionId: string,
+  title: string,
+  action: 'get' | 'set' = 'set',
+): Promise<{ success: boolean; title: string; has_custom: boolean }> => {
+  const { data } = await api.post('/dashboard/schema/title', {
+    session_id: sessionId,
+    title,
+    action,
+  });
+  return data;
+};
+
 /* ===== AI ===== */
 export const generateInsights = async (sessionId: string, apiKey: string, baseUrl?: string, model?: string) => {
   const { data } = await api.post<InsightsResponse>('/insights/generate', {
@@ -382,6 +414,18 @@ export const saveAnalysis = async (sessionId: string, packageIds: string[]) => {
   return data;
 };
 
+/* ===== 业务推理（V3，无需 LLM）===== */
+export const runReasoning = async (
+  sessionId: string,
+  title?: string,
+): Promise<{ success: boolean; data: Record<string, unknown> }> => {
+  const { data } = await api.post('/reasoning/run', {
+    session_id: sessionId,
+    title: title || '',
+  });
+  return data;
+};
+
 export const chatAnalyze = async (sessionId: string, question: string, apiKey: string, baseUrl?: string, model?: string) => {
   const { data } = await api.post<ChatResponse>('/chat/analyze', {
     session_id: sessionId, question, api_key: apiKey, base_url: baseUrl, model,
@@ -390,10 +434,8 @@ export const chatAnalyze = async (sessionId: string, question: string, apiKey: s
 };
 
 /* ===== 报告 ===== */
-export const generateReport = async (sessionId: string, title = '数据分析报告') => {
-  const { data } = await api.post<ReportResponse>('/report/generate', { session_id: sessionId, title });
-  return data;
-};
+
+
 
 
 /** V3: 从 AnalysisPackage 提取扁平指标列表 */
@@ -406,45 +448,7 @@ export const generateCards = async (sessionId: string): Promise<{
   const { data } = await api.post('/dashboard/cards', { session_id: sessionId });
   return data;
 };
-/** AI 分析报告 — 提交异步任务（立即返回 task_id） */
-export const submitAIReport = async (
-  sessionId: string,
-  apiKey: string,
-  baseUrl?: string,
-  model?: string,
-): Promise<{ task_id: string; status: string }> => {
-  const { data } = await api.post('/report/ai-analyze', {
-    session_id: sessionId,
-    api_key: apiKey,
-    base_url: baseUrl,
-    model,
-  });
-  return data;
-};
 
-/** 轮询任务状态 */
-export const getAIReportStatus = async (
-  taskId: string,
-): Promise<{
-  task_id: string;
-  status: 'pending' | 'processing' | 'done' | 'failed';
-  progress: number;
-  message: string;
-  error?: string;
-}> => {
-  const { data } = await api.get(`/report/ai-analyze/status/${taskId}`);
-  return data;
-};
-
-/** 获取任务结果 */
-export const getAIReportResult = async (
-  taskId: string,
-): Promise<AIReportResponse> => {
-  const { data } = await api.get(`/report/ai-analyze/result/${taskId}`);
-  return data;
-};
-
-/** @deprecated 旧同步接口（已废弃，改为 submitAIReport + 轮询模式） */
 export const generateAIReport = async (
   sessionId: string,
   apiKey: string,

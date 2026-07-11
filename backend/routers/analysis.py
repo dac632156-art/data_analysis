@@ -27,25 +27,24 @@ _LIBRARY = AnalysisLibrary()
 _RENDERER = ChartRenderer()
 _PLANNER = Planner()
 
-
 def _get_template_class(template_name: str):
-    """从 Planner.TEMPLATE_MODULES 动态导入模板类（带缓存）"""
+    """通过 AnalysisLibrary 动态导入模板类（带缓存）
+
+    V3：Planner.TEMPLATE_MODULES 已移除，改为通过 AnalysisLibrary 查询。
+    template_name 是模板名（如 growth_analysis），需先查找对应的 intent。
+    """
     if template_name in _TEMPLATES:
         return _TEMPLATES[template_name]
 
-    module_path = Planner.TEMPLATE_MODULES.get(template_name)
-    if module_path is None:
-        return None
+    # V3：遍历 Library 中所有 intent，找到 template 匹配的
+    for intent_obj in _LIBRARY.get_all():
+        if intent_obj.template == template_name:
+            cls = _LIBRARY.load_template_class(intent_obj.intent)
+            if cls:
+                _TEMPLATES[template_name] = cls
+            return cls
 
-    try:
-        parts = module_path.rsplit(".", 1)
-        module = importlib.import_module(parts[0])
-        cls = getattr(module, parts[1])
-        _TEMPLATES[template_name] = cls
-        return cls
-    except Exception:
-        return None
-
+    return None
 # ===== 请求模型 =====
 
 class IntentItem(BaseModel):

@@ -77,11 +77,11 @@ export default function BigScreenDashboard({ cards = [], meta, title = '数据�
     >
       {/* ═══ 顶部标题栏 ═══ */}
       <div className="relative flex items-center justify-between px-8 py-4 border-b"
-        style={{ borderBottomColor: 'rgba(34,211,238,0.15)' }}>
+        style={{ borderBottomColor: 'rgba(125,211,252,0.15)' }}>
         <div className="flex items-center gap-4">
-          <div className="w-1.5 h-10 bg-gradient-to-b from-[#22d3ee] to-[#8b5cf6] rounded-full" />
+          <div className="w-1.5 h-10 bg-gradient-to-b from-[#7DD3FC] to-[#38BDF8] rounded-full" />
           <h1 className="text-xl font-bold text-white tracking-widest"
-            style={{ textShadow: '0 0 20px rgba(34,211,238,0.4)' }}>
+            style={{ textShadow: '0 0 20px rgba(125,211,252,0.4)' }}>
             {title}
           </h1>
         </div>
@@ -120,7 +120,7 @@ export default function BigScreenDashboard({ cards = [], meta, title = '数据�
         <div className="grid gap-6" style={{ gridTemplateColumns: '2fr 1fr' }}>
           {/* 左侧：趋势图 */}
           <section className="rounded-2xl p-5"
-            style={{ background: 'rgba(139,92,246,0.03)', border: '1px solid rgba(139,92,246,0.1)' }}>
+            style={{ background: 'rgba(56,189,248,0.03)', border: '1px solid rgba(56,189,248,0.1)' }}>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-1 h-4 bg-violet-400 rounded-full" />
               <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">趋势分析</h2>
@@ -133,7 +133,7 @@ export default function BigScreenDashboard({ cards = [], meta, title = '数据�
 
           {/* 右侧：地图 */}
           <section className="rounded-2xl p-5"
-            style={{ background: 'rgba(34,211,238,0.03)', border: '1px solid rgba(34,211,238,0.1)' }}>
+            style={{ background: 'rgba(125,211,252,0.03)', border: '1px solid rgba(125,211,252,0.1)' }}>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-1 h-4 bg-cyan-400 rounded-full" />
               <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">地理分布</h2>
@@ -203,20 +203,20 @@ function KpiMiniCard({ card }: { card: CardItem }) {
   const change = d?.change as string | null;
   const kpiType = d?.kpi_type as string;
   const colorMap: Record<string, string> = {
-    sum: '#06b6d4', rate: '#10b981', change: '#f43f5e',
-    avg: '#8b5cf6', count: '#f59e0b',
+    sum: '#38BDF8', rate: '#34D399', change: '#FB7185',
+    avg: '#38BDF8', count: '#FBBF24',
   };
-  const color = colorMap[kpiType] || '#06b6d4';
+  const color = colorMap[kpiType] || '#38BDF8';
   const isUp = change && !String(change).startsWith('-') && String(change) !== '0';
   const isDown = change && String(change).startsWith('-');
 
   return (
     <div className="rounded-xl p-4"
-      style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(34,211,238,0.08)' }}>
+      style={{ background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(125,211,252,0.08)' }}>
       <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">{card.title}</p>
       <p className="text-2xl font-bold font-mono mb-1" style={{ color }}>{value}</p>
       {change && (
-        <p className="text-xs font-bold" style={{ color: isUp ? '#10b981' : isDown ? '#f43f5e' : '#94a3b8' }}>
+        <p className="text-xs font-bold" style={{ color: isUp ? '#34D399' : isDown ? '#FB7185' : '#94a3b8' }}>
           {isUp ? '▲' : isDown ? '▼' : '—'} {String(change).replace(/[+%]/g, '')}%
         </p>
       )}
@@ -229,7 +229,7 @@ function ChartBlock({ card, height }: { card: CardItem; height: number }) {
   if (!option) return null;
   return (
     <div className="rounded-xl p-4"
-      style={{ background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(34,211,238,0.08)' }}>
+      style={{ background: 'rgba(15,23,42,0.5)', border: '1px solid rgba(125,211,252,0.08)' }}>
       <h3 className="text-sm font-semibold text-cyan-400 mb-3">{card.title}</h3>
       <EChartView option={option} height={height} />
     </div>
@@ -252,7 +252,7 @@ function RankingBlock({ card }: { card: CardItem }) {
           <tr>
             {columns.map((col, i) => (
               <th key={i} className="py-2 px-3 text-left font-medium text-slate-400"
-                style={{ borderBottom: '1px solid rgba(34,211,238,0.1)' }}>
+                style={{ borderBottom: '1px solid rgba(125,211,252,0.1)' }}>
                 {String(col)}
               </th>
             ))}
@@ -286,10 +286,10 @@ function TableBlock({ card }: { card: CardItem }) {
       <h3 className="text-sm font-semibold text-amber-400 mb-3">{card.title}</h3>
       <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
         <thead>
-          <tr style={{ background: 'rgba(34,211,238,0.06)' }}>
+          <tr style={{ background: 'rgba(125,211,252,0.06)' }}>
             {columns.map((col, i) => (
               <th key={i} className="py-2 px-3 text-left font-medium text-slate-400"
-                style={{ borderBottom: '1px solid rgba(34,211,238,0.1)' }}>
+                style={{ borderBottom: '1px solid rgba(125,211,252,0.1)' }}>
                 {String(col)}
               </th>
             ))}
@@ -331,8 +331,8 @@ function InsightBlock({ card }: { card: CardItem }) {
   return (
     <div className="rounded-xl p-3"
       style={{
-        background: 'rgba(139,92,246,0.04)',
-        border: isConclusion ? 'rgba(139,92,246,0.2)' : 'rgba(34,211,238,0.1)',
+        background: 'rgba(56,189,248,0.04)',
+        border: isConclusion ? 'rgba(56,189,248,0.2)' : 'rgba(125,211,252,0.1)',
       }}>
       <p className="text-xs text-slate-300 leading-relaxed">{String(text)}</p>
     </div>

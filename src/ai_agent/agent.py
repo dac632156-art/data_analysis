@@ -10,8 +10,11 @@ from typing import List, Dict, Any, Optional
 from src.ai_agent.prompts import (
     SYSTEM_PROMPT, REPORT_SYSTEM_PROMPT, REPORT_USER_PROMPT_TEMPLATE,
     INSIGHTS_SYSTEM_PROMPT, INSIGHTS_USER_PROMPT_TEMPLATE,
+    REPORT_BI_SYSTEM_PROMPT, REPORT_BI_USER_PROMPT_TEMPLATE,
 )
 from src.report_analyzer import run_full_analysis
+from src.report_builder import ReportBuilder
+from src.report_builder import SECTION_DISPLAY_NAME
 
 class DataAnalysisAgent:
     """数据分析 AI Agent（原生 DeepSeek API 实现）"""
@@ -22,11 +25,17 @@ class DataAnalysisAgent:
         self.model = model
         self.base_url = base_url
 
-        # 初始化 OpenAI 客户端，设置 60 秒超时
+        # 初始化 OpenAI 客户端
+        # 报告生成最长 180s；openai SDK 默认 max_retries=2，一旦 AI 服务慢/不可达，
+        # 单次超时(180s)后会再重试 2 次，最坏 180×3=540s，远超前端 300s 超时 →
+        # 前端先 ECONNABORTED 断开，后端还在重试，用户永远收不到降级报告。
+        # 故关闭 SDK 重试（max_retries=0）：超时即抛错 → 立即走 fallback 降级报告，
+        # 保证后端在 180s 内返回 200，前端不会再超时。
         self.client = openai.OpenAI(
             api_key=api_key,
             base_url=base_url,
-            timeout=60.0,
+            timeout=240.0,
+            max_retries=0,
         )
 
     def _get_data_summary(self, df: pd.DataFrame) -> str:
@@ -34,7 +43,10 @@ class DataAnalysisAgent:
         numeric_stats = ""
         try:
             if len(df.select_dtypes(include=['number']).columns) > 0:
-                numeric_stats = df.describe().to_string()
+                import io as _io
+                buf = _io.StringIO()
+                df.describe().to_csv(buf, encoding='utf-8')
+                numeric_stats = buf.getvalue()
         except Exception:
             numeric_stats = "(无法计算描述性统计)"
 
@@ -73,7 +85,7 @@ class DataAnalysisAgent:
         thread.join(timeout=timeout_sec)
 
         if not result_container["done"]:
-            return f"⚠️ 代码执行超时（>{timeout_sec}秒），已跳过。"
+            return f"[WARN] 代码执行超时（>{timeout_sec}秒），已跳过。"
         if result_container["error"]:
             return result_container["error"]
         return result_container["result"]
@@ -280,11 +292,13 @@ class DataAnalysisAgent:
                 )
 
                 ai_text = response.choices[0].message.content or ""
-                print(f'[Report Debug] AI returned text length: {len(ai_text)}')
+                # debug: AI text length logged via logging
 
                 # 尝试解析 JSON
                 sections = _parse_report_json(ai_text)
-                print(f"[Report Debug] Parsed {len(sections)} sections")
+                # 归一化 type 名（_fill_missing_sections 可能注入了新版名）→ 旧版名，确保 _bind_core_charts 能匹配
+                sections = _normalize_section_types(sections)
+                # debug: parsed sections logged via logging
 
                 # 自动绑定保底图表到对应 section（AI 漏填 chartIndex 时兜底）
                 sections = _bind_core_charts_to_sections(sections, charts)
@@ -299,16 +313,113 @@ class DataAnalysisAgent:
                 # 降级：返回纯统计分析数据（不带 AI 洞察）
                 return {
                     "success": True,
-                    "sections": _build_fallback_sections(analysis_data),
+                    "sections": _normalize_section_types(_build_fallback_sections(analysis_data)),
                     "raw_analysis": analysis_data,
                     "warning": f"AI 生成洞察失败（{str(e)}），仅返回统计数据",
                 }
 
         except Exception as e:
             # 阶段 1-3 或格式化过程出错，打印完整错误到控制台
-            print(f"[Report Error] generate_report 异常：{e}")
+            import logging as _logging; _logging.getLogger("agent").error(f"generate_report: {e}")
             _tb.print_exc()
-            raise  # 重新抛出，让上层路由捕获并返回 500
+
+    # ===== V3：基于 AnalysisPackage 的报告生成 =====
+    def generate_report_from_packages(
+        self,
+        packages: List[Dict[str, Any]],
+        data_profile: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """基于已保存的 AnalysisPackage 生成 AI 分析报告
+
+        Report AI 的唯一职责是读取 AnalysisPackage 并组织语言生成专业报告。
+        不再重新分析数据，不访问原始 DataFrame。
+        """
+        import json as _json
+        import traceback as _tb
+
+        packages = packages or []
+
+        if not packages:
+            return {
+                "success": True,
+                "sections": _normalize_section_types([{
+                    "type": "executive_summary",
+                    "title": "执行摘要",
+                    "content": "当前没有已保存的分析结果。请先在分析页面执行分析并保存，再生成报告。",
+                }]),
+                "packages_used": 0,
+            }
+
+        builder = ReportBuilder()
+        report_input = builder.build_input(packages, data_profile)
+
+        if not report_input["available_sections"]:
+            return {
+                "success": True,
+                "sections": _normalize_section_types([{
+                    "type": "executive_summary",
+                    "title": "执行摘要",
+                    "content": "已保存的分析包中没有可报告的数据。",
+                }]),
+                "packages_used": len(packages),
+            }
+
+        user_prompt = REPORT_BI_USER_PROMPT_TEMPLATE.format(
+            packages_summary=report_input["packages_summary"],
+            prompt_text=report_input["prompt_text"],
+        )
+
+        warning: Optional[str] = None
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": REPORT_BI_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.4,
+                max_tokens=8192,  # 保持 8192，通过精简输入 prompt 提速
+                timeout=240,  # 与 client 级一致；SDK 重试已关，最坏 240s 即走 fallback
+            )
+
+            ai_text = response.choices[0].message.content or ""
+            sections = _parse_report_json(ai_text)
+
+            # 绑定图表信息到 sections
+            sections = _bind_package_charts_to_sections(sections, report_input["sections_data"])
+
+            # 归一化 type 名 → 前端兼容格式
+            sections = _normalize_section_types(sections)
+
+            return {
+                "success": True,
+                "sections": sections,
+                "packages_used": len(packages),
+            }
+
+        except Exception as e:
+            import logging as _logging; _logging.getLogger("agent").warning(f"report fallback: {e}")
+            _tb.print_exc()
+            warning = f"AI 报告生成失败（{str(e)}），以下为已有分析数据的直接汇总。"
+
+            try:
+                fallback_sections = _build_fallback_from_packages(packages, report_input)
+                # 归一化 type 名 → 前端兼容格式
+                fallback_sections = _normalize_section_types(fallback_sections)
+                return {
+                    "success": True,
+                    "sections": fallback_sections,
+                    "packages_used": len(packages),
+                    "warning": warning,
+                }
+            except Exception as fb_e:
+                return {
+                    "success": False,
+                    "sections": [],
+                    "packages_used": len(packages),
+                    "warning": f"报告生成失败：{str(fb_e)}",
+                }
+
 
 
 # ============================================================
@@ -428,32 +539,74 @@ def _format_anomalies(al: List[Dict[str, Any]]) -> str:
 
 
 def _fill_missing_sections(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """补全缺失的 report sections，确保至少 7 个章节"""
+    """补全缺失的 report sections，确保报告结构完整
+
+    注意：required_types 必须与 REPORT_BI_SYSTEM_PROMPT 中定义的 section type 枚举保持一致，
+    否则会把 AI 已经正常输出的 section 误判为"缺失"，注入"数据不足"占位。
+    """
     existing_types = {s.get("type", "") for s in sections}
-    required_types = ["overview", "kpi", "trend", "structure", "top", "anomaly", "conclusion", "suggestions", "next_steps"]
+    # 与 prompts.py 中 REPORT_BI_SYSTEM_PROMPT 的 section type 枚举对齐
+    required_types = [
+        "executive_summary", "data_overview", "trend_analysis", "ranking_analysis",
+        "structure_analysis", "concentration_analysis", "distribution_analysis",
+        "correlation_analysis", "comparison_analysis", "geo_analysis",
+        "retention_analysis", "anomaly_analysis", "proportion_analysis",
+        "risk_analysis", "management_suggestions", "conclusion",
+    ]
 
+    new_sections = []
     for rt in required_types:
-        if rt not in existing_types:
-            if rt == "overview":
-                sections.insert(0, {"type": "overview", "title": "数据概览", "content": "数据概览信息不足"})
-            elif rt == "kpi":
-                sections.insert(1, {"type": "kpi", "title": "核心指标", "insights": [{"chart_title": "核心指标总览", "chart_type": None, "table_type": None, "rule_id": "规则10", "insight_label": "趋势洞察", "analysis": "核心经营指标数据不足"}]})
-            elif rt == "trend":
-                sections.append({"type": "trend", "title": "趋势分析", "insights": [{"chart_title": "趋势分析", "chart_type": "line", "table_type": "sort", "rule_id": "规则9", "insight_label": "趋势洞察", "analysis": "趋势分析数据不足"}]})
-            elif rt == "structure":
-                sections.append({"type": "structure", "title": "结构分析", "insights": [{"chart_title": "结构分析", "chart_type": "pie", "table_type": "summary", "rule_id": "规则12", "insight_label": "结构洞察", "analysis": "结构分析数据不足"}]})
-            elif rt == "top":
-                sections.append({"type": "top", "title": "TOP / 集中度分析", "insights": [{"chart_title": "排名分析", "chart_type": "bar", "table_type": "sort", "rule_id": "规则11", "insight_label": "集中度洞察", "analysis": "排名分析数据不足"}]})
-            elif rt == "anomaly":
-                sections.append({"type": "anomaly", "title": "异常分析", "insights": [{"chart_title": None, "chart_type": None, "table_type": None, "rule_id": None, "insight_label": "异常洞察", "analysis": "未检测到显著异常"}]})
-            elif rt == "conclusion":
-                sections.append({"type": "conclusion", "title": "核心结论", "insights": [{"chart_title": None, "chart_type": None, "table_type": None, "rule_id": None, "insight_label": None, "analysis": "结论信息不足"}]})
-            elif rt == "suggestions":
-                sections.append({"type": "suggestions", "title": "业务建议", "insights": [{"chart_title": None, "chart_type": None, "table_type": None, "rule_id": None, "insight_label": None, "analysis": "建议信息不足"}]})
-            elif rt == "next_steps":
-                sections.append({"type": "next_steps", "title": "下一步操作建议", "action_items": [{"priority": 1, "action": "请补充数据分析以生成详细建议"}]})
+        if rt in existing_types:
+            continue
+        # 缺失章节：插入明确的"未提供"占位，而不是误导性的"数据不足"
+        if rt == "executive_summary":
+            new_sections.append({
+                "type": "executive_summary", "title": "执行摘要",
+                "content": "AI 未生成执行摘要。",
+            })
+        elif rt == "data_overview":
+            new_sections.append({
+                "type": "data_overview", "title": "数据概览",
+                "content": "AI 未生成数据概览。",
+            })
+        elif rt == "conclusion":
+            new_sections.append({
+                "type": "conclusion", "title": "总结",
+                "insights": [{"analysis": "AI 未生成总结。"}],
+            })
+        elif rt == "management_suggestions":
+            new_sections.append({
+                "type": "management_suggestions", "title": "管理建议",
+                "insights": [{"analysis": "AI 未生成管理建议。"}],
+            })
+        else:
+            new_sections.append({
+                "type": rt,
+                "title": _section_title_for(rt),
+                "insights": [{"analysis": f"{_section_title_for(rt)}：本章节无相关数据。"}],
+            })
 
+    if new_sections:
+        sections.extend(new_sections)
     return sections
+
+
+def _section_title_for(section_type: str) -> str:
+    """section type → 中文标题"""
+    return {
+        "trend_analysis": "趋势分析",
+        "ranking_analysis": "排名分析",
+        "structure_analysis": "结构分析",
+        "concentration_analysis": "集中度分析",
+        "distribution_analysis": "分布分析",
+        "correlation_analysis": "相关性分析",
+        "comparison_analysis": "对比分析",
+        "geo_analysis": "地理空间分析",
+        "retention_analysis": "留存分析",
+        "anomaly_analysis": "异常分析",
+        "proportion_analysis": "占比分析",
+        "risk_analysis": "风险分析",
+    }.get(section_type, section_type)
 
 def _parse_report_json(ai_text: str) -> List[Dict[str, Any]]:
     """从 AI 返回的文本中解析 JSON sections"""
@@ -481,8 +634,9 @@ def _parse_report_json(ai_text: str) -> List[Dict[str, Any]]:
 
         data = _json.loads(json_str)
         sections = data.get("sections", [])
-        # 兜底：如果 sections 少于 5 个，说明 AI 输出被截断，补全缺失章节
-        if len(sections) < 5:
+        # 兜底：只在 sections 为空（AI 完全没生成）时才补全。
+        # 旧逻辑 len < 5 触发补全会与正常 AI 输出冲突。
+        if not sections:
             sections = _fill_missing_sections(sections)
         return sections
     except Exception:
@@ -522,20 +676,20 @@ def _sections_to_markdown(sections: List[Dict[str, Any]]) -> str:
 
     # 图标映射
     type_colors = {
-        "overview": "📋", "kpi": "📊", "trend": "📈",
-        "structure": "🏗️", "top": "🔝", "anomaly": "⚠️",
-        "conclusion": "💡", "suggestions": "🚀", "next_steps": "🎯",
-        "error": "❌",
+        "overview": "[INFO]", "kpi": "[KPI]", "trend": "[TREND]",
+        "structure": "[STRUCT]", "top": "[TOP]", "anomaly": "[WARN]",
+        "conclusion": "[CONCLUSION]", "suggestions": "[SUGGEST]", "next_steps": "[NEXT]",
+        "error": "[ERROR]",
     }
 
     # 洞察类型标签颜色
     label_colors = {
-        "趋势洞察": "📈", "结构洞察": "🏗️", "集中度洞察": "🔝",
-        "异常洞察": "⚠️", "风险洞察": "🔴",
+        "趋势洞察": "[TREND]", "结构洞察": "[STRUCT]", "集中度洞察": "[TOP]",
+        "异常洞察": "[WARN]", "风险洞察": "[RISK]",
     }
 
     for section in sections:
-        icon = type_colors.get(section.get("type", ""), "📌")
+        icon = type_colors.get(section.get("type", ""), "[PIN]")
         title = section.get("title", "")
         lines.append(f"## {icon} {title}")
         lines.append("")
@@ -567,9 +721,9 @@ def _sections_to_markdown(sections: List[Dict[str, Any]]) -> str:
                         if rule_id:
                             badge_parts.append(rule_id)
                         if chart_type and chart_type != "null":
-                            badge_parts.append(f"📊 {chart_type}")
+                            badge_parts.append(f"[KPI] {chart_type}")
                         if table_type and table_type not in ("null", ""):
-                            badge_parts.append(f"📋 {table_type}")
+                            badge_parts.append(f"[INFO] {table_type}")
                         rule_badge = f"*[{' | '.join(badge_parts)}]*  "
 
                     # 渲染内容
@@ -592,7 +746,7 @@ def _sections_to_markdown(sections: List[Dict[str, Any]]) -> str:
                     "scatter": "散点图", "histogram": "直方图", "map_3d": "3D 地图",
                     "table": "数据表格",
                 }
-                lines.append("### 📊 推荐生成的图表")
+                lines.append("### [KPI] 推荐生成的图表")
                 lines.append("")
                 for c in charts_plan:
                     ctype = c.get("chart_type", "")
@@ -608,12 +762,12 @@ def _sections_to_markdown(sections: List[Dict[str, Any]]) -> str:
                     if value:
                         lines.append(f"  > {value}")
                     if guide:
-                        lines.append(f"  > 🖱️ {guide}")
+                        lines.append(f"  > [MOUSE]️ {guide}")
                     lines.append("")
             # ---- 操作清单 ----
             action_items = section.get("action_items", [])
             if action_items:
-                lines.append("### ✅ 操作清单")
+                lines.append("### [OK] 操作清单")
                 lines.append("")
                 for a in sorted(action_items, key=lambda x: x.get("priority", 99)):
                     lines.append(f"{a.get('priority', '')}. {a.get('action', '')}")
@@ -665,7 +819,7 @@ def _build_fallback_sections(analysis_data: Dict[str, Any]) -> List[Dict[str, An
     trend_insights = []
     for col, t in stats.get("trend_analysis", {}).items():
         g = t.get("overall_growth_rate")
-        icon = "🔺" if (g or 0) > 0 else "🔻" if (g or 0) < 0 else "➖"
+        icon = "[UP]" if (g or 0) > 0 else "[DOWN]" if (g or 0) < 0 else "➖"
         trend_insights.append({
             "chart_title": f"{col}趋势分析",
             "chart_type": "line",
@@ -839,16 +993,16 @@ def _build_insights_data_summary(
     dimensions = fields.get("dimensions", [])
 
     lines.append("【字段分类——分析建议中必须使用这些真实列名！】")
-    lines.append(f"- 📅 时间列：{time_col if time_col else '（无）'}")
-    lines.append(f"- 📊 数值指标列：{', '.join(metrics) if metrics else '（无）'}")
-    lines.append(f"- 🏷️ 分类维度列：{', '.join(dimensions) if dimensions else '（无）'}")
+    lines.append(f"- [CAL] 时间列：{time_col if time_col else '（无）'}")
+    lines.append(f"- [KPI] 数值指标列：{', '.join(metrics) if metrics else '（无）'}")
+    lines.append(f"- [TAG]️ 分类维度列：{', '.join(dimensions) if dimensions else '（无）'}")
     # 识别地区列
     region_cols = [c for c in dimensions if any(
         kw in str(c).lower() for kw in ['省', '市', '区', '县', '地区', '区域', '城市', '省份',
                                           'province', 'city', 'region', 'district', 'area']
     )]
     if region_cols:
-        lines.append(f"- 🗺️ 地区/地图列：{', '.join(region_cols)}（必须推荐 3D 地图！）")
+        lines.append(f"- [MAP]️ 地区/地图列：{', '.join(region_cols)}（必须推荐 3D 地图！）")
     lines.append("")
 
     # 三、数据质量
@@ -1086,4 +1240,206 @@ def _build_fallback_insights(
             lines.append(f"1. 计算各「{cat_cols[0]}」的「{numeric_cols[0]}」对比排名 → 柱状图（X:{cat_cols[0]}, Y:{numeric_cols[0]}）")
             lines.append(f"    + 排序表格（排序:{numeric_cols[0]}, 降序）")
 
-    return "\n".join(lines) + f"\n\n\n---\n\n> ⚠️ AI 洞察生成失败（{error_msg}），以上为自动统计分析结果。"
+    return "\n".join(lines) + f"\n\n\n---\n\n> [WARN] AI 洞察生成失败（{error_msg}），以上为自动统计分析结果。"
+
+
+
+# ============================================================
+# V3：基于 AnalysisPackage 的报告辅助函数
+# ============================================================
+
+# 归一化：将 AI prompt 中使用的 section type（新名）映射到前端 DashboardPage 硬编码的旧名
+# 前端 DashboardPage.tsx:417-433 只识别：overview/kpi/trend/top/structure/anomaly/conclusion/suggestions/next_steps
+_SECTION_TYPE_NORMALIZE: Dict[str, str] = {
+    "data_overview": "overview",
+    "trend_analysis": "trend",
+    "growth_analysis": "trend",  # 五阶段流水线 _build_fallback_sections 使用的旧名
+    "ranking_analysis": "top",
+    "structure_analysis": "structure",
+    "anomaly_analysis": "anomaly",
+    "conclusion": "conclusion",
+    "management_suggestions": "suggestions",
+    "action_items": "next_steps",
+}
+
+def _normalize_section_types(sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """将 AI 返回/fallback 生成的 sections 的 type 转为前端兼容的旧名
+
+    同时为 next_steps 类型的 section 容错：AI 可能输出 actions/steps/recommendations
+    等变体字段名，统一规范为 action_items（前端 buildReportHTML 识别的字段名）。
+    """
+    for s in sections:
+        old_type = _SECTION_TYPE_NORMALIZE.get(s.get("type", ""), s.get("type", ""))
+        s["type"] = old_type
+        # next_steps 容错：合并各种可能的字段名到 action_items
+        if s.get("type") == "next_steps" and not s.get("action_items"):
+            merged: List[Dict[str, Any]] = []
+            for alt_key in ("actions", "steps", "recommendations", "action_list", "items"):
+                alt = s.get(alt_key)
+                if isinstance(alt, list):
+                    for item in alt:
+                        if isinstance(item, str):
+                            merged.append({"priority": 99, "action": item})
+                        elif isinstance(item, dict):
+                            merged.append({
+                                "priority": item.get("priority", item.get("顺序", 99)),
+                                "action": item.get("action", item.get("action_text", item.get("text", str(item)))),
+                            })
+            if merged:
+                s["action_items"] = merged
+    return sections
+
+def _bind_package_charts_to_sections(
+    sections: List[Dict[str, Any]],
+    sections_data: Dict[str, List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """将 AnalysisPackage 中的图表信息绑定到 AI 生成的 sections 中"""
+    chart_map: Dict[str, Dict[str, Any]] = {}
+    for section_name, pkgs in sections_data.items():
+        for pkg in pkgs:
+            charts = pkg.get("chart_data", [])
+            for c in charts:
+                title = c.get("title", "")
+                if title:
+                    chart_map[title] = {
+                        "chart_type": c.get("chart_type", c.get("type", "")),
+                        "analysis_type": pkg.get("analysis_type", ""),
+                        "dimension": pkg.get("dimension"),
+                        "metric": pkg.get("metric"),
+                    }
+
+    for section in sections:
+        insights = section.get("insights")
+        if not isinstance(insights, list):
+            continue
+        for ins in insights:
+            ct = ins.get("chart_title", "")
+            if ct and ct in chart_map:
+                info = chart_map[ct]
+                if not ins.get("chart_type"):
+                    ins["chart_type"] = info["chart_type"]
+                if not ins.get("analysis_type"):
+                    ins["analysis_type"] = info["analysis_type"]
+                if not ins.get("dimension"):
+                    ins["dimension"] = info["dimension"]
+                if not ins.get("metric"):
+                    ins["metric"] = info["metric"]
+
+    return sections
+
+
+def _build_fallback_from_packages(
+    packages: List[Dict[str, Any]],
+    report_input: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """AI 调用失败时，直接用 AnalysisPackage 中的已有数据构建报告"""
+    sections: List[Dict[str, Any]] = []
+    sections_data = report_input.get("sections_data", {})
+
+    # 执行摘要
+    total_kpis = 0
+    total_insights = 0
+    for pkgs in sections_data.values():
+        for pkg in pkgs:
+            total_kpis += len(pkg.get("kpis", []))
+            total_insights += len(pkg.get("insights", [])) + len(pkg.get("conclusions", []))
+    sections.append({
+        "type": "executive_summary",
+        "title": "执行摘要",
+        "content": (
+            f"本报告基于 {len(packages)} 个已完成的分析包生成。"
+            f"共包含 {total_kpis} 项 KPI 指标和 {total_insights} 条数据洞察。"
+        ),
+    })
+
+    # 数据概览
+    data_profile = report_input.get("data_profile", {})
+    if data_profile:
+        time_cols = data_profile.get("time_cols", [])
+        cat_cols = data_profile.get("category_cols", [])
+        num_cols = data_profile.get("numeric_cols", [])
+        sections.append({
+            "type": "data_overview",
+            "title": "数据概览",
+            "content": (
+                f"时间维度：{', '.join(time_cols) if time_cols else '无'}。"
+                f"数值指标：{', '.join(num_cols) if num_cols else '无'}。"
+                f"分类维度：{', '.join(cat_cols) if cat_cols else '无'}。"
+            ),
+        })
+    else:
+        sections.append({
+            "type": "data_overview",
+            "title": "数据概览",
+            "content": f"基于 {len(packages)} 个分析包生成。分析包概要：{report_input.get('packages_summary', '')}",
+        })
+
+    # 各分析章节
+    for section_name, pkgs in sections_data.items():
+        insights = []
+        for pkg in pkgs:
+            question = pkg.get("business_question", "")
+            conclusions = pkg.get("conclusions", [])
+            pkg_insights = pkg.get("insights", [])
+            kpis = pkg.get("kpis", [])
+
+            analysis_parts = []
+            if question:
+                analysis_parts.append(f"业务问题：{question}")
+            if kpis:
+                kpi_texts = []
+                for k in kpis[:5]:
+                    cs = f" ({k.get('change', '')})" if k.get("change") else ""
+                    kpi_texts.append(f"{k.get('label', '')}：{k.get('value', '')}{cs}")
+                analysis_parts.append("；".join(kpi_texts))
+            if conclusions:
+                analysis_parts.extend(conclusions)
+            if pkg_insights:
+                analysis_parts.extend(pkg_insights[:3])
+
+            chart_title = None
+            charts = pkg.get("chart_data", [])
+            if charts:
+                chart_title = charts[0].get("title", "")
+
+            insights.append({
+                "chart_title": chart_title,
+                "chart_type": charts[0].get("type") if charts else None,
+                "insight_label": None,
+                "analysis_type": pkg.get("analysis_type", ""),
+                "dimension": pkg.get("dimension"),
+                "metric": pkg.get("metric"),
+                "business_question": question,
+                "business_conclusion": "；".join(conclusions) if conclusions else None,
+                "analysis": "。".join(analysis_parts) if analysis_parts else "暂无详细分析数据",
+            })
+
+        if insights:
+            sections.append({
+                "type": section_name,
+                "title": SECTION_DISPLAY_NAME.get(section_name, section_name),
+                "insights": insights,
+            })
+
+    # 管理建议
+    all_conclusions = []
+    for pkgs in sections_data.values():
+        for pkg in pkgs:
+            all_conclusions.extend(pkg.get("conclusions", []))
+            all_conclusions.extend(pkg.get("recommendations", []))
+
+    if all_conclusions:
+        sections.append({
+            "type": "management_suggestions",
+            "title": "管理建议",
+            "insights": [{"analysis": c} for c in all_conclusions[:5]],
+        })
+
+    # 总结
+    sections.append({
+        "type": "conclusion",
+        "title": "总结",
+        "insights": [{"analysis": f"报告基于 {len(packages)} 个分析包自动生成。AI 报告生成失败，以上内容为已有分析数据的直接汇总。"}],
+    })
+
+    return sections

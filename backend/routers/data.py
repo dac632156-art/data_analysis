@@ -12,6 +12,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from backend.services.session_manager import manager
+from backend.utils.ai_error import enhance_ai_error
 from src.data_loader import get_data_info, get_column_info
 from src.utils.json_serializer import sanitize_json
 from utils.helpers import get_numeric_columns, get_categorical_columns, get_datetime_columns
@@ -39,6 +40,15 @@ class PreviewRequest(DataRequest):
     rows: int = 100
 
 
+
+
+def _safe_to_string(df_preview):
+    """Safe DataFrame to string, avoiding GBK encoding issues on Windows."""
+    import io
+    buf = io.StringIO()
+    df_preview.to_csv(buf, index=False, encoding='utf-8')
+    return buf.getvalue()
+
 @router.post("/data/preview")
 async def data_preview(req: PreviewRequest):
     """获取数据预览"""
@@ -49,6 +59,15 @@ async def data_preview(req: PreviewRequest):
     return sanitize_json({"success": True, "preview": preview, "total_rows": len(df)})
 
 
+
+
+def _safe_to_string(df_preview):
+    """Safe DataFrame to string, avoiding GBK encoding issues on Windows."""
+    import io
+    buf = io.StringIO()
+    df_preview.to_csv(buf, index=False, encoding='utf-8')
+    return buf.getvalue()
+
 @router.post("/data/info")
 async def data_info(req: DataRequest):
     """获取数据基本信息"""
@@ -58,6 +77,15 @@ async def data_info(req: DataRequest):
     info = get_data_info(df)
     return sanitize_json({"success": True, "info": info})
 
+
+
+
+def _safe_to_string(df_preview):
+    """Safe DataFrame to string, avoiding GBK encoding issues on Windows."""
+    import io
+    buf = io.StringIO()
+    df_preview.to_csv(buf, index=False, encoding='utf-8')
+    return buf.getvalue()
 
 @router.post("/data/columns")
 async def data_columns(req: DataRequest):
@@ -79,6 +107,15 @@ async def data_columns(req: DataRequest):
     return sanitize_json({"success": True, "columns": columns})
 
 
+
+
+def _safe_to_string(df_preview):
+    """Safe DataFrame to string, avoiding GBK encoding issues on Windows."""
+    import io
+    buf = io.StringIO()
+    df_preview.to_csv(buf, index=False, encoding='utf-8')
+    return buf.getvalue()
+
 @router.post("/data/column-types")
 async def data_column_types(req: DataRequest):
     """获取各类列名"""
@@ -93,6 +130,15 @@ async def data_column_types(req: DataRequest):
         "all_columns": list(df.columns),
     })
 
+
+
+
+def _safe_to_string(df_preview):
+    """Safe DataFrame to string, avoiding GBK encoding issues on Windows."""
+    import io
+    buf = io.StringIO()
+    df_preview.to_csv(buf, index=False, encoding='utf-8')
+    return buf.getvalue()
 
 @router.post("/data/summary")
 async def data_summary(req: DataRequest):
@@ -111,6 +157,15 @@ class ComputeRequest(BaseModel):
     base_url: Optional[str] = None
     model: Optional[str] = None
 
+
+
+
+def _safe_to_string(df_preview):
+    """Safe DataFrame to string, avoiding GBK encoding issues on Windows."""
+    import io
+    buf = io.StringIO()
+    df_preview.to_csv(buf, index=False, encoding='utf-8')
+    return buf.getvalue()
 
 @router.post("/data/compute")
 async def data_compute(req: ComputeRequest):
@@ -135,7 +190,7 @@ async def data_compute(req: ComputeRequest):
 {chr(10).join(col_info)}
 
 前 5 行数据：
-{df.head(5).to_string()}"""
+{_safe_to_string(df.head(5))}"""
 
     prompt = f"""你是数据分析专家。用户需要你对数据做计算，新增计算列。
 
@@ -242,7 +297,7 @@ async def data_compute(req: ComputeRequest):
     except Exception as e:
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"AI 计算失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=enhance_ai_error(e, model=req.model or "", base_url=req.base_url or ""))
 
 
 # ===== 同环比专用计算 =====
@@ -252,6 +307,15 @@ class TongHuanBiRequest(BaseModel):
     value_column: str  # 数值列，如"销售金额"
     date_column: str = "日期"  # 日期列
 
+
+
+
+def _safe_to_string(df_preview):
+    """Safe DataFrame to string, avoiding GBK encoding issues on Windows."""
+    import io
+    buf = io.StringIO()
+    df_preview.to_csv(buf, index=False, encoding='utf-8')
+    return buf.getvalue()
 
 @router.post("/data/tonghuanbi")
 async def data_tonghuanbi(req: TongHuanBiRequest):
@@ -536,6 +600,15 @@ class DownloadRequest(BaseModel):
     session_id: str
     export_original: bool = False  # True=导出原始数据, False=导出当前数据
 
+
+
+
+def _safe_to_string(df_preview):
+    """Safe DataFrame to string, avoiding GBK encoding issues on Windows."""
+    import io
+    buf = io.StringIO()
+    df_preview.to_csv(buf, index=False, encoding='utf-8')
+    return buf.getvalue()
 
 @router.post("/data/download")
 async def data_download(req: DownloadRequest):

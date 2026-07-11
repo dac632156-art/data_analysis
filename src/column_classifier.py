@@ -41,6 +41,33 @@ METRIC_KEYWORDS = [
 # 地理关键词
 GEO_KEYWORDS = ['省', '市', '区', '县', '地区', '区域', '城市', '省份', 'province', 'city', 'region', 'district']
 
+# 业务实体语义词典：业务概念 → 列名同义词关键词
+# 用途：让 Planner 能根据 business_question 中提到的业务实体（产品/利润/渠道…）
+#       反查数据中真实存在的对应列，从而把分析问题对齐到正确的维度/指标列，
+#       而不是无脑取「第一个分类列 + 第一个数值列」。
+SEMANTIC_ENTITIES = {
+    '产品':   ['产品', 'product', 'sku', '商品', '品目', '品类'],
+    '利润':   ['利润', 'profit', '毛利', '净利', 'margin'],
+    '收入':   ['销售额', '销售金额', '营收', '营业额', 'revenue', 'gmv'],
+    '成本':   ['成本', 'cost'],
+    '数量':   ['数量', 'quantity', '件数'],
+    '金额':   ['金额', 'sales', 'amount'],
+    '价格':   ['价格', '客单价', 'price', '单价'],
+    '渠道':   ['渠道', 'channel', '线上', '线下', 'online', 'offline', '网店', '门店'],
+    '地区':   ['地区', '区域', '省份', '省', '城市', '市', 'region', 'area', 'zone'],
+    '客户':   ['客户', 'customer', '用户', '会员', 'client', 'user', 'member'],
+    '退货':   ['退货', 'return', '退款', '退换', '退单'],
+    '复购':   ['复购', '回购', 'repurchase', 'repeat'],
+    '时间':   ['日期', '时间', '月份', '年份', 'date', 'time', 'month', 'year'],
+}
+
+# ID/编码列关键词 —— 这些列即使类型是数值也不应参与分析
+ID_KEYWORDS = [
+    '编码', '代码', '编号', 'id', 'code', 'key',
+    'uuid', 'guid', 'serial', '序列号', '序号', '行号',
+    '订单号', '工单号', '流水号', '交易号', '流水',
+]
+
 
 class ColumnClassifier:
     """全系统统一的列类型识别器"""
@@ -54,13 +81,17 @@ class ColumnClassifier:
         return self._find_category_columns(df) != []
 
     def get_numeric_columns(self, df: pd.DataFrame) -> List[str]:
-        """获取所有数值类型列名"""
+        """获取所有数值类型列名（排除 ID/编码列）"""
         if df.columns.duplicated().any():
             df = df.loc[:, ~df.columns.duplicated()]
         numeric_cols = []
         for col in df.columns:
+            col_stripped = col.strip()
+            # 排除 ID/编码列 —— 即使类型是数值也不参与分析
+            if self._is_id_column(col_stripped):
+                continue
             if pd.api.types.is_numeric_dtype(df[col]):
-                numeric_cols.append(col.strip())
+                numeric_cols.append(col_stripped)
         return numeric_cols
 
     def get_time_columns(self, df: pd.DataFrame) -> List[str]:
@@ -109,12 +140,17 @@ class ColumnClassifier:
                 time_cols.append(col_stripped)
                 continue
 
-            # 2) 数值类型
+            # 2) 排除 ID/编码列（即使类型是数值也不作为分析指标）
+            if self._is_id_column(col_lower):
+                other.append(col_stripped)
+                continue
+
+            # 3) 数值类型
             if pd.api.types.is_numeric_dtype(df[col]):
                 numeric_cols.append(col_stripped)
                 continue
 
-            # 3) 分类维度
+            # 4) 分类维度
             if any(kw in col_lower for kw in DIMENSION_KEYWORDS):
                 category_cols.append(col_stripped)
             elif pd.api.types.is_string_dtype(df[col]) or df[col].dtype == 'object':
@@ -158,7 +194,49 @@ class ColumnClassifier:
             matched.append(col.strip())
         return matched
 
+    # --- 业务实体语义匹配（支撑 Planner 语义感知列推断） ---
+
+    def extract_question_entities(self, question: str) -> List[str]:
+        """从 business_question 中提取其『显式提到』的业务实体（产品/利润/渠道…）。
+
+        返回实体 key 列表（顺序按 SEMANTIC_ENTITIES 定义）。空列表表示问题
+        未携带可识别的业务实体（此时列推断应回退到首个匹配列）。
+        """
+        if not question:
+            return []
+        q = str(question).lower()
+        found = []
+        for entity, kws in SEMANTIC_ENTITIES.items():
+            if any(kw.lower() in q for kw in kws):
+                found.append(entity)
+        return found
+
+    def resolve_entity_columns(self, df: pd.DataFrame, entity: str) -> List[str]:
+        """返回 df 中与某业务实体语义匹配的实际列名列表（空 = 数据里没有该实体）。
+
+        已排除 ID/编码列（如「客户ID」不会误当成「客户」指标列）。
+        """
+        kws = SEMANTIC_ENTITIES.get(entity, [])
+        if not kws:
+            return []
+        if df.columns.duplicated().any():
+            df = df.loc[:, ~df.columns.duplicated()]
+        result = []
+        for col in df.columns:
+            col_lower = str(col).lower().strip()
+            if self._is_id_column(col_lower):
+                continue
+            if any(kw.lower() in col_lower for kw in kws):
+                result.append(str(col).strip())
+        return result
+
     # --- 私有方法 ---
+    @staticmethod
+    def _is_id_column(col_name: str) -> bool:
+        """判断列名是否为 ID/编码列（即使数值类型也不应参与分析）"""
+        col_lower = col_name.lower().strip()
+        return any(kw in col_lower for kw in ID_KEYWORDS)
+
     def _find_time_column(self, df: pd.DataFrame) -> Optional[str]:
         time_cols = self.get_time_columns(df)
         return time_cols[0] if time_cols else None

@@ -11,10 +11,12 @@ from src.echart_generator import create_chart
 class ChartRenderer:
     """统一图表渲染器"""
 
+    # 所有图表一律 primary，不再区分主/辅（消除「辅图」角色；2026-07-11）。
+    # 看板布局优先级另由 widget_mapping 的 display_role 决定，与此 role 无关。
     ROLE_MAP = {
         "line":  "primary",
-        "bar":   "secondary",
-        "area":  "detail",
+        "bar":   "primary",
+        "area":  "primary",
         "pie":   "primary",
         "scatter": "primary",
         "histogram": "primary",
@@ -24,6 +26,20 @@ class ChartRenderer:
         """调用 echart_generator.create_chart() 生成 ECharts option"""
         try:
             df = pd.DataFrame(chart_data.data) if chart_data.data else pd.DataFrame()
+            if df.columns.duplicated().any():
+                df = df.loc[:, ~df.columns.duplicated()]
+
+            # ★ 关键修复：模板 build_charts 把已算好的数据行用字面键 "x"/"y" 存放，
+            #   但 ChartData.x / ChartData.y 是真实列名（如「产品类别」/「利润金额」）。
+            #   create_chart 需要按真实列名定位，因此把占位键重命名为真实列名，
+            #   否则会 KeyError 导致整张图渲染失败（charts 返回空）。
+            rename_map = {}
+            if "x" in df.columns and chart_data.x and chart_data.x != "x":
+                rename_map["x"] = chart_data.x
+            if "y" in df.columns and chart_data.y and chart_data.y != "y":
+                rename_map["y"] = chart_data.y
+            if rename_map:
+                df = df.rename(columns=rename_map)
 
             option = create_chart(
                 df=df,
@@ -33,7 +49,7 @@ class ChartRenderer:
                 title=chart_data.title,
             )
 
-            role = self.ROLE_MAP.get(chart_data.chart_type, "secondary")
+            role = self.ROLE_MAP.get(chart_data.chart_type, "primary")
 
             return ChartItem(
                 slot=chart_data.slot,

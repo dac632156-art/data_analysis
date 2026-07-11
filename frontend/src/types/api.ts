@@ -119,11 +119,6 @@ export interface AIReportResponse {
   warning?: string;
 }
 
-export interface ReportResponse {
-  success: boolean;
-  html: string;
-}
-
 export interface KPIResponse {
   success: boolean;
   kpis: { title: string; value: number | string; icon?: string; color?: string }[];

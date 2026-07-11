@@ -235,8 +235,8 @@ export default function CleanPage() {
       {hasData ? (
         <>
           {/* AI 智能清洗面板 */}
-          <div className="glass-card p-4 space-y-3" style={{ borderColor: 'rgba(34,211,238,0.3)' }}>
-            <h3 className="text-sm font-semibold text-[#22d3ee] flex items-center gap-2">
+          <div className="glass-card p-4 space-y-3" style={{ borderColor: 'rgba(167,139,250,0.3)' }}>
+            <h3 className="text-sm font-semibold text-[#A78BFA] flex items-center gap-2">
               <FiZap className="w-4 h-4" /> AI 智能清洗
               <span className="text-[10px] text-slate-500 font-normal">— 用自然语言告诉AI你要如何清洗数据</span>
             </h3>
@@ -246,10 +246,10 @@ export default function CleanPage() {
                 onChange={(e) => setAiInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAiClean()}
                 placeholder="例如：把缺失值用均值填充、删除重复行、把日期列转为日期类型、删除利润率大于200%的异常值..."
-                className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#22d3ee]/50"
+                className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#A78BFA]/50"
               />
               <button onClick={handleAiClean} disabled={aiLoading || !aiInput.trim()}
-                className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee] hover:bg-[#22d3ee]/30 disabled:opacity-50 transition-colors">
+                className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-[#A78BFA]/20 border border-[#A78BFA]/30 text-[#A78BFA] hover:bg-[#A78BFA]/30 disabled:opacity-50 transition-colors">
                 {aiLoading ? <FiLoader className="w-4 h-4 animate-spin" /> : <FiZap className="w-4 h-4" />}
                 {aiLoading ? '分析中...' : '执行'}
               </button>
@@ -257,7 +257,7 @@ export default function CleanPage() {
 
             {/* AI 响应结果 */}
             {aiResponse && (
-              <div className="p-3 rounded-lg" style={{ background: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.15)' }}>
+              <div className="p-3 rounded-lg" style={{ background: 'rgba(167,139,250,0.059)', border: '1px solid rgba(167,139,250,0.15)' }}>
                 <p className="text-sm text-slate-300 mb-2">{aiResponse.explanation}</p>
                 {aiResponse.steps.length > 0 && (
                   <div className="space-y-1.5">
@@ -313,7 +313,7 @@ export default function CleanPage() {
                 <select
                   value={selectedColumn}
                   onChange={(e) => setSelectedColumn(e.target.value)}
-                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8b5cf6]/50"
+                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
                 >
                   <option value="">选择列...</option>
                   {columns.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -321,7 +321,7 @@ export default function CleanPage() {
                 <select
                   value={missingMethod}
                   onChange={(e) => setMissingMethod(e.target.value)}
-                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8b5cf6]/50"
+                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
                 >
                   <option value="fill_mean">均值填充（仅数值）</option>
                   <option value="fill_median">中位数填充（仅数值）</option>
@@ -331,7 +331,7 @@ export default function CleanPage() {
                   <option value="drop">删除含缺失值的行</option>
                   <option value="drop_column">删除该列</option>
                 </select>
-                <button onClick={handleMissing} className="px-4 py-2 text-sm rounded-lg bg-[#8b5cf6]/80 text-white hover:bg-[#8b5cf6] transition-colors">
+                <button onClick={handleMissing} className="px-4 py-2 text-sm rounded-lg bg-[#8B5CF6]/80 text-white hover:bg-[#8B5CF6] transition-colors">
                   应用
                 </button>
               </div>
@@ -351,7 +351,7 @@ export default function CleanPage() {
                 <select
                   value={selectedColumn}
                   onChange={(e) => setSelectedColumn(e.target.value)}
-                  className="flex-1 min-w-[100px] px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8b5cf6]/50"
+                  className="flex-1 min-w-[100px] px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
                 >
                   <option value="">选择列...</option>
                   {columns.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -359,7 +359,7 @@ export default function CleanPage() {
                 <select
                   value={outlierMethod}
                   onChange={(e) => setOutlierMethod(e.target.value)}
-                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8b5cf6]/50"
+                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
                 >
                   <option value="iqr">常规检测（推荐）</option>
                   <option value="zscore">严格检测</option>
@@ -367,7 +367,7 @@ export default function CleanPage() {
                 <select
                   value={outlierAction}
                   onChange={(e) => setOutlierAction(e.target.value)}
-                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8b5cf6]/50"
+                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
                 >
                   <option value="remove">直接删除</option>
                   <option value="cap">拉回边界</option>
@@ -387,14 +387,14 @@ export default function CleanPage() {
                 <select
                   value={selectedColumn}
                   onChange={(e) => setSelectedColumn(e.target.value)}
-                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8b5cf6]/50"
+                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
                 >
                   <option value="">选择列...</option>
                   {columns.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 <select
                   onChange={(e) => e.target.value && handleConvertType(e.target.value)}
-                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8b5cf6]/50"
+                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
                 >
                   <option value="">转换到...</option>
                   <option value="datetime">日期时间</option>

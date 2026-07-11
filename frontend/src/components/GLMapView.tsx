@@ -77,7 +77,7 @@ export default function GLMapView({ option, height = 500, title }: Props) {
       <div className="glass-card p-4">
         {title && <h3 className="text-sm font-medium text-slate-300 mb-3">{title}</h3>}
         <div style={{ height }} className="flex flex-col items-center justify-center gap-3">
-          <div className="w-8 h-8 rounded-full border-2 border-[#22d3ee] border-t-transparent animate-spin" />
+          <div className="w-8 h-8 rounded-full border-2 border-[#7DD3FC] border-t-transparent animate-spin" />
           <span className="text-slate-500 text-xs">加载中国地图数据...</span>
         </div>
       </div>

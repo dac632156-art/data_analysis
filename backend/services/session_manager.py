@@ -23,6 +23,7 @@ class SessionData:
         self.analysis_packages: Dict[str, Any] = {}     # 临时分析结果（key=pkg_id, value=AnalysisPackage）
         self.saved_packages: List[Dict[str, Any]] = []   # 用户保存的分析包
         self.api_key: str = ""
+        self.custom_title: str = ""          # 用户手动编辑的仪表盘标题
         self.created_at: float = time.time()
         self.last_access: float = time.time()
 
@@ -66,6 +67,11 @@ class SessionManager:
                 # 自动创建 session（前端可能用旧的 session_id 重连）
                 session = SessionData()
                 self._sessions[session_id] = session
+            # 去除重复列名，避免后续 df[col] 返回 DataFrame 而非 Series
+            if df.columns.duplicated().any():
+                dup_cols = df.columns[df.columns.duplicated()].unique().tolist()
+                import logging as _logging; _logging.getLogger("session").warning(f"removing duplicate columns: {dup_cols}")
+                df = df.loc[:, ~df.columns.duplicated()]
             session.df_original = df.copy()
             session.df = df.copy()
             session.last_access = time.time()
@@ -119,6 +125,21 @@ class SessionManager:
         """获取 API Key"""
         session = self.get_session(session_id)
         return session.api_key if session else ""
+
+    def set_custom_title(self, session_id: str, title: str):
+        """设置用户手动编辑的仪表盘标题"""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = SessionData()
+                self._sessions[session_id] = session
+            session.custom_title = title
+            session.last_access = time.time()
+
+    def get_custom_title(self, session_id: str) -> str:
+        """获取用户手动编辑的仪表盘标题"""
+        session = self.get_session(session_id)
+        return session.custom_title if session else ""
 
     def set_analysis_packages(self, session_id: str, packages: dict):
         """暂存分析结果（/analysis/run 后调用）"""

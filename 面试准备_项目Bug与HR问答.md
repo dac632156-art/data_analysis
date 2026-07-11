@@ -350,7 +350,7 @@ A: ① 缺失值处理 — 删除/均值填充/中位数填充/众数填充/填�
 1. `frontend/src/utils/exportEChartsDashboard.ts` — 6 个模板各自生成完整 HTML
 2. HTML 内嵌：ECharts CDN script、COMMON_CSS 深色主题、KPI 卡片 HTML、所有图表 option JSON
 3. 支持 PNG 截图导出（html2canvas）作为补充方案
-4. 后端 `report_generator.py` 也支持 Jinja2 → HTML 报告导出（数据分析报告模板）
+4. 数据分析报告现由后端 `/report/ai-analyze` 端点驱动（`src.ai_agent` + `src.report_builder` 五阶段流水线 → HTML），不再依赖 Jinja2 模板模块
 
 ---
 
@@ -533,7 +533,7 @@ A: ① 缺失值处理 — 删除/均值填充/中位数填充/众数填充/填�
 | 图表生成 | `src/echart_generator.py` | 15+ 种 ECharts 图表，自动分组聚合 |
 | 仪表盘 | `src/dashboard_builder.py` | KPI 计算、多模板大屏 |
 | AI Agent | `src/ai_agent/` | LangChain 工具链 + 多模型支持 |
-| 报告生成 | `src/report_generator.py` | Jinja2 模板 → HTML |
+| 报告生成 | `src/ai_agent/` + `src/report_builder.py` | DataMind 五阶段流水线 → HTML 报告 |
 | 会话管理 | `backend/services/session_manager.py` | UUID 会话、线程安全、撤销栈、超时清理 |
 | 前端入口 | `frontend/src/App.tsx` | React Router 4 页面路由 |
 | 状态管理 | `frontend/src/contexts/DataContext.tsx` | 全局数据流 + 5 家 AI Provider 配置 |

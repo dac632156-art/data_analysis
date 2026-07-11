@@ -10,8 +10,11 @@ import re as _re
 from concurrent.futures import ThreadPoolExecutor
 
 from backend.services.session_manager import manager
+from backend.utils.ai_error import enhance_ai_error
 from src.ai_agent.agent import DataAnalysisAgent
 from src.planner import Planner
+import logging
+_log = logging.getLogger("insights")
 
 router = APIRouter()
 
@@ -79,11 +82,11 @@ def _parse_ai_result_to_intents(result: str, df=None) -> dict:
             data = _json.loads(candidate)
             intents = data.get("intents", [])
             if isinstance(intents, list) and len(intents) > 0:
-                print(f"[insights] Step 1 成功: 正则提取 → intents {len(intents)} 个")
+                _log.info(f"Step 1 成功: 正则提取 → intents {len(intents)} 个")
                 return {"success": True, "insights": data.get("insights", result), "intents": intents}
-            print(f"[insights] Step 1: 正则提取成功但 intents 为空，继续 Step 2")
+            _log.info(f"Step 1: 正则提取成功但 intents 为空，继续 Step 2")
         except _json.JSONDecodeError as e:
-            print(f"[insights] Step 1 失败: 正则提取后 JSON 解析错误 ({e})，继续 Step 2")
+            _log.info(f"Step 1 失败: 正则提取后 JSON 解析错误 ({e})，继续 Step 2")
 
     # ---- Step 2: 括号平衡提取 → json.loads ----
     balanced = _extract_json_by_brace_balance(raw)
@@ -93,26 +96,26 @@ def _parse_ai_result_to_intents(result: str, df=None) -> dict:
             data = _json.loads(balanced)
             intents = data.get("intents", [])
             if isinstance(intents, list) and len(intents) > 0:
-                print(f"[insights] Step 2 成功: 括号平衡提取 → intents {len(intents)} 个")
+                _log.info(f"Step 2 成功: 括号平衡提取 → intents {len(intents)} 个")
                 return {"success": True, "insights": data.get("insights", result), "intents": intents}
-            print(f"[insights] Step 2: 括号平衡提取成功但 intents 为空，继续 Step 3")
+            _log.info(f"Step 2: 括号平衡提取成功但 intents 为空，继续 Step 3")
         except _json.JSONDecodeError as e:
-            print(f"[insights] Step 2 失败: 括号平衡提取后 JSON 解析错误 ({e})，继续 Step 3")
+            _log.info(f"Step 2 失败: 括号平衡提取后 JSON 解析错误 ({e})，继续 Step 3")
     else:
         # balanced == raw，尝试直接解析整段
         try:
             data = _json.loads(raw)
             intents = data.get("intents", [])
             if isinstance(intents, list) and len(intents) > 0:
-                print(f"[insights] Step 2 成功: 直接解析 → intents {len(intents)} 个")
+                _log.info(f"Step 2 成功: 直接解析 → intents {len(intents)} 个")
                 return {"success": True, "insights": data.get("insights", result), "intents": intents}
-            print(f"[insights] Step 2: 直接解析成功但 intents 为空，继续 Step 3")
+            _log.info(f"Step 2: 直接解析成功但 intents 为空，继续 Step 3")
         except _json.JSONDecodeError:
-            print(f"[insights] Step 2 失败: 直接解析 JSON 错误，继续 Step 3")
+            _log.info(f"Step 2 失败: 直接解析 JSON 错误，继续 Step 3")
 
     # ---- Step 3: Planner 纯规则兜底 ----
     default_intents = _PLANNER.generate_default_intents(df) if df is not None else []
-    print(f"[insights] Step 3 兜底: Planner 生成 {len(default_intents)} 个 default intents")
+    _log.info(f"Step 3 兜底: Planner 生成 {len(default_intents)} 个 default intents")
     # insights 文本仍保留 AI 返回的原始内容（即使不是 JSON）
     return {
         "success": True,
@@ -153,10 +156,12 @@ async def api_generate_insights(req: InsightsRequest):
         return {"success": True, "insights": str(result), "intents": default_intents, "is_fallback": True}
     except Exception as e:
         # AI 完全失败 → Planner 兜底生成 intents，不让用户看到空白
+        # 但如果是 model_not_found 等明确错误，先增强提示再兜底
+        enhanced_msg = enhance_ai_error(e, model=req.model or "", base_url=req.base_url or "")
         default_intents = _PLANNER.generate_default_intents(df)
         return {
             "success": True,
-            "insights": f"⚠️ AI 调用失败：{str(e)}，已自动生成推荐分析计划",
+            "insights": f"⚠️ AI 调用失败：{enhanced_msg}，已自动生成推荐分析计划",
             "intents": default_intents,
             "is_fallback": True,
         }
@@ -195,4 +200,4 @@ async def api_chat_analyze(req: ChatRequest):
             return {"success": True, "answer": parsed.get("insights", answer), "intents": parsed["intents"]}
         return {"success": True, "answer": answer}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI 回答失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=enhance_ai_error(e, model=req.model or "", base_url=req.base_url or ""))
