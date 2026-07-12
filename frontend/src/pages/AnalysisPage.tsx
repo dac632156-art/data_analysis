@@ -462,6 +462,27 @@ export default function AnalysisPage() {
   const handleSavePackages = async (pkgIds: string[]) => {
     try {
       const res = await api.saveAnalysis(ds.sessionId, pkgIds);
+      // ★ 无状态报告：把选中的分析包副本存入 localStorage，供仪表盘生成报告时携带，
+      //   使报告生成不依赖后端 session（Render 重启/休眠也不丢）。
+      //   剥离庞大的 charts[].option（报告 LLM 不需要，仅保留元信息），控制体积远低于 5MB。
+      try {
+        const selected = analysisPackages
+          .filter(p => p.id && pkgIds.includes(p.id as string))
+          .map(p => {
+            const slim: Record<string, unknown> = { ...p };
+            const charts = (p as { charts?: unknown }).charts;
+            if (Array.isArray(charts)) {
+              slim.charts = charts.map((c) => {
+                const cc = c as Record<string, unknown>;
+                return { slot: cc?.slot, chart_type: cc?.chart_type, title: cc?.title, role: cc?.role };
+              });
+            }
+            return slim;
+          });
+        localStorage.setItem('savedPackages', JSON.stringify(selected));
+      } catch (e) {
+        console.warn('保存分析包副本到本地失败（不影响后端保存与仪表盘展示）：', e);
+      }
       alert(`已保存 ${res.saved_count} 个分析结果到仪表盘`);
     } catch (err) {
       alert('保存失败: ' + (err instanceof Error ? err.message : '未知错误'));

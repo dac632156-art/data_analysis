@@ -449,21 +449,89 @@ export const generateCards = async (sessionId: string): Promise<{
   return data;
 };
 
+// 报告生成专用 axios 实例：不挂全局 wakeUp 重试拦截器，
+// 轮询节奏与冷启动重试完全由 generateAIReport 自控，避免相互干扰。
+const reportApi = axios.create({ baseURL: API_BASE, timeout: 30000 });
+reportApi.interceptors.request.use((config) => {
+  if (
+    config.data &&
+    typeof config.data === 'object' &&
+    typeof (config.data as { model?: unknown }).model === 'string'
+  ) {
+    (config.data as { model: string }).model = (config.data as { model: string }).model.toLowerCase();
+  }
+  return config;
+});
+
+/**
+ * 生成 AI 分析报告（异步无状态）
+ *
+ * 流程：提交任务（拿 task_id）→ 轮询状态 → 返回结果。
+ * - 规避 Render 免费实例约 50s HTTP 超时（ERR_CONNECTION_CLOSED）。
+ * - packages：前端 localStorage 中的分析包副本，后端优先使用（无状态）。
+ * - 提交阶段对网络错误（冷启动）有限重试；轮询阶段对网络抖动容错继续。
+ */
 export const generateAIReport = async (
   sessionId: string,
   apiKey: string,
   baseUrl?: string,
   model?: string,
+  packages?: Array<Record<string, unknown>>,
 ): Promise<AIReportResponse> => {
-  const { data } = await api.post<AIReportResponse>('/report/ai-analyze', {
-    session_id: sessionId,
-    api_key: apiKey,
-    base_url: baseUrl,
-    model,
-  }, {
-    timeout: 300000,
-  });
-  return data;
+  // 1. 提交任务（冷启动容错：最多 3 次）
+  let taskId = '';
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const { data } = await reportApi.post('/report/ai-analyze', {
+        session_id: sessionId,
+        api_key: apiKey,
+        base_url: baseUrl,
+        model,
+        packages,
+      });
+      taskId = data.task_id;
+      break;
+    } catch (e: unknown) {
+      lastErr = e;
+      const status = (e as { response?: { status?: number } })?.response?.status;
+      // 业务错误（400 无分析结果 / 缺 Key 等）不重试，直接抛出
+      if (status && status >= 400 && status < 500) {
+        const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        throw new Error(detail || '报告生成提交失败');
+      }
+      // 网络错误（可能是冷启动）→ 等待后重试
+      await new Promise(r => setTimeout(r, 5000));
+    }
+  }
+  if (!taskId) {
+    const detail = (lastErr as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+    throw new Error(detail || '后端暂时无响应（可能正在冷启动），请稍后重试。');
+  }
+
+  // 2. 轮询状态（最长 5 分钟，间隔 3 秒；单次网络抖动容错继续）
+  const maxWait = 300000;
+  const interval = 3000;
+  const start = Date.now();
+  while (Date.now() - start < maxWait) {
+    await new Promise(r => setTimeout(r, interval));
+    let data: { status?: string; detail?: string } & Partial<AIReportResponse>;
+    try {
+      const resp = await reportApi.get(`/report/ai-analyze/status/${taskId}`);
+      data = resp.data;
+    } catch (e: unknown) {
+      // 404：任务过期/进程重启 → 明确失败，提示重新生成
+      if ((e as { response?: { status?: number } })?.response?.status === 404) {
+        throw new Error('报告任务已过期或后端已重启，请重新生成。');
+      }
+      // 其它网络抖动 → 继续下一轮轮询（容错）
+      continue;
+    }
+    if (data.status === 'done') return data as AIReportResponse;
+    if (data.status === 'error') throw new Error(data.detail || '报告生成失败');
+    // running → 继续轮询
+  }
+  throw new Error('报告生成超时（5 分钟），请重试或减少分析项后再生成。');
 };
 
 export default api;

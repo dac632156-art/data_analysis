@@ -369,8 +369,19 @@ export default function DashboardPage() {
     const md = provider?.model;
 
     try {
-      // ★ 单次调用后端五阶段分析流水线
-      const result = await api.generateAIReport(ds.sessionId, pk, bu, md);
+      // ★ 无状态：优先携带 localStorage 中的分析包副本（Render 重启/休眠也不丢），
+      //   后端优先使用它生成报告，不再强依赖后端 session.saved_packages。
+      let localPackages: Array<Record<string, unknown>> | undefined;
+      try {
+        const raw = localStorage.getItem('savedPackages');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) localPackages = parsed;
+        }
+      } catch { /* localStorage 解析失败则回退后端 session */ }
+
+      // ★ 异步提交 + 轮询（内部规避 Render 50s HTTP 超时）
+      const result = await api.generateAIReport(ds.sessionId, pk, bu, md, localPackages);
       const sections: Array<{
         type: string; title: string; content?: string;
         insights?: Array<string | { chart_title: string; analysis: string }>;
