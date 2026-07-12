@@ -3,8 +3,10 @@
 使用 UUID 作为 session_id，DataFrame 存储在内存中
 """
 
+import os
 import uuid
 import time
+import tempfile
 import dataclasses
 import pandas as pd
 from typing import Dict, Optional, List, Any
@@ -15,7 +17,8 @@ class SessionData:
     """单个会话的数据"""
     def __init__(self):
         self.df: Optional[pd.DataFrame] = None
-        self.df_original: Optional[pd.DataFrame] = None
+        self.df_original: Optional[pd.DataFrame] = None  # 仅落盘失败时的兜底内存副本；正常为 None
+        self.original_path: Optional[str] = None         # 原始数据落盘路径(pickle)，释放内存
         self.df_undo_stack: List[pd.DataFrame] = []  # 撤销栈（最多保存 20 步）
         self.cleaning_history: List[Dict] = []
         self.analysis_history: List[Dict] = []
@@ -36,6 +39,9 @@ class SessionManager:
         self._lock = Lock()
         self._max_sessions = max_sessions
         self._session_timeout = session_timeout
+        # 原始数据落盘目录（临时盘，重启即丢 —— 属预期的优雅降级）
+        self._original_dir = os.path.join(tempfile.gettempdir(), "datamind_original")
+        os.makedirs(self._original_dir, exist_ok=True)
     
     def create_session(self) -> str:
         """创建新会话，返回 session_id"""
@@ -47,6 +53,7 @@ class SessionManager:
             if len(self._sessions) >= self._max_sessions:
                 oldest = min(self._sessions.keys(), 
                              key=lambda k: self._sessions[k].last_access)
+                self._remove_original_file(oldest)
                 del self._sessions[oldest]
             self._sessions[session_id] = SessionData()
         return session_id
@@ -60,7 +67,11 @@ class SessionManager:
             return session
     
     def set_data(self, session_id: str, df: pd.DataFrame):
-        """设置 DataFrame，如果 session 不存在则自动创建"""
+        """设置 DataFrame，如果 session 不存在则自动创建。
+
+        原始数据落盘(pickle)以释放内存，内存只保留一份工作集 df。
+        落盘失败(磁盘满/权限)时兜底保留内存副本，保证功能不丢。
+        """
         with self._lock:
             session = self._sessions.get(session_id)
             if session is None:
@@ -72,7 +83,20 @@ class SessionManager:
                 dup_cols = df.columns[df.columns.duplicated()].unique().tolist()
                 import logging as _logging; _logging.getLogger("session").warning(f"removing duplicate columns: {dup_cols}")
                 df = df.loc[:, ~df.columns.duplicated()]
-            session.df_original = df.copy()
+            # 原始数据落盘：重传先删旧文件，避免孤儿文件堆积
+            try:
+                if session.original_path and os.path.exists(session.original_path):
+                    try: os.remove(session.original_path)
+                    except OSError: pass
+                path = os.path.join(self._original_dir, f"{session_id}.pkl")
+                df.to_pickle(path)
+                session.original_path = path
+                session.df_original = None  # 正常路径不保留内存副本
+            except Exception as e:  # 兜底：落盘失败则保留内存副本
+                import logging as _logging
+                _logging.getLogger("session").warning(f"原始数据落盘失败，回退内存保留: {e}")
+                session.df_original = df.copy()
+                session.original_path = None
             session.df = df.copy()
             session.last_access = time.time()
     
@@ -82,10 +106,32 @@ class SessionManager:
         return session.df if session else None
     
     def get_original_data(self, session_id: str) -> Optional[pd.DataFrame]:
-        """获取原始 DataFrame"""
+        """获取原始 DataFrame（从磁盘读取；不存在/损坏返回 None）。
+
+        会话存在但文件已被重启清除 -> 返回 None，由调用方提示"原始数据已释放"。
+        """
         session = self.get_session(session_id)
-        return session.df_original if session else None
-    
+        if session is None:
+            return None
+        # 兜底：落盘失败时的内存副本
+        if session.df_original is not None:
+            return session.df_original
+        if session.original_path and os.path.exists(session.original_path):
+            try:
+                return pd.read_pickle(session.original_path)
+            except Exception:
+                return None
+        return None
+
+    def _remove_original_file(self, session_id: str):
+        """删除会话对应的原始数据落盘文件（须在锁内调用；忽略异常）"""
+        session = self._sessions.get(session_id)
+        if session and session.original_path and os.path.exists(session.original_path):
+            try:
+                os.remove(session.original_path)
+            except OSError:
+                pass
+
     def update_data(self, session_id: str, df: pd.DataFrame):
         """更新当前 DataFrame（清洗后），如果 session 不存在则自动创建"""
         with self._lock:
@@ -304,8 +350,9 @@ class SessionManager:
         return full_packages
 
     def clear_data(self, session_id: str):
-        """清除会话数据"""
+        """清除会话数据（同步删除落盘的原始文件）"""
         with self._lock:
+            self._remove_original_file(session_id)
             self._sessions.pop(session_id, None)
     
     def _cleanup_sync(self):
@@ -316,6 +363,7 @@ class SessionManager:
             if now - sdata.last_access > self._session_timeout
         ]
         for sid in expired:
+            self._remove_original_file(sid)
             del self._sessions[sid]
     
     def cleanup(self):

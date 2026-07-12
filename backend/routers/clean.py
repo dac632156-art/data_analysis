@@ -141,9 +141,12 @@ async def api_drop_duplicates(req: SessionRequest):
 @router.post("/clean/reset")
 async def api_reset_data(req: SessionRequest):
     """恢复数据到原始状态"""
+    session = manager.get_session(req.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="未找到原始数据，请先上传文件")
     df_orig = manager.get_original_data(req.session_id)
     if df_orig is None:
-        raise HTTPException(status_code=404, detail="未找到原始数据，请先上传文件")
+        raise HTTPException(status_code=404, detail="原始数据已释放，请重新上传")
     manager.update_data(req.session_id, df_orig)
     return {
         "success": True,
@@ -183,6 +186,8 @@ async def api_compare(req: SessionRequest):
     df_orig = manager.get_original_data(req.session_id)
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
+    if df_orig is None:
+        raise HTTPException(status_code=404, detail="原始数据已释放，请重新上传")
     return {
         "success": True,
         "before": {

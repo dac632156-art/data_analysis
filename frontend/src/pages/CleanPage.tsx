@@ -172,6 +172,14 @@ export default function CleanPage() {
     }
   };
 
+  const handleDownload = async (original: boolean) => {
+    try {
+      await api.downloadCSV(ds.sessionId, original);
+    } catch (err) {
+      addMessage('error', err instanceof Error ? err.message : '下载失败');
+    }
+  };
+
   const handleConvertType = async (targetType: string) => {
     if (!selectedColumn) { addMessage('error', '请先选择列'); return; }
     const typeLabels: Record<string, string> = { datetime: '日期时间', numeric: '数值', string: '字符串', category: '分类' };
@@ -209,14 +217,14 @@ export default function CleanPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => api.downloadCSV(ds.sessionId, true)}
+            onClick={() => handleDownload(true)}
             className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-green-500/30 text-green-400 hover:bg-green-500/10 transition-colors"
             title="下载上传时的原始数据"
           >
             <FiDownload className="w-4 h-4" /> 原始数据
           </button>
           <button
-            onClick={() => api.downloadCSV(ds.sessionId, false)}
+            onClick={() => handleDownload(false)}
             className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-colors"
             title="下载清洗后的当前数据"
           >

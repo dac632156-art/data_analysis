@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 import io
 import asyncio
+from urllib.parse import quote
 from concurrent.futures import ThreadPoolExecutor
 
 from backend.services.session_manager import manager
@@ -615,11 +616,14 @@ async def data_download(req: DownloadRequest):
     """导出当前数据（或原始数据）为 CSV"""
     if req.export_original:
         df = manager.get_original_data(req.session_id)
+        if df is None:
+            if manager.get_session(req.session_id) is None:
+                raise HTTPException(status_code=404, detail="未找到数据，请先上传文件")
+            raise HTTPException(status_code=404, detail="原始数据已释放，请重新上传")
     else:
         df = manager.get_data(req.session_id)
-
-    if df is None:
-        raise HTTPException(status_code=404, detail="未找到数据，请先上传文件")
+        if df is None:
+            raise HTTPException(status_code=404, detail="未找到数据，请先上传文件")
 
     # 生成 CSV
     stream = io.StringIO()
@@ -628,10 +632,14 @@ async def data_download(req: DownloadRequest):
     stream.close()
 
     prefix = "原始" if req.export_original else "清洗后"
-    filename = f"{prefix}数据_{req.session_id[:8]}.csv"
+    raw_name = f"{prefix}数据_{req.session_id[:8]}.csv"
+    # Starlette 用 latin-1 编码 header，中文 filename 会触发 UnicodeEncodeError(500)。
+    # 按 RFC 5987：filename 退化 ASCII 名，中文名走 filename*=UTF-8''。
+    ascii_name = f"{'original' if req.export_original else 'cleaned'}_data_{req.session_id[:8]}.csv"
+    disposition = f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(raw_name)}"
 
     return StreamingResponse(
         io.BytesIO(content.encode('utf-8-sig')),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": disposition},
     )
