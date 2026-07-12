@@ -4,9 +4,6 @@ DataMind AI - FastAPI 后端入口
 """
 import os
 import sys
-import shutil
-import tempfile
-import glob as _glob
 import traceback
 
 # 添加项目根目录到 sys.path，以便导入现有模块
@@ -84,27 +81,6 @@ async def health_check():
     """健康检查接口"""
     return {"status": "ok", "version": "1.0.0"}
 
-
-# ===== 临时诊断端点：查看 Render ephemeral disk 配额与落盘占用 =====
-# 仅用于在无 Shell 的免费实例上确认临时盘配额（点1 决策用）。
-# 确认后务必删除本端点及上方 shutil/tempfile/_glob import。
-@app.get("/api/debug/disk")
-async def debug_disk():
-    """[临时诊断] Render 临时盘配额 + 落盘目录占用。测完删除。"""
-    d = tempfile.gettempdir()
-    usage = shutil.disk_usage(d)
-    pkl_dir = os.path.join(d, "datamind_original")
-    pkl_files = _glob.glob(os.path.join(pkl_dir, "*.pkl"))
-    pkl_bytes = sum(os.path.getsize(f) for f in pkl_files)
-    return {
-        "temp_dir": d,
-        "disk_total_mb": round(usage.total / 1024 / 1024, 1),
-        "disk_used_mb": round(usage.used / 1024 / 1024, 1),
-        "disk_free_mb": round(usage.free / 1024 / 1024, 1),
-        "pkl_dir": pkl_dir,
-        "pkl_count": len(pkl_files),
-        "pkl_total_mb": round(pkl_bytes / 1024 / 1024, 3),
-    }
 
 
 @app.get("/api/session/new")
