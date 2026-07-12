@@ -10,7 +10,7 @@ import tempfile
 import dataclasses
 import pandas as pd
 from typing import Dict, Optional, List, Any
-from threading import Lock
+from threading import Lock, Thread
 
 
 class SessionData:
@@ -42,6 +42,11 @@ class SessionManager:
         # 原始数据落盘目录（临时盘，重启即丢 —— 属预期的优雅降级）
         self._original_dir = os.path.join(tempfile.gettempdir(), "datamind_original")
         os.makedirs(self._original_dir, exist_ok=True)
+        # P2（内存画像结论五）：后台定时清理线程，主动回收过期会话（弥补惰性清理短板）。
+        # 间隔跟随 timeout：max(60, timeout//12) → 默认 3600//12 = 300s。
+        # 最坏滞后 = 间隔，过期会话最多比 timeout 多赖 300s，内存卫生足够及时且不浪费 0.1 CPU。
+        self._cleanup_interval = max(60, session_timeout // 12)
+        self._start_background_cleanup()
     
     def create_session(self) -> str:
         """创建新会话，返回 session_id"""
@@ -370,6 +375,25 @@ class SessionManager:
         """清理过期会话（线程安全）"""
         with self._lock:
             self._cleanup_sync()
+
+    def _start_background_cleanup(self):
+        """启动后台守护线程，定时主动回收过期会话。
+
+        弥补 request 触发的惰性清理（结论五）：无此后台线程时，过期会话要等到
+        「下次请求触发 _cleanup_sync」或「超 max_sessions」才删，可能远超时 timeout。
+        线程仅在持锁调用 cleanup()，而 _cleanup_sync 内不二次加锁、_remove_original_file
+        亦设计为锁内调用，故无死锁风险。Python 引用语义保证清理瞬间正在使用的会话对象不被释放。
+        """
+        def _loop():
+            while True:
+                time.sleep(self._cleanup_interval)
+                try:
+                    self.cleanup()
+                except Exception:
+                    # 单轮清理异常不影响后续周期
+                    pass
+        t = Thread(target=_loop, name="session-cleanup", daemon=True)
+        t.start()
 
 
 # 全局单例

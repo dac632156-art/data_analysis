@@ -2,6 +2,7 @@
 文件上传 API 路由
 """
 import io
+import asyncio
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any
@@ -13,6 +14,12 @@ from backend.services.session_manager import manager
 from config import MAX_FILE_SIZE_BYTES, MAX_UPLOAD_SIZE_MB
 
 router = APIRouter()
+
+# P0（内存画像结论三）：限制并发文件解析，避免 XLSX 解析瞬时 RSS 尖峰（×3.9）叠加导致 OOM。
+# 解析从事件循环移入线程池（asyncio.to_thread），既释放事件循环避免大文件卡住其他请求，
+# 又通过信号量把「同时解析」限制为小并发，使 xlsx 尖峰重叠 ≤ 3×33MB，远低于 350MB 可用池。
+# 仅对尖峰风险高的 xlsx / sqlite 限流；csv / json 膨胀低（×1.1）直接线程池解析，不占信号量。
+_PARSE_SEMAPHORE = asyncio.Semaphore(3)
 
 
 def _parse_missing_rate(row) -> float:
@@ -64,15 +71,17 @@ async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
         session_id = manager.create_session()
 
     try:
-        # 加载数据
+        # 加载数据（解析移入线程池 + 信号量限流，见 _PARSE_SEMAPHORE 说明）
         if ext == 'csv':
-            df = load_csv(content, file.filename)
+            df = await asyncio.to_thread(load_csv, content, file.filename)
         elif ext in ('xlsx', 'xls'):
-            df = load_excel(content)
+            async with _PARSE_SEMAPHORE:
+                df = await asyncio.to_thread(load_excel, content)
         elif ext == 'json':
-            df = load_json(content)
+            df = await asyncio.to_thread(load_json, content)
         elif ext in ('db', 'sqlite'):
-            tables = load_sqlite(content)
+            async with _PARSE_SEMAPHORE:
+                tables = await asyncio.to_thread(load_sqlite, content)
             # 取第一个表作为数据
             if isinstance(tables, dict):
                 first_table = list(tables.keys())[0]

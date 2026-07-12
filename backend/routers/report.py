@@ -37,6 +37,12 @@ _report_tasks: Dict[str, Dict[str, Any]] = {}
 _report_tasks_lock = threading.Lock()
 _TASK_TTL = 900  # 任务结果保留 15 分钟后清理，防止内存泄漏
 
+# P1（内存画像结论四）：限制同时调 LLM 的报告线程数。
+# 报告线程本身几乎不占内存（<0.1MB），瓶颈在 LLM 网络 I/O 速率/API 并发上限，
+# 故信号量按 LLM 速率设（而非内存）。超额提交的任务在线程入口排队，端点仍毫秒返回 task_id，前端轮询无感。
+# 用 threading.Semaphore：报告任务实际跑在后台线程中，而非协程。
+_REPORT_SEMAPHORE = threading.Semaphore(5)
+
 
 def _cleanup_tasks_locked():
     """清理过期任务（需在持锁状态下调用）"""
@@ -66,8 +72,10 @@ def _run_report_task(
 ):
     """后台线程：执行报告生成，结果写入 _report_tasks"""
     try:
-        agent = DataAnalysisAgent(**kwargs)
-        result = agent.generate_report_from_packages(packages, data_profile)
+        # 仅 LLM 生成阶段受信号量约束（按 LLM 速率限流，避免无脑堆线程/触发 API 限流）
+        with _REPORT_SEMAPHORE:
+            agent = DataAnalysisAgent(**kwargs)
+            result = agent.generate_report_from_packages(packages, data_profile)
 
         if result.get("success"):
             # 从 packages 中提取图表 option 供前端报告渲染（前端当前主流程未使用，
