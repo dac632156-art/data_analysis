@@ -823,6 +823,11 @@ export default function AnalysisPage() {
                       className="flex items-center gap-2 px-4 py-2 text-xs rounded-lg bg-[#A78BFA]/20 border border-[#A78BFA]/30 text-[#A78BFA] hover:bg-[#A78BFA]/30">
                       <FiSave className="w-3.5 h-3.5"/>保存到仪表盘
                     </button>
+                    {saveMsg && (
+                      <span className={`ml-3 text-xs ${saveMsg.startsWith('✅') ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {saveMsg}
+                      </span>
+                    )}
                   </>)}
                 </div>
               </div>

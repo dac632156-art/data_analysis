@@ -160,6 +160,7 @@ class LayoutConfig:
     # 平衡
     max_section_weight: int = 24            # 单个 Section 最大视觉重量（左右平衡用，12 列 × 2）
     rebalance_enabled: bool = True          # 是否启用视觉平衡
+    fill_rows: bool = True                  # 行内补满：每行列宽和=columns，无空洞（默认开启）
 
     # 交互
     default_filter: Optional[str] = None    # 默认全局筛选器
@@ -181,6 +182,7 @@ class LayoutConfig:
             page_margin=data.get("page_margin", 1),
             max_section_weight=data.get("max_section_weight", 24),
             rebalance_enabled=data.get("rebalance_enabled", True),
+            fill_rows=data.get("fill_rows", True),
             default_filter=data.get("default_filter"),
             cross_filter_groups=data.get("cross_filter_groups", []),
         )

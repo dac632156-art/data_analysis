@@ -168,7 +168,6 @@ async def api_generate_insights(req: InsightsRequest):
 
 
 @router.post("/chat/analyze")
-@router.post("/chat")
 async def api_chat_analyze(req: ChatRequest):
     """AI 对话分析"""
     df = manager.get_data(req.session_id)

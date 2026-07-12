@@ -15,7 +15,7 @@ from backend.services.session_manager import manager
 from backend.utils.ai_error import enhance_ai_error
 from src.data_loader import get_data_info, get_column_info
 from src.utils.json_serializer import sanitize_json
-from utils.helpers import get_numeric_columns, get_categorical_columns, get_datetime_columns
+from src.utils.helpers import get_numeric_columns, get_categorical_columns, get_datetime_columns
 
 def _parse_missing_rate(row) -> float:
     """解析缺失率，兼容字符串 '0.0%' 和数字格式"""

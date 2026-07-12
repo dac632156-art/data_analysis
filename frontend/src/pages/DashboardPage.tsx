@@ -6,11 +6,11 @@ import EGridLayout from '../components/BigScreen/EGridLayout';
 import CommandScreen from '../components/BigScreen/CommandScreen';
 import MedicalDashboard from '../components/BigScreen/MedicalDashboard';
 import { DashboardRenderer } from '../components/DashboardRenderer';
-import type { CardItem, CardMeta } from '../components/CardGrid';
+import type { CardItem, CardMeta } from '../components/cardTypes';
 import KPICards, { type KPIItem } from '../components/KPICards';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
 import * as api from '../api/client';
-import { generateEChartsDashboardHTML, downloadEChartsHTML } from '../utils/exportEChartsDashboard';
+import { generateEChartsDashboardHTML, generateAIDashboardHTML, downloadEChartsHTML } from '../utils/exportEChartsDashboard';
 import type { EChartItem } from '../types/api';
 import type { DashboardSchema } from '../types/dashboard';
 
@@ -313,16 +313,33 @@ export default function DashboardPage() {
       return;
     }
     if (template === 'schema') {
-      alert('Schema 看板暂不支持 HTML 导出，请使用「PNG截图」');
+      if (!schema || !schema.widgets || schema.widgets.length === 0) {
+        alert('暂无可视化看板内容，请先生成 Schema');
+        return;
+      }
+      const filename = `可视化看板_${displayTitle}_${new Date().toISOString().slice(0, 10)}.html`;
+      const html = generateAIDashboardHTML(schema as unknown as Record<string, unknown>, displayTitle, hideChartTitle);
+      setReportHtml(html);
+      downloadEChartsHTML(html, filename);
       return;
     }
-    if (template !== 'command' && echarts.length === 0) {
+    // 数据看板(medical) 以 cards 为数据源；其余模板以 echarts 为数据源
+    if (template === 'medical') {
+      if (!cards || cards.length === 0) {
+        alert('暂无数据看板内容，请先生成卡片');
+        return;
+      }
+    } else if (template !== 'command' && echarts.length === 0) {
       alert('暂无图表数据');
       return;
     }
     const tableData = savedTableData.length > 0 ? savedTableData : (ds?.preview || []);
     const filename = `数据大屏_${displayTitle}_${new Date().toISOString().slice(0, 10)}.html`;
-    const html = generateEChartsDashboardHTML(template, kpis, echarts, displayTitle, hideChartTitle, navTabs, ringCharts, tableData);
+    // 数据看板（medical）导出以 cards 为数据源，与屏幕上 MedicalDashboard 一致
+    const html = generateEChartsDashboardHTML(
+      template, kpis, echarts, displayTitle, hideChartTitle, navTabs, ringCharts, tableData,
+      undefined, undefined, undefined, 0, cards, cardsMeta,
+    );
     setReportHtml(html);
     downloadEChartsHTML(html, filename);
   };

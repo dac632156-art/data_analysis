@@ -1,5 +1,6 @@
 ﻿/* 生成自包含 ECharts 交互式 HTML 大屏文件，保留所有 ECharts 交互和深色主题 */
 import type { EChartItem } from '../types/api';
+import type { CardItem, CardMeta } from '../components/cardTypes';
 import { Palette, ChartStyle, withAlpha } from '../theme';
 
 // ★ 导出 HTML 统一配色（Single Source of Truth = frontend/src/theme，禁止写死）
@@ -47,14 +48,14 @@ body {
 }
 `;
 
-function makeHeader(title: string) {
+function makeHeader(title: string, center = false) {
   return `
-<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:2px solid rgba(56,189,248,0.15);">
+<div style="display:flex;align-items:center;justify-content:${center ? 'center' : 'space-between'};padding:16px 32px;border-bottom:2px solid rgba(56,189,248,0.15);position:relative;">
   <div style="display:flex;align-items:center;gap:16px;">
     <div style="width:8px;height:32px;background:linear-gradient(180deg,#38BDF8,#7DD3FC);border-radius:4px;"></div>
     <h1 style="font-size:28px;font-weight:700;letter-spacing:0.05em;text-shadow:0 0 25px rgba(56,189,248,0.5);">${title}</h1>
   </div>
-  <div style="display:flex;align-items:center;gap:24px;font-size:13px;color:#94a3b8;">
+  <div style="display:flex;align-items:center;gap:24px;font-size:13px;color:#94a3b8;${center ? 'position:absolute;right:32px;top:50%;transform:translateY(-50%);' : ''}">
     <span style="display:flex;align-items:center;gap:8px;">
       <span style="width:8px;height:8px;border-radius:50%;background:#34D399;animation:pulse 2s infinite;"></span>
       实时数据
@@ -95,7 +96,8 @@ function convertTableData(tableData: TableDataRaw): Record<string, unknown>[] {
   });
 }
 
-function makeChartDiv(id: string, title: string, height: number, hideTitle: boolean, chartType?: string, tableData?: TableDataRaw) {
+function makeChartDiv(id: string, title: string, height: number, hideTitle: boolean, chartType?: string, tableData?: TableDataRaw, span = false) {
+  const spanStyle = span ? 'grid-column:span 3;' : '';
   const titleHtml = hideTitle ? '' : `
 <div style="padding:10px 16px;border-bottom:1px solid rgba(56,189,248,0.1);display:flex;align-items:center;gap:10px;">
   <span style="width:8px;height:8px;border-radius:50%;background:#38BDF8;"></span>
@@ -106,7 +108,7 @@ function makeChartDiv(id: string, title: string, height: number, hideTitle: bool
     const convertedData = convertTableData(tableData);
     const tableHtml = makeTableHTML(convertedData);
     return `
-<div data-chart-wrapper style="border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(56,189,248,0.15);">
+<div data-chart-wrapper style="${spanStyle}border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(56,189,248,0.15);">
   ${titleHtml}
   <div style="width:100%;padding:12px;overflow:auto;max-height:${hideTitle ? height : height - 40}px;">
     ${tableHtml}
@@ -129,7 +131,7 @@ function makeChartDiv(id: string, title: string, height: number, hideTitle: bool
     });
     tbodyHtml += '</tbody>';
     return `
-<div data-chart-wrapper style="border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(56,189,248,0.15);">
+<div data-chart-wrapper style="${spanStyle}border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(56,189,248,0.15);">
   ${titleHtml}
   <div style="width:100%;padding:12px;overflow:auto;max-height:${hideTitle ? height : height - 40}px;">
     <table style="width:100%;border-collapse:collapse;">${theadHtml}${tbodyHtml}</table>
@@ -138,7 +140,7 @@ function makeChartDiv(id: string, title: string, height: number, hideTitle: bool
   }
 
   return `
-<div data-chart-wrapper style="border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(56,189,248,0.15);">
+<div data-chart-wrapper style="${spanStyle}border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(56,189,248,0.15);">
   ${titleHtml}
   <div id="${id}" style="width:100%;height:${hideTitle ? height : height - 40}px;"></div>
 </div>`;
@@ -531,17 +533,37 @@ function makeEChartsScript(charts: (EChartItem | { id?: string; title: string; o
 
 // ========== 各布局 HTML 生成 ==========
 
+// 检测 option 是否为 3D GL 类型（与 EGridLayout.isGLOption 一致）
+function isGLOptionExport(option: any): boolean {
+  if (!option) return false;
+  if (option.geo3D) return true;
+  const series = option.series || [];
+  const glTypes = ['scatter3D', 'bar3D', 'line3D', 'lines3D', 'surface', 'map3D'];
+  return series.some((s: any) => glTypes.includes(String(s.type || '')));
+}
+
+// ========== 经典网格 (grid) 布局 HTML 生成（与屏幕上 EGridLayout 一致） ==========
 function buildGridLayout(kpis: KPI[], charts: EChartItem[], title: string, hideTitle: boolean): string {
   const kpiHtml = kpis.length > 0 ? `
-<div style="display:flex;gap:16px;padding:20px 32px;border-bottom:1px solid rgba(56,189,248,0.08);flex-wrap:wrap;">
-  ${kpis.slice(0, 6).map(makeKPICard).join('\n  ')}
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;padding:16px 32px;border-bottom:1px solid rgba(56,189,248,0.08);">
+  ${kpis.slice(0, 5).map(makeKPICard).join('\n  ')}
 </div>` : '';
 
-  const chartHtml = charts.length > 0 ? `
+  // ★ 与屏幕上 EGridLayout 一致：渲染全部图表；同环比表（chart_type==='table'）单独渲染
+  const gridCharts = charts.map((c, i) => ({ ...c, id: `grid_chart_${i}` }));
+  const tbHbCharts = gridCharts.filter((c) => c.chart_type === 'table' && c.table_data);
+  const mainCharts = gridCharts.filter((c) => c.chart_type !== 'table');
+  const hasGL = mainCharts.some((c) => isGLOptionExport(c.option));
+
+  const chartHtml = mainCharts.length > 0 ? `
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:24px;">
-  ${charts.slice(0, 6).map((c, i) => makeChartDiv('chart_' + i, c.title, 420, hideTitle, c.chart_type, c.table_data)).join('\n  ')}
+  ${mainCharts.map((c) => makeChartDiv(c.id, c.title, hideTitle ? 370 : 330, hideTitle, c.chart_type, c.table_data, isGLOptionExport(c.option) || c.chart_type === 'analysis_table')).join('\n  ')}
 </div>` : `
 <div style="padding:60px;text-align:center;color:#64748b;font-size:18px;">暂无图表</div>`;
+
+  const tbHbSection = tbHbCharts.length > 0
+    ? `<div style="padding:0 24px 16px;display:flex;flex-direction:column;gap:16px;">${tbHbCharts.map((c) => `<div style="border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(56,189,248,0.15);">${tbHbTableHtml(c)}</div>`).join('\n')}</div>`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -555,7 +577,9 @@ function buildGridLayout(kpis: KPI[], charts: EChartItem[], title: string, hideT
 ${makeHeader(title)}
 ${kpiHtml}
 ${chartHtml}
-${makeEChartsScript(charts, hideTitle)}
+${tbHbSection}
+${hasGL ? '<script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js"></script>' : ''}
+${makeEChartsScript(mainCharts, hideTitle)}
 </body>
 </html>`;
 }
@@ -805,483 +829,415 @@ function makeTableHTML(tableData: Record<string, unknown>[], maxRows?: number) {
 }
 
 function buildMedicalLayout(
-  kpis: KPI[],
-  charts: EChartItem[],
+  cards: CardItem[],
+  meta: CardMeta | undefined,
   title: string,
   hideTitle: boolean,
-  navTabs: string[],
-  ringCharts: RingChartConfig[],
-  tableData: Record<string, unknown>[],
 ): string {
-  const tabs = navTabs.length >= 4 ? navTabs.slice(0, 4) : ['数据总览', '趋势洞察', '分类分析', '明细查询'];
+  const esc = (s: unknown) =>
+    String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  // ---- 规范化 ringCharts（与 MedicalDashboard displayRingCharts 保持一致） ----
-  const displayRingCharts: RingChartConfig[] = (ringCharts && ringCharts.length >= 3)
-    ? ringCharts.slice(0, 3)
-    : [
-        { title: '数据占比', data: [{ name: '类型A', value: 65 }, { name: '其他', value: 35 }] },
-        { title: '完成率', data: [{ name: '已完成', value: 78 }, { name: '进行中', value: 22 }] },
-        { title: '分布情况', data: [{ name: '主要', value: 55 }, { name: '次要', value: 45 }] },
-      ];
-
-  // ---- 辅助：判断图表类型 ----
-  function getChartTypes(c: EChartItem): string[] {
-    const series = (c.option as any)?.series;
-    if (!series || !Array.isArray(series)) return [];
-    return series.map((s: any) => s.type || 'unknown');
+  // ---- 分类卡片（与 MedicalDashboard 完全一致） ----
+  const kpis: CardItem[] = [];
+  const trendCharts: CardItem[] = [];
+  const mapCharts: CardItem[] = [];
+  const rankingCards: CardItem[] = [];
+  const tableCards: CardItem[] = [];
+  const insightCards: CardItem[] = [];
+  const warningCards: CardItem[] = [];
+  for (const c of cards) {
+    const t = c.type;
+    const ti = (c.title || '').toLowerCase();
+    const isTrend = /trend|趋势|growth|增长|累计|cumul/i.test(ti) || t === 'chart';
+    const isMap = /map|地图|region|区域|省份|geo/i.test(ti);
+    const isRank = /rank|排名|top|排行/i.test(ti);
+    const isTable = t === 'table';
+    const isInsight = t === 'insight';
+    const isWarning = t === 'warning';
+    const isKpi = t === 'kpi';
+    if (isKpi) kpis.push(c);
+    else if (isWarning) warningCards.push(c);
+    else if (isInsight) insightCards.push(c);
+    else if (isMap) mapCharts.push(c);
+    else if (isRank) rankingCards.push(c);
+    else if (isTable) tableCards.push(c);
+    else if (isTrend) trendCharts.push(c);
+    else kpis.push(c);
   }
-  const isTrend = (c: EChartItem) => getChartTypes(c).some((t: string) => ['line', 'area'].includes(t));
-  const isCategory = (c: EChartItem) => getChartTypes(c).some((t: string) => ['bar', 'pie', 'radar'].includes(t));
 
-  // ---- 提前计算 Tab 2 分类图表列表（供 HTML + 独立 ECharts items 使用） ----
-  const categoryCharts = charts.filter(isCategory);
-  const catDisplay = categoryCharts.length > 0 ? categoryCharts : charts.filter((_, i) => i < 4);
+  const topKpis = kpis.slice(0, 8);
+  const mainTrend = trendCharts.find(c => c.size === 'xl' || c.size === 'l') || trendCharts[0];
+  const subTrends = trendCharts.filter(c => c !== mainTrend).slice(0, 2);
+  const mainRank = rankingCards[0];
+  const sideRanks = rankingCards.slice(1, 3);
+  const warnings = warningCards.slice(0, 2);
+  const insights = insightCards.slice(0, 4);
 
-  // ---- 构建环形图 ECharts items ----（Tab 0 用）
-  const ringChartItems: Array<{ id: string; title: string; option: any }> = displayRingCharts.map((rc, i) => ({
-    id: `ring_${i}`,
-    title: rc.title || '占比分析',
-    option: buildRingChartEChartsOption(rc.data, rc.title || ''),
-  }));
-
-  // ---- 构建环形图 ECharts items ----（Tab 2 用，独立 ID 避免与 Tab 0 冲突）
-  // 三个环形图统一 chartHeight=230
-  const catRingChartItems: Array<{ id: string; title: string; option: any }> = displayRingCharts.map((rc, i) => ({
-    id: `cat_ring_${i}`,
-    title: rc.title || '占比分析',
-    option: buildRingChartEChartsOption(rc.data, rc.title || '', 230),
-  }));
-
-  // ---- 构建 Tab 2 分类图表 ECharts items ----（独立 ID 避免与 Tab 1 趋势 chart_ ID 冲突）
-  const catChartItems: Array<{ id: string; title: string; option: any }> = catDisplay.map((c) => ({
-    id: `cat_chart_${charts.indexOf(c)}`,
-    title: c.title,
-    option: c.option,
-  }));
-
-  // ---- 构建雷达图 ECharts items (web 版多维对比用) ----
-  const radarDataSets = [[85, 70, 90, 65, 80, 75], [60, 88, 72, 95, 55, 82], [78, 82, 65, 70, 92, 68]];
-  const radarColors = [REPORT_THEME.primaryHover, REPORT_THEME.primaryHover, REPORT_THEME.warning];
-  const radarNames = ['指标一', '指标二', '指标三'];
-  const radarChartItems: Array<{ id: string; title: string; option: any }> = radarNames.map((name, i) => ({
-    id: `radar_${i}`,
-    title: name,
-    option: buildRadarOption(radarDataSets[i % 3], radarColors[i % 3]),
-  }));
-
-  // 合并所有图表用于脚本渲染（含 Tab 2 独立 ID 的分类图表和环形图）
-  const allChartItems = [...charts, ...ringChartItems, ...catRingChartItems, ...catChartItems, ...radarChartItems];
-
-  // ---- KPI 卡片 HTML (数字翻牌样式) ----
-  const kpiHtml = kpis.length > 0 ? `
-<div style="padding:16px 28px;display:flex;justify-content:center;">
-  <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;max-width:1100px;">
-    ${kpis.slice(0, 6).map((kpi) => {
-      const numVal = typeof kpi.value === 'number' ? kpi.value : parseFloat(String(kpi.value));
-      const isNum = !isNaN(numVal);
-      const digits = isNum ? String(Math.floor(numVal)).split('') : [];
-      const color = kpi.color || '#7DD3FC';
-      return `
-    <div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:center;padding:12px 24px;min-width:150px;background:linear-gradient(180deg,rgba(125,211,252,0.08) 0%,rgba(125,211,252,0.02) 100%);border:1px solid rgba(125,211,252,0.15);border-radius:4px;">
-      <span style="font-size:10px;color:#94a3b8;margin-bottom:8px;">${kpi.title}</span>
-      <div style="display:flex;gap:2px;align-items:center;">
-        ${isNum ? digits.map((d: string) => `<div style="width:24px;height:32px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:bold;font-family:monospace;background:linear-gradient(180deg,rgba(125,211,252,0.2) 0%,rgba(125,211,252,0.05) 100%);border:1px solid rgba(125,211,252,0.3);color:${color};text-shadow:0 0 10px ${color}50;">${d}</div>`).join('') : `<span style="font-size:18px;font-weight:bold;color:${color};">${kpi.value}</span>`}
-      </div>
-      ${kpi.unit ? `<span style="font-size:9px;color:#64748b;margin-top:4px;">${kpi.unit}</span>` : ''}
+  // ---- 图表 items（供 ECharts 脚本渲染） ----
+  const chartItems: Array<{ id: string; title: string; option: any }> = [];
+  // 与图表卡片渲染逻辑保持一致：option 优先取 data.option，
+  // 否则对于 chart 卡片，后端 card_generator._chart_card 把 option 直接存在 data 上
+  const getOption = (card: CardItem): any => {
+    const d = (card.data || {}) as Record<string, unknown>;
+    if (d && d.option) return d.option;
+    if (card.type === 'chart') return d || null;
+    return null;
+  };
+  let chartAutoId = 0;
+  const chartBlockHtml = (card: CardItem, height: number) => {
+    const opt = getOption(card);
+    if (!opt) return `<div style="padding:24px;text-align:center;color:#64748b;font-size:12px;">暂无图表数据</div>`;
+    const id = `med_chart_${chartAutoId++}`;
+    chartItems.push({ id, title: card.title || '', option: opt });
+    return `<div style="border-radius:12px;padding:16px;background:rgba(15,23,42,0.5);border:1px solid rgba(125,211,252,0.08);">
+      <h3 style="font-size:14px;font-weight:600;color:#38BDF8;margin-bottom:12px;">${esc(card.title)}</h3>
+      <div id="${id}" style="width:100%;height:${height}px;"></div>
     </div>`;
-    }).join('\n    ')}
-  </div>
-</div>` : '';
+  };
 
-  // ======== Tab 0 - 数据总览（匹配组件 60%/38% 布局） ========
-  const hasRing0 = displayRingCharts.length > 0;
-  const hasRingMore = displayRingCharts.length > 1;
-  const overviewRingBottom = displayRingCharts.slice(1); // ring 1, 2, ...
-
-  const overviewLeftHtml = `
-      <div class="med-flex-col" style="flex:1;min-width:0;max-width:60%;">
-        <div style="display:flex;gap:16px;height:${hasRing0 ? '45%' : '100%'};">
-          <div class="med-card flex-1">
-            <div class="med-label" style="margin:0 0 8px 12px;">📈 趋势总览</div>
-            ${charts.length > 0 ? makeChartDiv('chart_0', charts[0].title, hasRing0 ? 220 : 380, hideTitle) : '<div class="med-empty">暂无数据</div>'}
-          </div>
-          ${hasRing0 ? `
-          <div class="med-card" style="width:256px;">
-            <div class="med-label" style="margin:0 0 8px 12px;">🥧 ${displayRingCharts[0].title || '占比分析'}</div>
-            ${makeChartDiv('ring_0', '', 220, true)}
-          </div>` : ''}
-        </div>
-        <div class="med-card" style="flex:1;margin-top:16px;">
-          <div class="med-label" style="margin:0 0 8px 12px;">📊 多维对比</div>
-          <div style="display:flex;gap:12px;height:calc(100% - 24px);">
-            ${radarNames.map((name, i) => `
-            <div style="flex:1;">${makeChartDiv(`radar_${i}`, name, 180, hideTitle)}</div>`).join('\n            ')}
-          </div>
-        </div>
-      </div>`;
-
-  // 右侧：表格预览 + 底部环形图
-  const overviewRightHtml = `
-      <div class="med-flex-col" style="width:38%;min-width:300px;">
-        <div class="med-card flex-1" style="overflow:hidden;">
-          <div class="med-label med-label-row" style="margin:0 0 12px 12px;">
-            <span>📋 数据预览</span>
-            <span style="font-size:10px;color:#64748b;">共 ${tableData?.length || 0} 条</span>
-          </div>
-          <div style="overflow:auto;height:calc(100% - 32px);">${makeTableHTML(tableData, 10)}</div>
-        </div>
-        ${hasRingMore ? `
-        <div style="display:flex;gap:12px;height:180px;margin-top:12px;">
-          ${overviewRingBottom.map((rc, i) => `
-          <div class="med-card flex-1">
-            ${makeChartDiv(`ring_${i + 1}`, rc.title, 160, true)}
-          </div>`).join('\n          ')}
-        </div>` : ''}
-      </div>`;
-
-  const overviewHtml = `
-  <div class="med-panel active" id="panel-0">
-    <div style="display:flex;gap:16px;padding:0 28px 20px;">
-      ${overviewLeftHtml}
-      ${overviewRightHtml}
-    </div>
-  </div>`;
-
-  // ======== Tab 1 - 趋势洞察 ========
-  const trendCharts = charts.filter(isTrend);
-  const trendDisplay = trendCharts.length > 0 ? trendCharts : charts.filter((_, i) => i < 3);
-  const trendCols = trendDisplay.length === 1 ? 1 : 2;
-  const trendHtml = trendDisplay.length > 0 ? `
-  <div class="med-panel" id="panel-1">
-    <div style="padding:0 28px 4px;font-size:12px;color:#94a3b8;">
-      📈 ${trendDisplay.length} 张趋势图表 — 自动筛选折线图/面积图
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(${trendCols},1fr);gap:16px;padding:8px 28px 20px;">
-      ${trendDisplay.map((c) => {
-        const idx = charts.indexOf(c);
-        return `<div class="med-card">${makeChartDiv(`chart_${idx}`, c.title, trendCols === 1 ? 420 : 300, hideTitle)}</div>`;
-      }).join('\n      ')}
-    </div>
-  </div>` : `
-  <div class="med-panel" id="panel-1">
-    <div style="padding:60px;text-align:center;color:#64748b;">暂无趋势图表 — 请选择包含折线图/面积图的数据集</div>
-  </div>`;
-
-  // ======== Tab 2 - 分类分析 ========
-  // TOP8 排行数据
-  const columns = tableData?.[0] ? Object.keys(tableData[0]) : [];
-  const topNData = (() => {
-    if (!tableData || !columns[0]) return [];
-    const counts: Record<string, number> = {};
-    tableData.forEach((row) => {
-      const key = String(row[columns[0]] ?? '未知');
-      counts[key] = (counts[key] || 0) + 1;
-    });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
-      .map(([name, value]) => ({ name, value }));
-  })();
-
-  const top8Badge = (i: number) => i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : String(i + 1);
-
-  const catHtml = catDisplay.length > 0 ? `
-  <div class="med-panel" id="panel-2">
-    <div style="display:flex;gap:16px;padding:0 28px 20px;">
-      <div style="flex:1;min-width:0;">
-        <div style="font-size:12px;color:#94a3b8;margin-bottom:8px;">📊 ${catDisplay.length + Math.min(displayRingCharts.length, 2)} 张图表 — 分类柱状图/饼图/雷达图</div>
-        <div style="display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr);gap:12px;">
-          ${catDisplay.map((c) => {
-            const idx = charts.indexOf(c);
-            return `<div class="med-card">${makeChartDiv(`cat_chart_${idx}`, c.title, 220, hideTitle)}</div>`;
-          }).join('\n          ')}
-          ${displayRingCharts.slice(0, 2).map((rc, i) => `
-          <div class="med-card" style="overflow:visible;">
-            <div style="padding:10px 16px;border-bottom:1px solid rgba(56,189,248,0.1);display:flex;align-items:center;gap:10px;">
-              <span style="width:8px;height:8px;border-radius:50%;background:#38BDF8;"></span>
-              <span style="font-size:13px;font-weight:600;color:#cbd5e1;">${rc.title || '占比分析'}</span>
-            </div>
-            ${makeRingChartDiv(`cat_ring_${i}`, '', 220, true)}
-          </div>`).join('\n          ')}
-        </div>
-      </div>
-      <div class="med-flex-col" style="width:28%;min-width:220px;">
-        <div class="med-card flex-1" style="overflow:hidden;">
-          <div class="med-label">🏆 ${columns[0] || '分类'} 排行 TOP8</div>
-          <div style="overflow:auto;height:calc(100% - 28px);">
-            ${topNData.length > 0 ? topNData.map((item, i) => {
-              const bg = i < 3 ? 'rgba(125,211,252,0.08)' : 'transparent';
-              return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid rgba(125,211,252,0.04);background:${bg};">
-                <div style="display:flex;align-items:center;gap:8px;">
-                  <span style="font-size:12px;font-weight:700;width:24px;text-align:center;color:${i < 3 ? '#e2e8f0' : '#64748b'};">${top8Badge(i)}</span>
-                  <span class="text-truncate" style="max-width:100px;font-size:12px;color:#cbd5e1;">${String(item.name).slice(0, 12)}</span>
-                </div>
-                <span style="font-size:12px;font-weight:600;color:#7DD3FC;">${item.value}</span>
-              </div>`;
-            }).join('\n            ') : '<div class="med-empty">暂无数据</div>'}
-          </div>
-        </div>
-        ${displayRingCharts.length >= 3 ? `
-        <div class="med-card" style="overflow:visible;">
-          <div style="padding:10px 16px;border-bottom:1px solid rgba(56,189,248,0.1);display:flex;align-items:center;gap:10px;">
-            <span style="width:8px;height:8px;border-radius:50%;background:#38BDF8;"></span>
-            <span style="font-size:13px;font-weight:600;color:#cbd5e1;">${displayRingCharts[2]?.title || '占比分析'}</span>
-          </div>
-          ${makeRingChartDiv(`cat_ring_2`, '', 220, true)}
-        </div>` : ''}
-      </div>
-    </div>
-  </div>` : `
-  <div class="med-panel" id="panel-2">
-    <div style="padding:60px;text-align:center;color:#64748b;">暂无分类图表 — 请选择包含柱状图/饼图/雷达图的数据集</div>
-  </div>`;
-
-  // ======== Tab 3 - 明细查询 ========
-  const detailHtml = `
-  <div class="med-panel" id="panel-3">
-    <div style="padding:0 28px 20px;">
-      <div class="med-label med-label-row" style="margin:0 0 8px 0;">
-        <span>📄 数据明细表</span>
-        <span id="filtered-count" style="font-size:10px;color:#64748b;">共 ${tableData?.length || 0} 条</span>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-        <input id="detail-search" type="text" placeholder="🔍 搜索全部列..." oninput="filterDetailTable()"
-          style="width:192px;padding:6px 12px;border-radius:8px;border:1px solid rgba(56,189,248,0.2);background:rgba(15,23,42,0.9);color:#e2e8f0;font-size:12px;font-family:inherit;" />
-        <select id="detail-filter-col" onchange="onFilterColChange()"
-          style="padding:6px 8px;border-radius:8px;border:1px solid rgba(56,189,248,0.2);background:rgba(15,23,42,0.9);color:#94a3b8;font-size:12px;font-family:inherit;">
-          <option value="">📌 按列过滤</option>
-          ${Object.keys(tableData?.[0] || {}).map((col) => `<option value="${col}">${col}</option>`).join('\n          ')}
-        </select>
-        <input id="detail-filter-val" type="text" placeholder="过滤值..." oninput="filterDetailTable()"
-          style="display:none;padding:6px 12px;border-radius:8px;border:1px solid rgba(56,189,248,0.2);background:rgba(15,23,42,0.9);color:#e2e8f0;font-size:12px;font-family:inherit;width:144px;" />
-      </div>
-      <div class="med-card" style="max-height:520px;overflow:auto;" id="detail-table-wrapper">
-        ${makeTableHTML(tableData)}
-      </div>
-    </div>
-  </div>`;
-
-  // tab 切换 & 搜索脚本
-  const tabSwitchScript = `
-<script>
-  var tableData = ${JSON.stringify(tableData || [])};
-  var headers = ${JSON.stringify(tableData?.[0] ? Object.keys(tableData[0]) : [])};
-  var filterCol = null;
-
-  function switchTab(idx) {
-    document.querySelectorAll('.med-tab').forEach(function(b, i) { b.classList.toggle('active', i === idx); });
-    document.querySelectorAll('.med-panel').forEach(function(p, i) { p.classList.toggle('active', i === idx); });
-    var targetPanel = document.getElementById('panel-' + idx);
-    // ★ 先初始化该面板内尚未渲染的延迟图表（切过一次就不再延迟）
-    if (typeof initDeferredChartsInPanel === 'function' && targetPanel) {
-      initDeferredChartsInPanel('panel-' + idx);
-    }
-    setTimeout(function() {
-      if (targetPanel) {
-        targetPanel.querySelectorAll('[id]').forEach(function(el) {
-          if (typeof echarts !== 'undefined') {
-            var chart = echarts.getInstanceByDom(el);
-            if (chart) chart.resize();
-          }
-        });
-      }
-    }, 150);
-  }
-
-  function onFilterColChange() {
-    var sel = document.getElementById('detail-filter-col');
-    var valInput = document.getElementById('detail-filter-val');
-    if (sel && valInput) {
-      filterCol = sel.value || null;
-      if (filterCol) {
-        valInput.style.display = 'block';
-        valInput.placeholder = '过滤 ' + filterCol + '...';
-      } else {
-        valInput.style.display = 'none';
-        valInput.value = '';
-      }
-      filterDetailTable();
-    }
-  }
-
-  function formatVal(v) {
-    if (v === null || v === undefined) return '-';
-    if (typeof v === 'number') {
-      if (!isFinite(v)) return '-';
-      if (Number.isInteger(v)) return v.toLocaleString();
-      return v.toFixed(2);
-    }
-    return String(v);
-  }
-
-  function filterDetailTable() {
-    var q = (document.getElementById('detail-search')?.value || '').toLowerCase();
-    var filterVal = (document.getElementById('detail-filter-val')?.value || '').toLowerCase();
-    var rows = tableData;
-    if (q) {
-      rows = rows.filter(function(row) {
-        return headers.some(function(h) { return formatVal(row[h]).toLowerCase().indexOf(q) !== -1; });
-      });
-    }
-    if (filterCol && filterVal) {
-      rows = rows.filter(function(row) {
-        return formatVal(row[filterCol]).toLowerCase().indexOf(filterVal) !== -1;
-      });
-    }
-    var html = '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
-    html += '<thead><tr>';
-    html += '<th style="padding:8px 8px;text-align:left;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(125,211,252,0.1);font-size:11px;width:30px;">#</th>';
-    headers.forEach(function(h) {
-      html += '<th style="padding:8px 12px;text-align:left;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(125,211,252,0.1);font-size:11px;cursor:pointer;" onclick="sortDetailTable(' + headers.indexOf(h) + ')()">' + h + ' <span id="sort-arrow-' + headers.indexOf(h) + '" style="font-size:9px;"></span></th>';
-    });
-    html += '</tr></thead>';
-    html += '<tbody>';
-    rows.forEach(function(row, i) {
-      html += '<tr style="' + (i % 2 === 0 ? '' : 'background:rgba(15,23,42,0.3)') + ';border-top:1px solid rgba(255,255,255,0.03);">';
-      html += '<td style="padding:6px 8px;border-bottom:1px solid rgba(125,211,252,0.04);color:#64748b;font-size:10px;">' + (i + 1) + '</td>';
-      headers.forEach(function(h) { html += '<td style="padding:6px 12px;border-bottom:1px solid rgba(125,211,252,0.04);color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">' + formatVal(row[h]) + '</td>'; });
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
-    var wrapper = document.getElementById('detail-table-wrapper');
-    if (wrapper) wrapper.innerHTML = html;
-    var cnt = document.getElementById('filtered-count');
-    if (cnt) cnt.textContent = rows.length + ' / ' + tableData.length + ' 条';
-  }
-
-  function sortDetailTable(colIdx) {
-    var ascending = true;
-    return function() {
-      ascending = !ascending;
-      tableData.sort(function(a, b) {
-        var va = a[headers[colIdx]], vb = b[headers[colIdx]];
-        if (typeof va === 'number' && typeof vb === 'number') return ascending ? va - vb : vb - va;
-        return ascending ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
-      });
-      filterDetailTable();
+  const cardTableHtml = (card: CardItem, maxRows: number) => {
+    const d = (card.data || {}) as Record<string, unknown>;
+    const rows = (d.rows as unknown[][]) || [];
+    const columns = (d.columns as string[]) || [];
+    if (!columns.length || !rows.length) return `<div style="padding:24px;text-align:center;color:#64748b;font-size:12px;">暂无数据</div>`;
+    const fmt = (v: unknown) => {
+      if (v === null || v === undefined) return '-';
+      if (typeof v === 'number') return Number.isInteger(v) ? v.toLocaleString() : v.toFixed(2);
+      if (typeof v === 'object') return 'value' in (v as any) ? String((v as any).value) : '-';
+      return String(v);
     };
-  }
-</script>`;
+    const body = rows.slice(0, maxRows).map((row, ri) => `<tr style="${ri % 2 === 0 ? 'background:rgba(15,23,42,0.5)' : ''};border-bottom:1px solid rgba(125,211,252,0.06);">
+      ${columns.map((col, ci) => `<td style="padding:8px 12px;color:#cbd5e1;white-space:nowrap;">${esc(fmt(row[ci]))}</td>`).join('')}
+    </tr>`).join('\n');
+    return `<div style="overflow:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr>${columns.map(col => `<th style="padding:8px 12px;text-align:left;font-weight:600;color:#94a3b8;border-bottom:1px solid rgba(125,211,252,0.2);">${esc(col)}</th>`).join('')}</tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
+  };
 
-  // ---- 组装完整 HTML ----
+  const rankOrTableHtml = (card: CardItem, maxRows: number) => {
+    const opt = getOption(card);
+    return opt ? chartBlockHtml(card, 200) : cardTableHtml(card, maxRows);
+  };
+
+  const textBlockHtml = (card: CardItem, bg: string, border: string) => {
+    const d = (card.data || {}) as Record<string, unknown>;
+    const text = String(d.text || d.content || d.message || card.title || '');
+    return `<div style="border-radius:12px;padding:12px;background:${bg};border:1px solid ${border};">
+      <p style="font-size:12px;color:#cbd5e1;line-height:1.7;">${text ? esc(text) : '暂无内容'}</p>
+    </div>`;
+  };
+
+  // 预警块：与 WarningBlock 一致，带 ⚠️ 图标 + flex 布局
+  const warningBlockHtml = (card: CardItem) => {
+    const d = (card.data || {}) as Record<string, unknown>;
+    const text = String(d.text || d.message || card.title || '');
+    return `<div style="border-radius:12px;padding:12px;display:flex;align-items:flex-start;gap:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);">
+      <span style="font-size:14px;margin-top:2px;">⚠️</span>
+      <p style="font-size:12px;color:#cbd5e1;line-height:1.7;">${text ? esc(text) : '暂无内容'}</p>
+    </div>`;
+  };
+
+  // 排行榜卡片：有 rows/columns 则渲染绿框表格，否则回退图表（与 RankingBlock 一致）
+  const rankingCardHtml = (card: CardItem, maxRows: number) => {
+    const d = (card.data || {}) as Record<string, unknown>;
+    const rows = d?.rows as unknown[][] | undefined;
+    const columns = d?.columns as string[] | undefined;
+    if (columns && rows && rows.length > 0) {
+      return `<div style="border-radius:12px;padding:16px;background:rgba(15,23,42,0.5);border:1px solid rgba(16,185,129,0.08);">
+        <h3 style="font-size:14px;font-weight:600;color:#34D399;margin-bottom:12px;">${esc(card.title)}</h3>
+        ${cardTableHtml(card, maxRows)}
+      </div>`;
+    }
+    return rankOrTableHtml(card, maxRows);
+  };
+
+  // 明细数据卡片：橙框表格（与 TableBlock 一致）
+  const detailCardHtml = (card: CardItem, maxRows: number) =>
+    `<div style="border-radius:12px;padding:16px;background:rgba(15,23,42,0.5);border:1px solid rgba(245,158,11,0.08);">
+      <h3 style="font-size:14px;font-weight:600;color:#FBBF24;margin-bottom:12px;">${esc(card.title)}</h3>
+      ${cardTableHtml(card, maxRows)}
+    </div>`;
+
+  const kpiColorMap: Record<string, string> = {
+    sum: '#38BDF8', rate: '#34D399', change: '#FB7185',
+    avg: '#38BDF8', count: '#FBBF24',
+  };
+  const kpiCardHtml = (card: CardItem) => {
+    const d = (card.data || {}) as Record<string, unknown>;
+    const value = String(d?.value ?? d?.formatted ?? '0');
+    const change = d?.change as string | null;
+    const kpiType = d?.kpi_type as string;
+    const color = kpiColorMap[kpiType] || '#38BDF8';
+    const isUp = change && !String(change).startsWith('-') && String(change) !== '0';
+    const isDown = change && String(change).startsWith('-');
+    const changeHtml = change
+      ? `<p style="font-size:12px;font-weight:700;color:${isUp ? '#34D399' : isDown ? '#FB7185' : '#94a3b8'}">${isUp ? '▲' : isDown ? '▼' : '—'} ${esc(String(change).replace(/[+%]/g, ''))}%</p>`
+      : '';
+    return `<div style="border-radius:12px;padding:16px;background:rgba(15,23,42,0.6);border:1px solid rgba(125,211,252,0.08);">
+      <p style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">${esc(card.title)}</p>
+      <p style="font-size:24px;font-weight:700;font-family:monospace;color:${color};text-shadow:0 0 12px ${color}55;margin-bottom:4px;">${esc(value)}</p>
+      ${changeHtml}
+    </div>`;
+  };
+
+  const sectionTitle = (barColor: string, label: string) =>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+      <div style="width:4px;height:16px;background:${barColor};border-radius:2px;"></div>
+      <h2 style="font-size:12px;font-weight:700;color:#94a3b8;letter-spacing:0.1em;text-transform:uppercase;">${label}</h2>
+    </div>`;
+
+  const metaHtml = meta ? `<div style="display:flex;gap:24px;font-size:12px;color:#64748b;">
+    <span>共 <span style="color:#22D3EE;font-weight:700;">${esc(meta.total_cards)}</span> 张卡片</span>
+    <span>洞察强度 <span style="color:#A78BFA;font-weight:700;">${esc(meta.insight_strength)}</span></span>
+    <span>数据质量 <span style="color:#34D399;font-weight:700;">${esc(meta.data_quality)}</span></span>
+  </div>` : '';
+
+  const kpiRow = topKpis.length ? `<section style="border-radius:16px;padding:20px;background:rgba(6,182,212,0.03);border:1px solid rgba(6,182,212,0.1);">
+    ${sectionTitle('#22D3EE', '核心指标')}
+    <div style="display:grid;gap:16px;grid-template-columns:repeat(${Math.min(topKpis.length, 4)}, 1fr);">
+      ${topKpis.map(kpiCardHtml).join('\n')}
+    </div>
+  </section>` : '';
+
+  const trendRow = (mainTrend || subTrends.length) ? `<section style="border-radius:16px;padding:20px;background:rgba(56,189,248,0.03);border:1px solid rgba(56,189,248,0.1);">
+    ${sectionTitle('#A78BFA', '趋势分析')}
+    <div style="display:flex;flex-direction:column;gap:24px;">
+      ${mainTrend ? chartBlockHtml(mainTrend, 320) : ''}
+      ${subTrends.length ? `<div style="display:grid;gap:24px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));">${subTrends.map(t => chartBlockHtml(t, 200)).join('\n')}</div>` : ''}
+    </div>
+  </section>` : '';
+
+  // Row 3：与屏幕一致，左右两栏并排——左「排行榜」(emerald)，右「明细数据」(amber)
+  const rankTableRow = `<div style="display:grid;gap:24px;grid-template-columns:1fr 1fr;">
+    <section style="border-radius:16px;padding:20px;background:rgba(16,185,129,0.03);border:1px solid rgba(16,185,129,0.1);">
+      ${sectionTitle('#34D399', '排行榜')}
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        ${mainRank ? rankingCardHtml(mainRank, 6) : ''}
+        ${sideRanks.map(r => rankingCardHtml(r, 6)).join('\n')}
+      </div>
+    </section>
+    <section style="border-radius:16px;padding:20px;background:rgba(245,158,11,0.03);border:1px solid rgba(245,158,11,0.1);">
+      ${sectionTitle('#FBBF24', '明细数据')}
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        ${tableCards.slice(0, 2).map(t => detailCardHtml(t, 8)).join('\n')}
+      </div>
+    </section>
+  </div>`;
+
+  const insightRow = (warnings.length || insights.length) ? `<section style="border-radius:16px;padding:20px;background:rgba(244,63,94,0.03);border:1px solid rgba(244,63,94,0.1);">
+    ${sectionTitle('#FB7185', '分析与洞察')}
+    <div style="display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));">
+      ${warnings.map(w => warningBlockHtml(w)).join('\n')}
+      ${insights.map(i => textBlockHtml(i, 'rgba(56,189,248,0.04)', 'rgba(125,211,252,0.1)')).join('\n')}
+    </div>
+  </section>` : '';
+
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title} - 数据看板</title>
+<title>${esc(title)} - 数据看板</title>
 <style>
 ${COMMON_CSS}
-.med-tab-bar {
-  display: flex;
-  justify-content: center;
-  gap: 2px;
-  padding: 8px 28px 0;
-  border-bottom: 1px solid rgba(125,211,252,0.1);
-  background: linear-gradient(90deg, transparent 0%, rgba(125,211,252,0.05) 20%, rgba(125,211,252,0.05) 80%, transparent 100%);
-}
-.med-tab {
-  padding: 4px 16px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #64748b;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-family: inherit;
-  transition: all 0.25s;
-}
-.med-tab:hover { color: #cbd5e1; }
-.med-tab.active {
-  color: #7DD3FC;
-  background: rgba(125,211,252,0.1);
-  border-top: 1px solid rgba(125,211,252,0.5);
-  clip-path: polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%);
-}
-.med-panel { display: none; padding-top: 16px; }
-.med-panel.active { display: block; }
-.med-card {
-  border-radius: 12px;
-  overflow: hidden;
-  background: rgba(15,23,42,0.7);
-  border: 1px solid rgba(56,189,248,0.15);
-}
-.med-card-inner { padding: 12px; }
-.med-label {
-  font-size: 12px;
-  color: #7DD3FC;
-  margin-bottom: 8px;
-  padding: 4px 0;
-}
-.med-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.med-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  min-height: 80px;
-  color: #64748b;
-  font-size: 12px;
-}
-.med-flex-col {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-.flex-1 { flex: 1; }
-.text-truncate {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* 消除 med-card 内 makeChartDiv 的双重边框 */
-.med-card > [data-chart-wrapper] {
-  border: none !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-}
-th { cursor: pointer; transition: color 0.2s; }
-th:hover { color: #7DD3FC; }
+body { background:linear-gradient(180deg,#020518 0%,#060d2a 50%,#0a0a1e 100%); }
 </style>
 </head>
-<body style="min-height:100vh;background:linear-gradient(180deg,#0a0f1a 0%,#0d1525 50%,#0a1628 100%);">
-<div style="position:relative;display:flex;align-items:center;justify-content:center;padding:12px 24px;background:linear-gradient(90deg,transparent 0%,rgba(125,211,252,0.05) 20%,rgba(125,211,252,0.05) 80%,transparent 100%);border-bottom:1px solid rgba(125,211,252,0.15);">
-  <div style="position:absolute;left:16px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:8px;">
-    <span style="width:8px;height:8px;border-radius:50%;background:#7DD3FC;animation:pulse 2s infinite;"></span>
-    <span style="font-size:12px;color:#64748b;">${new Date().toLocaleString('zh-CN')}</span>
-  </div>
-  <div style="display:flex;flex-direction:column;align-items:center;">
-    <h1 style="font-size:20px;font-weight:700;color:#fff;letter-spacing:0.1em;margin-bottom:8px;text-shadow:0 0 20px rgba(125,211,252,0.5);">${title}</h1>
-    <div class="med-tab-bar" style="border-bottom:none;background:transparent;padding:0;">
-      ${tabs.map((t, i) => `<button class="med-tab${i === 0 ? ' active' : ''}" onclick="switchTab(${i})">${t}</button>`).join('\n      ')}
+<body style="min-height:100vh;background:linear-gradient(180deg,#020518 0%,#060d2a 50%,#0a0a1e 100%);">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid rgba(125,211,252,0.15);">
+    <div style="display:flex;align-items:center;gap:16px;">
+      <div style="width:6px;height:40px;background:linear-gradient(180deg,#7DD3FC,#38BDF8);border-radius:4px;"></div>
+      <h1 style="font-size:20px;font-weight:700;color:#fff;letter-spacing:0.1em;text-shadow:0 0 20px rgba(125,211,252,0.4);">${esc(title)}</h1>
     </div>
+    ${metaHtml}
   </div>
-  <div style="position:absolute;right:16px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:8px;">
-    <span style="display:flex;align-items:center;gap:6px;font-size:12px;color:#7DD3FC;">
-      <span style="width:6px;height:6px;border-radius:50%;background:#7DD3FC;animation:pulse 2s infinite;"></span>系统正常
-    </span>
+  <div style="padding:24px;display:flex;flex-direction:column;gap:24px;">
+    ${kpiRow}
+    ${trendRow}
+    ${rankTableRow}
+    ${insightRow}
   </div>
-</div>
-${kpiHtml}
-${overviewHtml}
-${trendHtml}
-${catHtml}
-${detailHtml}
-${makeEChartsScript(allChartItems, hideTitle)}
-${tabSwitchScript}
-<script>
-  // 注入排序点击事件
-  (function() {
-    var ths = document.querySelectorAll('#detail-table-wrapper th');
-    ths.forEach(function(th, i) {
-      th.addEventListener('click', sortDetailTable(i));
-    });
-  })();
-</script>
+  ${makeEChartsScript(chartItems, hideTitle)}
 </body>
 </html>`;
+}
+
+// ========== 指挥中心辅助：地图 + 同环比（与 CommandScreen / TbHbTable 一致） ==========
+const COMMAND_PROVINCE_CENTERS: Record<string, [number, number]> = {
+  '北京市': [116.46, 39.92], '天津市': [117.20, 39.13], '上海市': [121.48, 31.22],
+  '重庆市': [106.54, 29.59], '河北省': [114.48, 38.03], '山西省': [112.53, 37.87],
+  '辽宁省': [123.38, 41.80], '吉林省': [125.35, 43.88], '黑龙江省': [126.63, 45.75],
+  '江苏省': [118.78, 32.04], '浙江省': [120.19, 30.26], '安徽省': [117.27, 31.86],
+  '福建省': [119.30, 26.08], '江西省': [115.89, 28.68], '山东省': [117.00, 36.65],
+  '河南省': [113.65, 34.76], '湖北省': [114.31, 30.52], '湖南省': [112.98, 28.19],
+  '广东省': [113.23, 23.16], '广西壮族自治区': [108.33, 22.84], '海南省': [110.35, 20.02],
+  '四川省': [104.06, 30.67], '贵州省': [106.71, 26.57], '云南省': [102.73, 25.04],
+  '西藏自治区': [91.11, 29.97], '陕西省': [108.95, 34.27], '甘肃省': [103.73, 36.03],
+  '青海省': [101.74, 36.56], '宁夏回族自治区': [106.27, 38.47],
+  '新疆维吾尔自治区': [87.68, 43.77], '台湾省': [121.50, 25.05],
+  '香港特别行政区': [114.17, 22.28], '澳门特别行政区': [113.55, 22.19],
+  '内蒙古自治区': [111.65, 40.82],
+};
+
+function commandMatchProvince(shortName: string): string | null {
+  const clean = shortName.replace(/省|市|自治区|特别行政区|壮族|回族|维吾尔/g, '').trim();
+  for (const fullName of Object.keys(COMMAND_PROVINCE_CENTERS)) {
+    const fullClean = fullName.replace(/省|市|自治区|特别行政区|壮族|回族|维吾尔/g, '').trim();
+    if (fullClean === clean || fullName === shortName || fullClean.includes(clean) || clean.includes(fullClean)) return fullName;
+  }
+  return null;
+}
+
+interface CommandMapData {
+  hasRealData: boolean;
+  maxVal: number;
+  effectScatterData: { name: string; value: [number, number, number] }[];
+  linesData: { coords: [[number, number], [number, number]] }[];
+  regions: Record<string, unknown>[];
+}
+
+// 从 echarts 真实图表提取地图散点 + 飞线（移植自 CommandScreen.buildChinaMapOption）
+function computeCommandMap(echartsData?: EChartItem[]): CommandMapData {
+  type MapItem = { geoName: string; displayName: string; value: number; lng: number; lat: number };
+  let mapData: MapItem[] = [];
+  if (echartsData && echartsData.length > 0) {
+    for (const chart of echartsData) {
+      const opt = chart.option || {};
+      const geo = (opt as Record<string, unknown>).geo as Record<string, unknown> | undefined;
+      const series = ((opt as Record<string, unknown>).series as Array<Record<string, unknown>>) || [];
+      if (geo?.regions && Array.isArray(geo.regions)) {
+        for (const r of geo.regions as Array<Record<string, unknown>>) {
+          const geoName = String(r.name || '');
+          const center = COMMAND_PROVINCE_CENTERS[geoName];
+          if (center) mapData.push({ geoName, displayName: geoName, value: 0, lng: center[0], lat: center[1] });
+          else {
+            const matched = commandMatchProvince(geoName);
+            if (matched && COMMAND_PROVINCE_CENTERS[matched]) {
+              const c = COMMAND_PROVINCE_CENTERS[matched];
+              mapData.push({ geoName: matched, displayName: geoName, value: 0, lng: c[0], lat: c[1] });
+            }
+          }
+        }
+      }
+      for (const s of series) {
+        const sType = String(s.type || '');
+        if (sType !== 'effectScatter' && sType !== 'scatter') continue;
+        if (s.coordinateSystem !== 'geo') continue;
+        const scatterData = (s.data as Array<Record<string, unknown>>) || [];
+        for (const d of scatterData) {
+          const dName = String(d.name || '');
+          const dVal = (d.value as number[]) || [];
+          if (dVal.length < 3) continue;
+          if (mapData.length === 0) {
+            const matched = commandMatchProvince(dName);
+            const geoName = matched || dName;
+            const center = matched ? COMMAND_PROVINCE_CENTERS[matched] : null;
+            if (center) mapData.push({ geoName, displayName: dName, value: Number(dVal[2]), lng: center[0], lat: center[1] });
+          } else {
+            const matchedItem = mapData.find((m) => {
+              const a = m.geoName.replace(/省|市|自治区|特别行政区|壮族|回族|维吾尔/g, '').trim();
+              const b = dName.replace(/省|市|自治区|特别行政区|壮族|回族|维吾尔/g, '').trim();
+              return a === b || a.includes(b) || b.includes(a) || m.geoName === dName;
+            });
+            if (matchedItem) {
+              matchedItem.value = Number(dVal[2]);
+              if (dName && dName.length < matchedItem.displayName.length) matchedItem.displayName = dName;
+            }
+          }
+        }
+        break;
+      }
+      if (mapData.length > 0) break;
+    }
+  }
+  const hasRealData = mapData.length > 0 && mapData.some((d) => d.value > 0);
+  const maxVal = hasRealData ? Math.max(...mapData.map((d) => d.value)) : 1;
+  const colors = ['rgba(15,12,41,0.6)', 'rgba(45,27,105,0.55)', 'rgba(74,45,138,0.5)', 'rgba(59,130,246,0.45)', 'rgba(59,130,246,0.4)', 'rgba(6,182,212,0.38)', 'rgba(125,211,252,0.35)', 'rgba(103,232,249,0.3)'];
+  const effectScatterData = hasRealData
+    ? mapData.filter((d) => d.value > 0).map((d) => ({ name: d.displayName, value: [d.lng, d.lat, d.value] as [number, number, number] }))
+    : [];
+  const linesData = hasRealData
+    ? (() => {
+        const sorted = [...mapData].filter((d) => d.value > 0).sort((a, b) => b.value - a.value).slice(0, 6);
+        if (sorted.length < 2) return [] as { coords: [[number, number], [number, number]] }[];
+        return sorted.slice(1).map((d) => ({ coords: [[sorted[0].lng, sorted[0].lat], [d.lng, d.lat]] as [[number, number], [number, number]] }));
+      })()
+    : [];
+  const regions = hasRealData
+    ? mapData.map((d) => {
+        const ratio = maxVal > 0 ? d.value / maxVal : 0;
+        const idx = Math.min(Math.floor(ratio * (colors.length - 1)), colors.length - 1);
+        return { name: d.geoName, itemStyle: { areaColor: colors[idx] }, label: { show: true, color: '#BFDBFE', fontSize: 10 } };
+      })
+    : [];
+  return { hasRealData, maxVal, effectScatterData, linesData, regions };
+}
+
+// 同环比表复刻（与 TbHbTable 一致）
+const cmdEsc = (s: string): string =>
+  String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
+const TBHB_MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+function tbHbFormatValue(v: number | null | undefined): string {
+  if (v === null || v === undefined) return '--';
+  if (Math.abs(v) >= 100_000_000) return `${(v / 100_000_000).toFixed(2)}亿`;
+  if (Math.abs(v) >= 10_000) return `${(v / 10_000).toFixed(2)}万`;
+  return v.toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+}
+function tbHbFormatRate(rate: number | null | undefined, isFirst: boolean): { html: string; color: string } {
+  if (rate === null || rate === undefined) return { html: '--', color: '#9ca3af' };
+  if (isFirst) return { html: '--', color: '#9ca3af' };
+  const pct = (rate as number) * 100;
+  const formatted = Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(2)}%`;
+  if ((rate as number) > 0.001) return { html: `🔺 +${formatted}`, color: '#FB7185' };
+  if ((rate as number) < -0.001) return { html: `🔻 ${formatted}`, color: '#22c55e' };
+  return { html: '➖ 0%', color: '#9ca3af' };
+}
+function tbHbTableHtml(chart: EChartItem): string {
+  const td = chart.table_data as Record<string, unknown> | undefined;
+  if (!td || !td.rows || (td.rows as unknown[]).length === 0) return '';
+  const rows = td.rows as Array<Record<string, unknown>>;
+  const hasYoY = Boolean(td.has_yoy);
+  const valueColumn = String(td.value_column || '');
+  const currentYear = String(td.current_year || '');
+  const previousYear = td.previous_year ? String(td.previous_year) : null;
+  const body = rows.map((row, i) => {
+    const yoyFmt = tbHbFormatRate(row['同比增长率'] as number | null | undefined, false);
+    const momFmt = tbHbFormatRate(row['环比增长率'] as number | null | undefined, i === 0);
+    const monthLabel = row.month ? (TBHB_MONTHS[(row.month as number) - 1] || row.period) : row.period;
+    const isEven = i % 2 === 0;
+    return `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);${isEven ? 'background:rgba(255,255,255,0.02);' : ''}">
+      <td style="padding:8px 12px;color:#cbd5e1;font-weight:500;white-space:nowrap;">${cmdEsc(String(monthLabel))}</td>
+      ${hasYoY ? `<td style="padding:8px 12px;text-align:right;color:#94a3b8;font-family:monospace;">${tbHbFormatValue(row['上年值'] as number | null)}</td>` : ''}
+      <td style="padding:8px 12px;text-align:right;color:#f8fafc;font-weight:600;font-family:monospace;">${tbHbFormatValue(row['本年值'] as number | null)}</td>
+      ${hasYoY ? `<td style="padding:8px 12px;text-align:right;color:${yoyFmt.color};font-family:monospace;">${yoyFmt.html}</td>` : ''}
+      <td style="padding:8px 12px;text-align:right;color:${momFmt.color};font-family:monospace;">${momFmt.html}</td>
+    </tr>`;
+  }).join('\n');
+  const sub = hasYoY ? `${previousYear}年 vs ${currentYear}年 月度对比` : `${currentYear}年 月度环比`;
+  return `<div style="margin:0 12px 12px;padding:16px;border-radius:8px;background:rgba(10,14,30,0.95);border:1px solid rgba(125,211,252,0.12);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div><h3 style="font-size:14px;font-weight:600;color:#e2e8f0;">📋 ${cmdEsc(valueColumn)} · 同环比分析</h3><p style="font-size:11px;color:#64748b;margin-top:4px;">${cmdEsc(sub)}</p></div>
+      <span style="font-size:11px;color:#64748b;">共 ${rows.length} 个月</span>
+    </div>
+    <div style="overflow-y:auto;max-height:380px;">
+      <table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <thead><tr style="background:#1a1a2e;position:sticky;top:0;">
+          <th style="padding:8px 12px;text-align:left;color:#94a3b8;font-weight:600;">月份</th>
+          ${hasYoY ? `<th style="padding:8px 12px;text-align:right;color:#94a3b8;font-weight:600;">${cmdEsc(previousYear || '')}年</th>` : ''}
+          <th style="padding:8px 12px;text-align:right;color:#f8fafc;font-weight:600;">${cmdEsc(currentYear)}年</th>
+          ${hasYoY ? `<th style="padding:8px 12px;text-align:right;color:#94a3b8;font-weight:600;">同比增长率</th>` : ''}
+          <th style="padding:8px 12px;text-align:right;color:#94a3b8;font-weight:600;">环比增长率</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:16px;font-size:11px;color:#64748b;margin-top:8px;">
+      <span style="color:#FB7185;">🔺 增长</span><span style="color:#22c55e;">🔻 下降</span><span style="color:#9ca3af;">➖ 持平 / 无数据</span>
+    </div>
+  </div>`;
 }
 
 // ========== 指挥中心 (command) 布局 HTML 生成 ==========
@@ -1289,35 +1245,24 @@ function buildCommandLayout(
   kpis: KPI[],
   tableData: Record<string, unknown>[],
   title: string,
+  echarts: EChartItem[],
 ): string {
   const columns = tableData?.[0] ? Object.keys(tableData[0]) : [];
   const catCol = columns[0] || '分类';
 
-  // TOP5 排行
-  const rankingData = (() => {
-    if (!tableData || !columns[0]) return [];
-    const counts: Record<string, number> = {};
-    tableData.forEach((row) => {
-      const key = String(row[columns[0]] ?? '未知');
-      counts[key] = (counts[key] || 0) + 1;
-    });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5)
-      .map(([name, value]) => ({ name, value }));
-  })();
+  const map = computeCommandMap(echarts);
+  const tbHbCharts = (echarts || []).filter((c) => c.chart_type === 'table' && c.table_data).map(tbHbTableHtml);
+  const tbHbSection = tbHbCharts.length ? tbHbCharts.join('\n') : '';
 
-  // 构建 KPI 行的 HTML
-  const kpiCardsHtml = kpis.length > 0 ? kpis.map((kpi) => {
-    const numVal = typeof kpi.value === 'number' ? kpi.value : parseFloat(String(kpi.value));
-    const isNum = !isNaN(numVal);
-    const digits = isNum ? String(Math.floor(numVal)).split('') : [];
-    const color = kpi.color || '#7DD3FC';
-    return `<div class="kpi-card">
-    <div class="label">${kpi.title}</div>
-    <div style="display:flex;gap:2px;align-items:center;">
-      ${isNum ? digits.map((d: string) => `<div class="digit" style="color:${color};text-shadow:0 0 10px ${color}50;">${d}</div>`).join('') : `<span class="value" style="color:${color};">${kpi.value}</span>`}
-    </div>
-  </div>`;
-  }).join('\n  ') : '';
+  // TOP5 排行（与屏幕一致：取数值列降序 top5）
+  const valCol = columns.find((k) => typeof (tableData?.[0]?.[k]) === 'number') || columns[1] || '';
+  const rankingData = (() => {
+    if (!tableData || !tableData.length) return [];
+    return tableData
+      .map((row, i) => ({ name: String(row[catCol] ?? `项${i + 1}`), value: Number(row[valCol]) || 0 }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+  })();
 
   const CHINA_GEO_URL = 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json';
 
@@ -1333,11 +1278,6 @@ function buildCommandLayout(
   body { font-family:'PingFang SC','Microsoft YaHei',system-ui,sans-serif; height:100vh; overflow:hidden; background:radial-gradient(ellipse at center,#0a1628 0%,#050d1a 50%,#020810 100%); color:#cbd5e1; display:flex; flex-direction:column; }
   .header { display:flex; align-items:center; justify-content:space-between; padding:12px 24px; border-bottom:1px solid rgba(125,211,252,0.12); flex-shrink:0; }
   .header-bar { width:6px; height:24px; background:linear-gradient(180deg,#7DD3FC,#38BDF8); border-radius:3px; }
-  .kpis-wrap { display:flex; justify-content:center; gap:12px; flex-wrap:wrap; padding:12px 24px; border-bottom:1px solid rgba(125,211,252,0.08); flex-shrink:0; }
-  .kpi-card { display:flex; flex-direction:column; align-items:center; padding:12px 24px; min-width:150px; background:linear-gradient(180deg,rgba(125,211,252,0.08) 0%,rgba(125,211,252,0.02) 100%); border:1px solid rgba(125,211,252,0.15); border-radius:4px; }
-  .kpi-card .label { font-size:10px; color:#94a3b8; margin-bottom:6px; }
-  .kpi-card .value { font-size:22px; font-weight:700; text-shadow:0 0 10px rgba(125,211,252,0.5); }
-  .digit { width:24px; height:32px; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:700; font-family:monospace; background:linear-gradient(180deg,rgba(125,211,252,0.2),rgba(125,211,252,0.05)); border:1px solid rgba(125,211,252,0.3); border-radius:2px; }
   .main-row { flex:1; display:flex; gap:12px; padding:12px; min-height:0; }
   .side-panel { width:20%; min-width:220px; display:flex; flex-direction:column; border-radius:8px; border:1px solid rgba(125,211,252,0.08); background:rgba(125,211,252,0.03); padding:12px 16px; overflow:hidden; }
   .side-panel .sec-label { font-size:11px; font-weight:600; color:#7DD3FC; margin-bottom:8px; letter-spacing:0.05em; }
@@ -1367,8 +1307,6 @@ function buildCommandLayout(
     <span style="margin-left:12px;color:#64748b;font-family:monospace;font-size:11px;">${new Date().toLocaleString('zh-CN')}</span>
   </span>
 </div>
-
-${kpiCardsHtml ? `<div class="kpis-wrap">${kpiCardsHtml}</div>` : ''}
 
 <div class="main-row">
   <!-- 左侧面板：数据总览 + 数据预览 -->
@@ -1438,6 +1376,8 @@ ${kpiCardsHtml ? `<div class="kpis-wrap">${kpiCardsHtml}</div>` : ''}
   </div>
 </div>
 
+${tbHbSection}
+
 <div class="footer">
   总记录数：<span style="color:#7DD3FC;font-weight:600;">${tableData?.length || 0}</span>
   &nbsp;|&nbsp; 数据字段：<span style="color:#7DD3FC;font-weight:600;">${columns.length}</span>
@@ -1447,48 +1387,55 @@ ${kpiCardsHtml ? `<div class="kpis-wrap">${kpiCardsHtml}</div>` : ''}
 <script>
 (function() {
   var chartDom = document.getElementById('china-map');
-  var chart = echarts.init(chartDom, undefined, { renderer: 'svg' });
-  var cities = [
-    { name: '北京', value: [116.46, 39.92, 1.2] },
-    { name: '上海', value: [121.48, 31.22, 1.1] },
-    { name: '广州', value: [113.23, 23.16, 0.9] },
-    { name: '深圳', value: [114.07, 22.62, 0.85] },
-    { name: '成都', value: [104.06, 30.67, 0.7] },
-    { name: '武汉', value: [114.31, 30.52, 0.65] },
-    { name: '杭州', value: [120.19, 30.26, 0.75] },
-    { name: '南京', value: [118.78, 32.04, 0.6] },
+  var chart = echarts.init(chartDom, undefined, { renderer: 'canvas' });
+  var FALLBACK_CITIES = [
+    { name: '北京', value: [116.46, 39.92, 18] },
+    { name: '上海', value: [121.48, 31.22, 16.5] },
+    { name: '广州', value: [113.23, 23.16, 13.5] },
+    { name: '深圳', value: [114.07, 22.62, 12.75] },
+    { name: '成都', value: [104.06, 30.67, 10.5] },
+    { name: '武汉', value: [114.31, 30.52, 9.75] },
+    { name: '杭州', value: [120.19, 30.26, 11.25] },
+    { name: '南京', value: [118.78, 32.04, 9] },
   ];
+  var FALLBACK_LINES = [
+    { coords: [[116.46, 39.92], [121.48, 31.22]] },
+    { coords: [[116.46, 39.92], [113.23, 23.16]] },
+    { coords: [[121.48, 31.22], [114.07, 22.62]] },
+    { coords: [[104.06, 30.67], [116.46, 39.92]] },
+  ];
+  var mapData = ${JSON.stringify(map)};
   fetch('${CHINA_GEO_URL}').then(function(r) { return r.json(); }).then(function(geo) {
     echarts.registerMap('china', geo);
+    var hasReal = mapData.hasRealData;
+    var effectScatterData = hasReal ? mapData.effectScatterData : FALLBACK_CITIES;
+    var linesData = hasReal ? mapData.linesData : FALLBACK_LINES;
+    var regions = mapData.regions || [];
+    var maxVal = mapData.maxVal || 1;
     chart.setOption({
       tooltip: { trigger: 'item', backgroundColor: 'rgba(10,22,40,0.95)', borderColor: 'rgba(125,211,252,0.3)', textStyle: { color: '#e2e8f0', fontSize: 11 } },
       geo: {
-        map: 'china',
-        roam: false,
-        itemStyle: { areaColor: 'rgba(125,211,252,0.08)', borderColor: 'rgba(125,211,252,0.25)', borderWidth: 0.5 },
-        emphasis: { itemStyle: { areaColor: 'rgba(125,211,252,0.3)' }, label: { show: true, color: '#fff', fontSize: 10 } },
+        map: 'china', roam: false, zoom: 1.15, center: [104.5, 36], aspectScale: 0.85,
+        regions: regions,
+        itemStyle: { areaColor: '#0B1025', borderColor: '#312e81', borderWidth: 1, shadowBlur: 6, shadowColor: 'rgba(59,130,246,0.25)' },
+        emphasis: { itemStyle: { areaColor: '#4f46e5', shadowBlur: 25, shadowColor: 'rgba(59,130,246,0.7)' }, label: { show: true, color: '#f0e6ff', fontSize: 14, fontWeight: 'bold' } },
       },
       series: [
         {
-          type: 'effectScatter',
-          coordinateSystem: 'geo',
-          data: cities.map(function(d) { return { name: d.name, value: [d.value[0], d.value[1], d.value[2] * 15] }; }),
-          symbolSize: function(val) { return val[2]; },
-          rippleEffect: { scale: 3, period: 5, color: '#7DD3FC' },
-          itemStyle: { color: '#7DD3FC' },
+          type: 'effectScatter', coordinateSystem: 'geo', data: effectScatterData,
+          symbol: 'circle',
+          symbolSize: function(val) { return hasReal ? Math.max(6, Math.min(18, (val[2] / maxVal) * 16)) : val[2]; },
+          showEffectOn: 'render',
+          rippleEffect: { brushType: 'stroke', scale: 4, period: 4, color: '#7DD3FC' },
+          itemStyle: { color: '#e0e7ff', shadowBlur: 10, shadowColor: 'rgba(125,211,252,0.8)' },
+          label: { show: true, position: 'top', distance: 10, color: '#67e8f9', fontSize: 11, fontWeight: 'bold', formatter: '{c}', textShadowBlur: 6, textShadowColor: 'rgba(6,182,212,0.6)' },
+          emphasis: { scale: 2, itemStyle: { color: '#f0e6ff', shadowBlur: 20 }, label: { fontSize: 15, color: '#f0e6ff' } },
           zlevel: 1,
         },
         {
-          type: 'lines',
-          coordinateSystem: 'geo',
-          data: [
-            { coords: [[116.46, 39.92], [121.48, 31.22]] },
-            { coords: [[116.46, 39.92], [113.23, 23.16]] },
-            { coords: [[121.48, 31.22], [114.07, 22.62]] },
-            { coords: [[104.06, 30.67], [116.46, 39.92]] },
-          ],
-          lineStyle: { color: '#7DD3FC', width: 1, opacity: 0.5, curveness: 0.2 },
-          effect: { show: true, period: 5, trailLength: 0.3, symbolSize: 4, color: '#7DD3FC' },
+          type: 'lines', coordinateSystem: 'geo', data: linesData,
+          lineStyle: { color: '#7DD3FC', width: 1, opacity: 0.4, curveness: 0.2 },
+          effect: { show: true, period: 5, trailLength: 0.3, trailWidth: 1.5, symbolSize: 4, color: '#7DD3FC' },
           zlevel: 1,
         },
       ],
@@ -1521,6 +1468,37 @@ function parseNumVal(raw: string | number): number {
   const cleaned = raw.replace(/[,，\s]/g, '').replace(/万亿/g, '000000000000').replace(/亿/g, '00000000').replace(/万/g, '0000');
   const n = parseFloat(cleaned);
   return isNaN(n) ? 0 : n;
+}
+
+/** KPI 去重：同名 title 只保留首次出现的那条 */
+function _deduplicateByTitle(kpis: KPI[]): KPI[] {
+  const seen = new Map<string, KPI>();
+  for (const k of kpis) {
+    const key = k.title || '';
+    if (!seen.has(key)) seen.set(key, k);
+  }
+  return Array.from(seen.values());
+}
+
+/** KPI 优先级评分：颜色质量 + 关键词加权，分数越高越值得放在精选区 */
+function _scoreKPI(k: KPI): number {
+  let score = 0;
+  // 颜色质量分
+  const colorScores: Record<string, number> = { excellent: 4, good: 3, warning: 2, danger: 1 };
+  score += colorScores[k.color || ''] ?? 0;
+  // 关键词加分
+  const t = (k.title || '').toLowerCase();
+  if (/增长率|增速|涨幅|集中度|复购率|利润率|毛利率|转化率/.test(t)) score += 2;
+  if (/总|合计|总计|累计/.test(t)) score += 1;
+  if (/平均|均值/.test(t)) score += 1;
+  return score;
+}
+
+/** 去重 + 按分排序 → { top6 精选, rest 折叠 } */
+function _splitKPIs(kpis: KPI[]): { top: KPI[]; rest: KPI[] } {
+  const deduped = _deduplicateByTitle(kpis);
+  const sorted = [...deduped].sort((a, b) => _scoreKPI(b) - _scoreKPI(a));
+  return { top: sorted.slice(0, 6), rest: sorted.slice(6) };
 }
 
 /** 中文缩写：万(10⁴) / 亿(10⁸) / 万亿(10¹²)，保留 2 位小数并去掉尾部 .00 */
@@ -1639,16 +1617,21 @@ function buildReportHTML(
   // ★ 为 ECharts 图表生成脚本
   const chartScript = makeEChartsScript(echarts.map((c, i) => ({ ...c, id: `report_chart_${i}` })), false);
 
-  // ★ KPI 核心指标卡片
-  const kpiHTML = kpis.length > 0 ? `
-<div class="metrics-row">
-  ${kpis.map((k) => `
+  // ★ KPI 核心指标卡片：去重+排序，精选 top6 平铺，其余折叠
+  const { top, rest } = _splitKPIs(kpis);
+  const renderCard = (k: KPI) => `
   <div class="metric-card">
     <div class="metric-abbr ${k.color ? `metric-${k.color}` : ''}">${formatAbbreviatedCN(k.value)}${k.unit || ''}</div>
     <div class="metric-full">${formatFullNumber(k.value)}</div>
     <div class="metric-label">${k.title || k.label || "指标"}</div>
-  </div>`).join('\n  ')}
-</div>` : '';
+  </div>`;
+  const topHTML = top.length > 0 ? `<div class="metrics-row">${top.map(renderCard).join('\n  ')}</div>` : '';
+  const restHTML = rest.length > 0 ? `
+<details class="kpi-more">
+  <summary class="kpi-more-summary">📊 更多指标 (${rest.length})</summary>
+  <div class="metrics-row">${rest.map(renderCard).join('\n  ')}</div>
+</details>` : '';
+  const kpiHTML = topHTML + restHTML;
 
   // ★ 去除标题中可能存在的任意数字编号前缀（"1." "1.1." "1、" 等）
   const cleanTitle = (raw: string) => (raw || '').replace(/^[\d\.\、\s]+/, '').trim();
@@ -1799,6 +1782,40 @@ function buildReportHTML(
   .metric-good { color: #38BDF8; }
   .metric-warning { color: #FBBF24; }
   .metric-danger { color: #FB7185; }
+  /* ★ KPI 折叠面板：更多指标 */
+  .kpi-more {
+    margin: 12px 0;
+    border: 1px solid rgba(56,189,248,0.25);
+    border-radius: 10px;
+    background: rgba(15,23,42,0.6);
+    overflow: hidden;
+  }
+  .kpi-more-summary {
+    padding: 10px 16px;
+    color: #94A3B8;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .kpi-more-summary::-webkit-details-marker { display: none; }
+  .kpi-more-summary::before {
+    content: "▸";
+    display: inline-block;
+    transition: transform 0.2s;
+    font-size: 10px;
+    color: #38BDF8;
+  }
+  .kpi-more[open] .kpi-more-summary::before { transform: rotate(90deg); }
+  .kpi-more .metrics-row { padding: 4px 8px 12px; }
+  @media print {
+    .kpi-more { border-color: #ccc; background: #fff; }
+    .kpi-more-summary { color: #333; }
+    .kpi-more[open] { page-break-inside: avoid; }
+  }
   table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
   th, td { border: 1px solid rgba(56,189,248,0.18); padding: 8px 6px; text-align: center; }
   th { background: rgba(56,189,248,0.15); color: #e2e8f0; font-weight: 600; }
@@ -1834,6 +1851,15 @@ function buildReportHTML(
   .insight-concentration { background: rgba(251,191,36,0.15); color: #FBBF24; }
   .insight-anomaly { background: rgba(251,113,133,0.15); color: #FB7185; }
   .insight-risk { background: rgba(167,139,250,0.15); color: #A78BFA; }
+  /* ★ 深空兜底：内联 HTML 文本（p/li/strong/ul/ol/h4/span）强制浅色，避免粗体标签在深底上消失 */
+  body p, body li, body ul, body ol, body h4, body h5, body h6, body span, body div { color: #e2e8f0; }
+  body strong, body b { color: #F1F5F9; }
+  body a { color: #38BDF8; }
+  /* 打印回退：恢复深色字 */
+  @media print {
+    body p, body li, body ul, body ol, body h4, body h5, body h6, body span, body div { color: #333 !important; }
+    body strong, body b { color: #0d1b2a !important; }
+  }
 </style>
 </head>
 <body>
@@ -1896,6 +1922,9 @@ export function generateEChartsDashboardHTML(
   reportSummary?: string,
   reportConclusion?: string,
   rowCount: number = 0,
+  // 数据看板（medical）导出以 cards 为唯一数据源，与屏幕上 MedicalDashboard 完全一致
+  cards?: CardItem[],
+  meta?: CardMeta,
 ): string {
   switch (template) {
     case 'grid':
@@ -1905,13 +1934,10 @@ export function generateEChartsDashboardHTML(
     case 'immersive':
       return buildImmersiveLayout(kpis, echarts, title, hideChartTitle);
     case 'command':
-      return buildCommandLayout(kpis, tableData || [], title);
+      return buildCommandLayout(kpis, tableData || [], title, echarts);
     case 'medical':
       return buildMedicalLayout(
-        kpis, echarts, title, hideChartTitle,
-        navTabs || ['数据总览', '趋势洞察', '分类分析', '明细查询'],
-        ringCharts || [],
-        tableData || [],
+        cards || [], meta, title, hideChartTitle,
       );
     case 'report':
       return buildReportHTML(
@@ -2017,7 +2043,7 @@ export function generateAIDashboardHTML(
 
   // ----- 分类 widgets -----
   const chartWidgets = widgets.filter((w: Record<string, unknown>) =>
-    w.widget_type === 'chart' && (w.chart_config as Record<string, unknown>)?.option
+    (w.widget_type === 'chart' || w.widget_type === 'map') && (w.chart_config as Record<string, unknown>)?.option
   );
   const kpiWidgets = widgets.filter((w: Record<string, unknown>) =>
     w.widget_type === 'kpi'
@@ -2051,25 +2077,32 @@ export function generateAIDashboardHTML(
     widgetChartMap[String(w.widget_id)] = chartDiv + chartDescHtml;
   });
 
-  // ----- KPI 卡片 HTML -----
+  // ----- KPI 卡片 HTML（与屏幕上 KPIWidget 一致：title 主 + value + kpi_label 副 + change 趋势） -----
   const kpiHtmlMap: Record<string, string> = {};
   kpiWidgets.forEach((w: Record<string, unknown>) => {
     const cfg = w.chart_config as Record<string, unknown> || {};
     const meta = w.metadata as Record<string, unknown> || {};
-    // 优先 chart_config.value, 兜底 metadata (KPI 数值可能在 metadata.formatted/kpi_label/value 中)
-    const val = (cfg.value ?? meta?.formatted ?? meta?.value ?? meta?.kpi_label ?? '') as string;
-    const label = (cfg.label || meta?.kpi_label || meta?.label || w.title || '') as string;
-    // 检查 sparkline 数据: 有数据就有趋势图
+    // ★ 与 KPIWidget 一致：value 优先 metadata.formatted/value；副标签 = metadata.kpi_label；主标题 = widget.title
+    const value = (meta.formatted ?? meta.value ?? '') as string;
+    const title = String(w.title || '');
+    const sub = (meta.kpi_label || '') as string;
+    const change = (typeof (meta.change ?? 0) === 'number' ? (meta.change as number) : 0);
+    // sparkline 数据：有数据就有趋势图
     const hasSpark = cfg.data && Array.isArray(cfg.data) && (cfg.data as unknown[]).length > 0;
     // 既没有数值也没有 sparkline 数据 → 不生成 HTML (避免空白占位)
-    if (!val && !hasSpark) return;
+    if (!value && !hasSpark) return;
     const color = (cfg.color || '#7DD3FC') as string;
     const icon = (cfg.icon || '📊') as string;
+    const trendHtml = change !== 0
+      ? `<p style="font-size:10px;font-weight:600;margin-top:2px;color:${change > 0 ? '#34D399' : '#FB7185'}">${change > 0 ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%</p>`
+      : '';
+    const subHtml = sub ? `<p style="font-size:10px;color:#94a3b8;margin-top:2px;">${cmdEsc(sub)}</p>` : '';
     kpiHtmlMap[String(w.widget_id)] = `
-<div style="padding:14px 18px;border-radius:12px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.15);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:90px;">
+<div style="padding:14px 18px;border-radius:12px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.15);display:flex;flex-direction:column;justify-content:center;min-height:90px;">
   <div style="font-size:20px;margin-bottom:2px;">${icon}</div>
-  <p style="font-size:10px;color:#94a3b8;margin-bottom:4px;">${label}</p>
-  <p style="font-size:18px;font-weight:700;color:${color};text-shadow:0 0 8px ${color}40;">${val}</p>
+  <p style="font-size:10px;color:#94a3b8;margin-bottom:4px;">${cmdEsc(title)}</p>
+  <p style="font-size:18px;font-weight:700;color:${color};text-shadow:0 0 8px ${color}40;">${cmdEsc(value)}</p>
+  ${subHtml}${trendHtml}
 </div>`;
   });
 
@@ -2090,6 +2123,16 @@ export function generateAIDashboardHTML(
       tableHtmlMap[String(w.widget_id)] = tblDiv + tblDescHtml;
     }
   });
+
+  // ★ 检测是否含中国地图（需 registerMap 才能正确渲染）
+  const optionHasChinaMap = (opt: unknown): boolean => {
+    const o = opt as Record<string, unknown>;
+    if (!o) return false;
+    if (o.geo && (o.geo as Record<string, unknown>).map === 'china') return true;
+    const series = (o.series as Array<Record<string, unknown>>) || [];
+    return series.some((s) => s.map === 'china' || s.coordinateSystem === 'geo' || s.type === 'map');
+  };
+  const hasChinaMap = chartItems.some((c) => optionHasChinaMap(c.option));
 
   // ----- 按 sections 构建区域 HTML -----
   let sectionsHTML = '';
@@ -2232,10 +2275,28 @@ export function generateAIDashboardHTML(
 <style>${COMMON_CSS}</style>
 </head>
 <body style="min-height:100vh;background:linear-gradient(180deg,#050816 0%,#0a0e27 50%,#0f0d1f 100%);max-width:1600px;margin:0 auto;">
-${makeHeader(title)}
+${makeHeader(title, true)}
 ${filterBarHTML}
 ${sectionsHTML}
 ${makeEChartsScript(chartItems, hideTitle)}
+${hasChinaMap ? `<script>
+(function() {
+  var GEO_URL = 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json';
+  var mapOpts = ${JSON.stringify(
+    chartItems.filter((c) => optionHasChinaMap(c.option)).map((c) => ({ id: c.id, option: c.option })),
+    (_key, v) => (typeof v === 'number' && !Number.isFinite(v)) ? null : v,
+  )};
+  fetch(GEO_URL).then(function(r) { return r.json(); }).then(function(geo) {
+    echarts.registerMap('china', geo);
+    mapOpts.forEach(function(o) {
+      var el = document.getElementById(o.id);
+      if (!el) return;
+      var chart = echarts.getInstanceByDom(el);
+      if (chart) { chart.setOption(o.option); chart.resize(); }
+    });
+  }).catch(function() {});
+})();
+</script>` : ''}
 </body>
 </html>`;
 }

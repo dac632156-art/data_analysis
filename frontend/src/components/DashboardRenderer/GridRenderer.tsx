@@ -13,6 +13,8 @@ interface GridRendererProps {
   onWidgetError?: (error: WidgetError) => void;
   /** Interaction Binder 传入 */
   highlightLabel?: string | null;
+  /** 全局筛选器当前值（field → value），用于高亮匹配 Widget */
+  globalFilterValues?: Record<string, string>;
   crossFilterSourceMap?: Record<string, unknown[]>;
   drillDownMap?: Record<string, unknown[]>;
 }
@@ -42,7 +44,7 @@ const SECTION_ROLE_NAMES: Record<string, string> = {
 
 export const GridRenderer: React.FC<GridRendererProps> = memo(({
   widgets, sections, layout, onFilter, onWidgetClick, onDrillDown, onWidgetError,
-  highlightLabel, crossFilterSourceMap, drillDownMap,
+  highlightLabel, globalFilterValues, crossFilterSourceMap, drillDownMap,
 }) => {
   const theme = useDashboardTheme();
 
@@ -148,6 +150,7 @@ export const GridRenderer: React.FC<GridRendererProps> = memo(({
                   onDrillDown={onDrillDown}
                   onWidgetError={onWidgetError}
                   highlightLabel={highlightLabel}
+                  globalFilterValues={globalFilterValues}
                   isCrossFilterSource={Boolean(crossFilterSourceMap?.[w.widget_id])}
                   hasDrillDown={Boolean(drillDownMap?.[w.widget_id])}
                 />
@@ -178,6 +181,7 @@ export const GridRenderer: React.FC<GridRendererProps> = memo(({
                     onDrillDown={onDrillDown}
                     onWidgetError={onWidgetError}
                     highlightLabel={highlightLabel}
+                    globalFilterValues={globalFilterValues}
                     isCrossFilterSource={Boolean(crossFilterSourceMap?.[w.widget_id])}
                     hasDrillDown={Boolean(drillDownMap?.[w.widget_id])}
                   />

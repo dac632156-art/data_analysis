@@ -1,7 +1,7 @@
 ﻿import React, { useMemo } from 'react';
 import EChartView, { type EChartsOption } from '../EChartView';
 import KPICards, { type KPIItem } from '../KPICards';
-import type { CardItem, CardMeta } from '../CardGrid';
+import type { CardItem, CardMeta } from '../cardTypes';
 
 interface Props {
   cards?: CardItem[];
@@ -14,7 +14,7 @@ interface Props {
    ───────────────────────────────────────────── */
 
 export default function BigScreenDashboard({ cards = [], meta, title = '数据看板' }: Props) {
-  const { kpis, trendCharts, mapCharts, rankingCards, tableCards, insightCards, warningCards } = useMemo(() => {
+  const { kpis, trendCharts, rankingCards, tableCards, insightCards, warningCards } = useMemo(() => {
     const kpis: CardItem[] = [];
     const trendCharts: CardItem[] = [];
     const mapCharts: CardItem[] = [];
@@ -53,10 +53,6 @@ export default function BigScreenDashboard({ cards = [], meta, title = '数据�
   // 主趋势图：选最大的chart
   const mainTrend = trendCharts.find(c => c.size === 'xl' || c.size === 'l') || trendCharts[0];
   const subTrends = trendCharts.filter(c => c !== mainTrend).slice(0, 2);
-
-  // 地图区域
-  const mainMap = mapCharts[0];
-  const sideMaps = mapCharts.slice(1, 3);
 
   // 排行
   const mainRank = rankingCards[0];
@@ -116,9 +112,9 @@ export default function BigScreenDashboard({ cards = [], meta, title = '数据�
           </section>
         )}
 
-        {/* ──── Row 2: 趋势 + 地图 ──── */}
-        <div className="grid gap-6" style={{ gridTemplateColumns: '2fr 1fr' }}>
-          {/* 左侧：趋势图 */}
+        {/* ──── Row 2: 趋势分析（占满整行，原地图区块已移除） ──── */}
+        <div className="grid gap-6" style={{ gridTemplateColumns: '1fr' }}>
+          {/* 趋势图 */}
           <section className="rounded-2xl p-5"
             style={{ background: 'rgba(56,189,248,0.03)', border: '1px solid rgba(56,189,248,0.1)' }}>
             <div className="flex items-center gap-2 mb-4">
@@ -127,20 +123,11 @@ export default function BigScreenDashboard({ cards = [], meta, title = '数据�
             </div>
             <div className="space-y-6">
               {mainTrend && <ChartBlock card={mainTrend} height={320} />}
-              {subTrends.map((t) => <ChartBlock key={t.id} card={t} height={200} />)}
-            </div>
-          </section>
-
-          {/* 右侧：地图 */}
-          <section className="rounded-2xl p-5"
-            style={{ background: 'rgba(125,211,252,0.03)', border: '1px solid rgba(125,211,252,0.1)' }}>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-1 h-4 bg-cyan-400 rounded-full" />
-              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">地理分布</h2>
-            </div>
-            <div className="space-y-4">
-              {mainMap && <ChartBlock card={mainMap} height={280} />}
-              {sideMaps.map((m) => <ChartBlock key={m.id} card={m} height={140} />)}
+              {subTrends.length > 0 && (
+                <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+                  {subTrends.map((t) => <ChartBlock key={t.id} card={t} height={200} />)}
+                </div>
+              )}
             </div>
           </section>
         </div>

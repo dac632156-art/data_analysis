@@ -11,6 +11,7 @@ interface ChartWidgetProps {
   onFilter?: (field: string, value: string) => void;
   onClick?: (widgetId: string, data: Record<string, unknown>) => void;
   highlightLabel?: string | null;
+  globalFilterValues?: Record<string, string>;
   isCrossFilterSource?: boolean;
   hasDrillDown?: boolean;
   onDrillDown?: (widgetId: string, dimension: string, nextLevel: string) => void;
@@ -31,8 +32,9 @@ const DIM_OPACITY = 0.15;
 
 function applyHighlightBlur(
   option: Record<string, unknown>,
-  highlightLabel: string
+  highlightLabels: string[]
 ): Record<string, unknown> {
+  if (highlightLabels.length === 0) return option;
   const result = { ...option };
   const originalSeries = (result.series as Array<Record<string, unknown>>) || [];
 
@@ -51,7 +53,7 @@ function applyHighlightBlur(
     if (sType === 'pie' || sType === 'treemap') {
       data.forEach((d, i) => {
         if (typeof d === 'object' && d !== null && !Array.isArray(d)) {
-          if (String((d as Record<string, unknown>).name || '') === highlightLabel) matchingIndices.push(i);
+          if (highlightLabels.includes(String((d as Record<string, unknown>).name || ''))) matchingIndices.push(i);
         }
       });
     } else {
@@ -61,7 +63,7 @@ function applyHighlightBlur(
       const xData = (xAxis?.data as string[]) || undefined;
       const sName = String(s.name || '');
 
-      if (sName === highlightLabel) {
+      if (highlightLabels.includes(sName)) {
         // 系列名完全匹配 → 整个系列高亮
         return {
           ...s,
@@ -72,7 +74,7 @@ function applyHighlightBlur(
 
       if (xData) {
         xData.forEach((cat, i) => {
-          if (String(cat) === highlightLabel && i < data.length) matchingIndices.push(i);
+          if (highlightLabels.includes(String(cat)) && i < data.length) matchingIndices.push(i);
         });
       }
     }
@@ -96,7 +98,7 @@ function applyHighlightBlur(
   return result;
 }
 
-export const ChartWidget: React.FC<ChartWidgetProps> = memo(({ widget, onFilter, onClick, highlightLabel, isCrossFilterSource, hasDrillDown, onDrillDown }) => {
+export const ChartWidget: React.FC<ChartWidgetProps> = memo(({ widget, onFilter, onClick, highlightLabel, globalFilterValues, isCrossFilterSource, hasDrillDown, onDrillDown }) => {
   const theme = useDashboardTheme();
   const accent = theme.palette.primary;
   const chartRef = useRef<HTMLDivElement>(null);
@@ -138,13 +140,26 @@ export const ChartWidget: React.FC<ChartWidgetProps> = memo(({ widget, onFilter,
       };
     }
 
-    // 应用 Highlight
-    if (highlightLabel) {
-      styledOption = applyHighlightBlur(styledOption, highlightLabel);
+    // 应用 Highlight（Cross Filter / Hover + 全局筛选器高亮）
+    // 合并 Cross Filter 单一标签与全局筛选器命中值，统一高亮
+    const filterLabels: string[] = [];
+    const gf = globalFilterValues || {};
+    const dimValues = (widget.chart_config?.dim_values || {}) as Record<string, string[]>;
+    for (const [field, value] of Object.entries(gf)) {
+      if (value && Array.isArray(dimValues[field]) && dimValues[field].includes(value)) {
+        filterLabels.push(value);
+      }
+    }
+    const effectiveLabels = [
+      ...(highlightLabel ? [highlightLabel] : []),
+      ...filterLabels,
+    ].filter(Boolean);
+    if (effectiveLabels.length > 0) {
+      styledOption = applyHighlightBlur(styledOption, effectiveLabels);
     }
 
     return styledOption;
-  }, [widget, theme, highlightLabel]);
+  }, [widget, theme, highlightLabel, globalFilterValues]);
 
   // 初始化 + 绑定事件
   useEffect(() => {

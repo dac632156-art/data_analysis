@@ -127,7 +127,7 @@ def convert_column_type(df: pd.DataFrame, column: str, target_type: str) -> pd.D
 
 def detect_outliers(df: pd.DataFrame, method: str = 'iqr') -> Dict[str, Any]:
     """检测异常值"""
-    from utils.helpers import detect_outliers_zscore, detect_outliers_iqr
+    from src.utils.helpers import detect_outliers_zscore, detect_outliers_iqr
     
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     outlier_report = {}
@@ -151,7 +151,7 @@ def detect_outliers(df: pd.DataFrame, method: str = 'iqr') -> Dict[str, Any]:
 
 def handle_outliers(df: pd.DataFrame, column: str, method: str, action: str = 'remove') -> pd.DataFrame:
     """处理异常值"""
-    from utils.helpers import detect_outliers_zscore, detect_outliers_iqr
+    from src.utils.helpers import detect_outliers_zscore, detect_outliers_iqr
     
     df_new = df.copy()
     

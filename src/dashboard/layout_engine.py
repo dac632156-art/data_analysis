@@ -237,7 +237,9 @@ class GridAllocator:
         slots = self._assign_grid(sectioned, config)
 
         # 5. 视觉平衡调整
-        if config.rebalance_enabled:
+        #    fill_rows 模式下每行已连续补满 12 列，_rebalance 的左右挪移会造成
+        #    列重叠、破坏填满，故补满模式跳过 rebalance。
+        if config.rebalance_enabled and not getattr(config, "fill_rows", True):
             slots = self._rebalance(slots, config)
 
         return slots
@@ -340,6 +342,63 @@ class GridAllocator:
         return slots
 
     @staticmethod
+    def _redistribute_row_widths(widths: List[int], columns: int) -> List[int]:
+        """将一行的自然宽度等比缩放，使整数列宽之和恰为 columns（行内补满）。
+
+        最大余数法（largest remainder）：
+        1. 每个 widget 的目标浮点宽 target_i = w_i / S * columns
+        2. 先取 floor，并保证每个至少为 1
+        3. 剩余的 (columns - Σfloor) 个列单位按小数部分从大到小逐个补回
+        保证：Σ 结果 == columns，且每个结果 >= 1。
+        """
+        n = len(widths)
+        if n == 0:
+            return []
+        if n >= columns:
+            # widget 数已达/超过列数：每个至少 1 列，无法再压缩，直接均分为 1
+            # （正常场景 n<=columns，此分支仅为极端兜底）
+            return [1] * n
+
+        total = sum(widths)
+        if total <= 0:
+            # 自然宽度异常：均分兜底
+            base = columns // n
+            result = [base] * n
+            for i in range(columns - base * n):
+                result[i] += 1
+            return result
+
+        # 1. 浮点目标 + floor（每个至少 1）
+        floats = [w / total * columns for w in widths]
+        result = [max(1, int(f)) for f in floats]
+
+        # 2. 计算差额（可能为正=还需补，也可能为负=已超需回收）
+        diff = columns - sum(result)
+
+        # 小数部分（用于最大余数排序）
+        remainders = [(floats[i] - int(floats[i]), i) for i in range(n)]
+
+        if diff > 0:
+            # 需要补：给小数部分最大的逐个 +1
+            remainders.sort(reverse=True)
+            for k in range(diff):
+                result[remainders[k % n][1]] += 1
+        elif diff < 0:
+            # 已超（因 max(1,...) 抬升导致）：从最宽且 >1 的逐个 -1
+            order = sorted(range(n), key=lambda i: result[i], reverse=True)
+            k = 0
+            while diff < 0:
+                idx = order[k % n]
+                if result[idx] > 1:
+                    result[idx] -= 1
+                    diff += 1
+                k += 1
+                if k > n * columns:  # 理论不可达，防御死循环
+                    break
+
+        return result
+
+    @staticmethod
     def _layout_section(
         section_widgets: List[Dict[str, Any]],
         config: LayoutConfig,
@@ -348,30 +407,13 @@ class GridAllocator:
     ) -> Tuple[List[WidgetSlot], int]:
         """为单个 section 分配 Grid
 
-        贪心逐行填充，每行累加 x，x + w > columns 则换行。
+        fill_rows=True（默认）：两阶段——先按自然宽度贪心分行，再对每行用
+        最大余数法把列宽等比缩放至恰好填满 config.columns（行内无空洞，末行单图拉满整行）。
+        fill_rows=False：保留旧的贪心铺行（不补满），向后兼容。
         """
-        slots: List[WidgetSlot] = []
-        x = 0
-        y = start_y
-        max_h_in_row = 0
-
-        for w in section_widgets:
-            gw = w.get("_grid_w", 4)
-            gh = w.get("_grid_h", 3)
-
-            # 换行判断
-            if x + gw > config.columns and x > 0:
-                x = 0
-                y += max_h_in_row + config.widget_gap
-                max_h_in_row = 0
-
-            # 确保不超列数
-            if gw > config.columns:
-                gw = config.columns
-
-            # 创建 Slot
+        def _make_slot(w: Dict[str, Any], x: int, y: int, gw: int, gh: int) -> WidgetSlot:
             group_topic = _normalize_topic(w.get("business_topic", ""))
-            slot = WidgetSlot(
+            return WidgetSlot(
                 widget_id=w.get("id", ""),
                 title=w.get("title", ""),
                 widget_type=str(w.get("widget_type", "chart")),
@@ -383,7 +425,7 @@ class GridAllocator:
                 importance_score=w.get("importance_score", 50),
                 visual_weight=w.get("importance_score", 50),
                 group_id=f"group_{group_topic}",
-                section_id=section_name,  # ★ 修复：写入 section_id，让前端 GridRenderer 能正确分组
+                section_id=section_name,  # ★ 写入 section_id，让前端 GridRenderer 能正确分组
                 chart_type=w.get("chart_type"),
                 chart_config=w.get("chart_config", {}),
                 supported_filters=[
@@ -395,7 +437,66 @@ class GridAllocator:
                     "business_topic": w.get("business_topic", ""),
                 },
             )
-            slots.append(slot)
+
+        slots: List[WidgetSlot] = []
+        y = start_y
+
+        if getattr(config, "fill_rows", True):
+            # ===== 阶段一：按自然宽度贪心分行（只决定哪些图同行，不动宽度）=====
+            rows: List[List[Dict[str, Any]]] = []
+            cur_row: List[Dict[str, Any]] = []
+            cur_w = 0
+            for w in section_widgets:
+                gw = min(w.get("_grid_w", 4), config.columns)
+                if cur_row and cur_w + gw > config.columns:
+                    rows.append(cur_row)
+                    cur_row = []
+                    cur_w = 0
+                cur_row.append(w)
+                cur_w += gw
+            if cur_row:
+                rows.append(cur_row)
+
+            # ===== 阶段二：每行用最大余数法补满 config.columns =====
+            for row in rows:
+                nat_widths = [min(w.get("_grid_w", 4), config.columns) for w in row]
+                filled = GridAllocator._redistribute_row_widths(nat_widths, config.columns)
+                x = 0
+                max_h_in_row = 0
+                for w, gw in zip(row, filled):
+                    gh = w.get("_grid_h", 3)
+                    slots.append(_make_slot(w, x, y, gw, gh))
+                    x += gw
+                    if gh > max_h_in_row:
+                        max_h_in_row = gh
+                if max_h_in_row == 0:
+                    max_h_in_row = 3
+                y += max_h_in_row + config.widget_gap
+
+            # 扣除最后一行多加的 widget_gap，保持与旧逻辑一致的收尾
+            if rows:
+                y -= config.widget_gap
+            else:
+                y += 3
+
+            return slots, y
+
+        # ===== 旧逻辑（fill_rows=False）：贪心铺行不补满，向后兼容 =====
+        x = 0
+        max_h_in_row = 0
+        for w in section_widgets:
+            gw = w.get("_grid_w", 4)
+            gh = w.get("_grid_h", 3)
+
+            if x + gw > config.columns and x > 0:
+                x = 0
+                y += max_h_in_row + config.widget_gap
+                max_h_in_row = 0
+
+            if gw > config.columns:
+                gw = config.columns
+
+            slots.append(_make_slot(w, x, y, gw, gh))
 
             x += gw
             if gh > max_h_in_row:

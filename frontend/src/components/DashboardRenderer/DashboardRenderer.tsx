@@ -325,6 +325,22 @@ const DashboardContent: React.FC<{
         </div>
       )}
 
+      {/* Global Filter 状态提示（筛选高亮 feedback） */}
+      {Object.entries(binder.state.globalFilterValues).filter(([, v]) => v).length > 0 && (
+        <div className="flex items-center justify-center gap-3 px-4 py-2 flex-wrap"
+          style={{ background: 'rgba(139,92,246,0.10)', borderBottom: '1px solid rgba(139,92,246,0.15)' }}>
+          <span className="text-xs text-[#A78BFA]">🔍 筛选高亮：</span>
+          {Object.entries(binder.state.globalFilterValues).filter(([, v]) => v).map(([field, value]) => (
+            <span key={field} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded
+              bg-[#8B5CF6]/15 text-[#C4B5FD] border border-[#8B5CF6]/30">
+              <strong className="text-white">{value}</strong>
+              <button onClick={() => binder.clearGlobalFilter(field)}
+                className="text-[#C4B5FD] hover:text-white">✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Grid */}
       <GridRenderer
         widgets={schema.widgets}
@@ -335,6 +351,7 @@ const DashboardContent: React.FC<{
         onDrillDown={onDrillDown}
         onWidgetError={onWidgetError}
         highlightLabel={highlightLabel}
+        globalFilterValues={binder.state.globalFilterValues}
         crossFilterSourceMap={binder.crossFilterSourceMap}
         drillDownMap={binder.drillDownMap}
       />

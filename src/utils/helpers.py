@@ -50,17 +50,3 @@ def get_categorical_columns(df: pd.DataFrame) -> list:
 def get_datetime_columns(df: pd.DataFrame) -> list:
     """获取日期时间类型列名列表"""
     return df.select_dtypes(include=['datetime64']).columns.tolist()
-
-def infer_datetime_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """尝试将字符串列转换为日期时间类型"""
-    df_new = df.copy()
-    for col in df.columns:
-        if df[col].dtype == 'object':
-            try:
-                pd.to_datetime(df[col], errors='coerce')
-                non_na = pd.to_datetime(df[col], errors='coerce').dropna()
-                if len(non_na) / len(df[col]) > 0.7:  # 如果超过70%能转换
-                    df_new[col] = pd.to_datetime(df[col], errors='coerce')
-            except:
-                pass
-    return df_new

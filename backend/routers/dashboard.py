@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import asyncio
 import logging
 import json
@@ -579,7 +579,37 @@ async def api_generate_cards(req: CardsGenerateRequest):
     from src.card_generator import CardGenerator
 
     try:
-        packages = manager.get_saved_packages_full(req.session_id)
+        packages = manager.get_saved_packages_full(req.session_id) or []
+
+        # B 修复：把 V1 手工收藏图表（saved_charts）并入 medical 大屏卡片生成。
+        # 仅在本路由内合并，不改动 get_saved_packages_full / CardGenerator / 前端。
+        v1_charts = manager.get_saved_charts(req.session_id) or []
+        if v1_charts:
+            manual_pkg: Dict[str, Any] = {"analysis_type": "manual_chart", "charts": [], "tables": []}
+            for c in v1_charts:
+                ctype = c.get('type', '') or ''
+                if ctype == 'table':
+                    # 表格型手工图：转换为 table 卡片格式
+                    td = c.get('table_data') or {}
+                    tb_rows = td.get('rows') or []
+                    if tb_rows:
+                        cols = list(tb_rows[0].keys())
+                        manual_pkg["tables"].append({
+                            "title": c.get('title', '同环比表'),
+                            "table_type": "detail",
+                            "columns": cols,
+                            "rows": [list(r.values()) for r in tb_rows],
+                        })
+                else:
+                    # 普通图表：V1 用 type 字段，归一化为 chart_type；option 直接作为卡片数据
+                    manual_pkg["charts"].append({
+                        "title": c.get("title", ""),
+                        "chart_type": ctype,
+                        "option": c.get("option") or {},
+                    })
+            if manual_pkg["charts"] or manual_pkg["tables"]:
+                packages.append(manual_pkg)
+
         if not packages:
             return {
                 'success': True,

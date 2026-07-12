@@ -13,6 +13,8 @@ export interface WidgetRendererProps {
   onClick?: (widgetId: string, data: Record<string, unknown>) => void;
   /** 当前高亮标签（用于 Cross Filter / Hover Highlight） */
   highlightLabel?: string | null;
+  /** 全局筛选器当前值（field → value），用于筛选高亮 */
+  globalFilterValues?: Record<string, string>;
   /** 是否是 Cross Filter 源 */
   isCrossFilterSource?: boolean;
   /** 是否有下钻能力 */

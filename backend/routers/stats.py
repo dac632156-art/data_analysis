@@ -9,7 +9,7 @@ import json
 from backend.services.session_manager import manager
 from src.stats_analyzer import get_descriptive_stats, get_group_stats, get_correlation_matrix, get_quick_insights
 from src.utils.json_serializer import sanitize_json
-from utils.helpers import get_numeric_columns, get_categorical_columns
+from src.utils.helpers import get_numeric_columns, get_categorical_columns
 
 router = APIRouter()
 
