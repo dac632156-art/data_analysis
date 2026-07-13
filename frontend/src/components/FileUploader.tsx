@@ -3,10 +3,8 @@ import React, { useCallback, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { FiUploadCloud, FiFile } from 'react-icons/fi';
 
-const MAX_SIZE_MB = parseInt(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB || '200', 10);
-const MAX_SIZE_TEXT = MAX_SIZE_MB >= 1024
-  ? `${(MAX_SIZE_MB / 1024).toFixed(1)}GB`
-  : `${MAX_SIZE_MB}MB`;
+const MAX_SIZE_MB = 50;
+const MAX_SIZE_TEXT = `${MAX_SIZE_MB}MB`;
 
 interface Props {
   onUpload: (file: File) => Promise<void>;
