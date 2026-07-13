@@ -3,7 +3,7 @@
 """
 import io
 import asyncio
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Body
 from pydantic import BaseModel
 from typing import Dict, Any
 import pandas as pd
@@ -44,6 +44,47 @@ class UploadResponse(BaseModel):
     column_info: list
 
 
+@router.post("/upload/gate")
+async def upload_gate(session_id: str = Body(..., embed=True)):
+    """预约数据插槽闸门：在真正传文件前调用。
+
+    - 有空位：返回 {"granted": true, "session_id"}，前端直接上传。
+    - 满员：返回 {"granted": false, "ticket_id", "position"}，前端进入排队弹窗并轮询。
+    统一用 200 + 结构化 JSON，避免触发响应拦截器对 429 结构的破坏。
+    """
+    if not session_id:
+        raise HTTPException(status_code=400, detail="缺少 session_id")
+    return manager.acquire_for_upload(session_id)
+
+
+@router.get("/upload/queue/{ticket_id}")
+async def queue_status(ticket_id: str):
+    """查询排队状态：ready（附 session_id）/ queued（附 position）/ expired。"""
+    return manager.queue_status(ticket_id)
+
+
+@router.post("/upload/queue/cancel")
+async def cancel_queue(ticket_id: str = Body(..., embed=True)):
+    """取消排队：尽力从等待队列移除票据。"""
+    if not ticket_id:
+        raise HTTPException(status_code=400, detail="缺少 ticket_id")
+    manager.cancel_queue(ticket_id)
+    return {"success": True}
+
+
+@router.post("/upload/release")
+async def release_slot(session_id: str = Body(..., embed=True)):
+    """释放某会话的数据插槽（丢弃 DataFrame/原文件以释放内存），并自动晋升队首。
+
+    这是「自动入队」的关键触发点：某用户结束使用、离开或清空数据后调用，
+    排队中的用户即可获得空位并开始上传。
+    """
+    if not session_id:
+        raise HTTPException(status_code=400, detail="缺少 session_id")
+    released = manager.release_slot(session_id)
+    return {"success": True, "released": released}
+
+
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
     """
@@ -68,7 +109,9 @@ async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
 
     # 创建或使用已有会话
     if not session_id:
+        # 正常路径前端必带 sessionId（已预占插槽），此兜底理论不触发；仍计入上限以保一致
         session_id = manager.create_session()
+        manager.reserve_session(session_id)
 
     try:
         # 加载数据（解析移入线程池 + 信号量限流，见 _PARSE_SEMAPHORE 说明）

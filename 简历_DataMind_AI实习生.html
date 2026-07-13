@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>简历 · [你的姓名] · 后端/平台开发实习生</title>
+<style>
+  @page { size: A4; margin: 12mm 14mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "Source Han Sans CN", sans-serif;
+    color: #1f2a28;
+    font-size: 10pt;
+    line-height: 1.45;
+    background: #fff;
+  }
+  body { width: 100%; max-width: 800px; margin: 0 auto; padding: 6px 4px; }
+
+  .header { border-bottom: 2px solid #2A4A43; padding-bottom: 6px; margin-bottom: 8px; }
+  .name { font-size: 21pt; font-weight: 700; color: #2A4A43; letter-spacing: 1px; }
+  .target { font-size: 10.5pt; color: #5CB8A2; font-weight: 600; margin-top: 1px; }
+  .contact { font-size: 8.8pt; color: #555; margin-top: 4px; }
+
+  .section { margin-bottom: 8px; }
+  .section-title {
+    font-size: 11pt; font-weight: 700; color: #2A4A43;
+    border-left: 4px solid #5CB8A2; padding-left: 7px; margin-bottom: 4px;
+  }
+  .edu-line { font-weight: 600; }
+  .sub { color: #555; font-size: 9pt; }
+  ul { list-style: none; }
+  li { position: relative; padding-left: 13px; margin-bottom: 2.5px; }
+  li::before { content: "▸"; position: absolute; left: 0; color: #5CB8A2; font-size: 9pt; top: 0; }
+  .b { font-weight: 600; color: #2A4A43; }
+
+  .skill-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 18px; }
+  .skill-grid > div { margin-bottom: 2px; }
+
+  .proj-title { font-weight: 700; font-size: 10.5pt; }
+  .proj-meta { color: #5CB8A2; font-weight: 600; font-size: 9pt; }
+  .highlight { background: #F3FAF7; border-left: 3px solid #9FD8C8; padding: 4px 8px; margin-top: 4px; font-size: 9pt; color: #3a4a47; }
+  .arch { background:#F7FBFA; border:1px solid #DCEEE8; border-radius:4px; padding:5px 8px; margin-top:4px; font-size:8.8pt; color:#3a4a47; line-height:1.5; }
+  .placeholder { color: #b06a6a; }
+  .honest { color:#7a5a2a; font-size:8.8pt; }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="name"><span class="placeholder">[你的姓名]</span></div>
+    <div class="target">后端 / 平台开发实习生 · <span class="placeholder">[城市]</span> · <span class="placeholder">[手机号]</span> · <span class="placeholder">[邮箱]</span> · <span class="placeholder">[GitHub/博客]</span></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">教育背景</div>
+    <div class="edu-line"><span class="placeholder">[学校名称]</span> — <span class="placeholder">[专业]</span>（<span class="placeholder">[本科/硕士]</span>） · <span class="placeholder">[入学年月]</span> – <span class="placeholder">[毕业年月]</span></div>
+    <div class="sub">相关课程：数据结构与算法 / 操作系统 / 数据库系统 / 计算机网络 · GPA：<span class="placeholder">[x.x]/4.0</span>（可选）</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">技术技能</div>
+    <div class="skill-grid">
+      <div><span class="b">语言</span>：Python、SQL、TypeScript（通过 AI 协作实践掌握）</div>
+      <div><span class="b">后端框架</span>：FastAPI、Uvicorn/ASGI、Pydantic</div>
+      <div><span class="b">数据处理</span>：pandas、numpy、pickle 序列化</div>
+      <div><span class="b">并发/系统</span>：多线程与锁、信号量限流、异步任务 + 轮询、内存/OOM 治理</div>
+      <div><span class="b">大模型</span>：DeepSeek/OpenAI API、Prompt 工程、结构化 JSON 兜底</div>
+      <div><span class="b">AI 编程工具链</span>：以自然语言驱动 Agent 完成「需求→架构→实现→验收」闭环</div>
+      <div><span class="b">工程能力</span>：RESTful API 设计、规则引擎、模块解耦、降级、Git</div>
+      <div><span class="b">部署</span>：Render / Vercel、环境变量与配置管理</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">项目经验</div>
+    <div class="proj-title">DataMind AI · 数据分析智能体平台 <span class="proj-meta">｜AI 辅助开发 / 我主导设计与架构（Python + FastAPI + React）</span></div>
+    <div class="sub" style="margin:2px 0 3px;">面向"上传数据 → 自动清洗 → 分析 → 可视化 → AI 报告"的一站式数据分析平台。<span class="honest">本人负责需求拆解、架构设计与技术决策，并驱动 AI 编程 Agent 完成实现</span>；后端含 11 个路由模块、40+ REST 端点。</div>
+    <div class="arch">
+      <span class="b">端到端服务链路：</span>上传(Upload) → 会话管理(SessionManager) → 数据清洗(Clean) → 列分类/意图识别 → 分析执行(Planner + 分析引擎) → 可视化(Chart/Dashboard) → 业务推理(Reasoning) → AI 报告(异步任务 + 轮询)
+    </div>
+    <ul>
+      <li><span class="b">服务端分层架构（主导设计）</span>：规划 FastAPI 分层结构（Router → Service → Engine），拆分为 upload/clean/data/analysis/chart/dashboard/reasoning/insights/report/stats 共 11 个路由、40+ 端点，明确各模块职责边界与演进路径。</li>
+      <li><span class="b">线程安全会话与内存治理（设计 + AI 实现）</span>：设计 <span class="b">SessionManager</span> 单例方案——原始数据 pickle 落盘、内存只留工作集以<span class="b">防 OOM</span>；LRU 淘汰（最多 50 会话）+ 惰性清理 + 后台守护线程回收过期会话；落盘失败自动回退内存副本，实现优雅降级。</li>
+      <li><span class="b">异步任务系统（设计 + AI 实现）</span>：针对 AI 报告耗时长，设计<span class="b">异步无状态任务 + task_id 轮询</span>模式规避平台 50s HTTP 超时；配合信号量限流，控制并发资源占用。</li>
+      <li><span class="b">大模型调用稳定性工程（设计 + AI 实现）</span>：指定原生 SDK 直连 DeepSeek，<span class="b">关闭 SDK 重试</span>避免超时叠加拖垮请求；设计多级降级（AI 失败回退纯 pandas 统计）+ 结构化 JSON 兜底解析，保证后端在超时预算内稳定返回。</li>
+      <li><span class="b">自研分析/推理引擎（平台化设计 + AI 实现）</span>：① YAML 驱动的分析知识中心（11 类意图，新增分析零代码）；② 三段式推理管道（规则引擎→证据引擎按 STRONG/MODERATE/WEAK 校验→LLM 叙事，可无 LLM 降级）；③ 看板布局引擎（策略规则选择 + 12 栅格自动分配）；统一 <span class="b">AnalysisPackage</span> 数据契约 + Renderer 层解耦数据与前端格式。</li>
+    </ul>
+    <div class="highlight">设计亮点：在全流程中系统权衡了「并发安全 / 内存可控 / 超时不崩 / 失败可降级」，体现了对生产级后端服务的设计理解（由 AI 工具实现、本人主导并可达_code级答辩）。</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">核心技术能力总结</div>
+    <ul>
+      <li><span class="b">系统设计</span>：能独立规划分层后端与端到端数据链路，理解并发、状态管理、资源治理与异步任务的权衡。</li>
+      <li><span class="b">AI 编排</span>：擅长以自然语言将模糊需求转化为可落地的系统架构，并驱动 AI 工具完成高质量实现与迭代。</li>
+      <li><span class="b">健壮性思维</span>：熟悉限流、超时、降级、序列化落盘、异常兜底等生产级可靠性手段。</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <div class="section-title">其他（可选，按实际情况删改）</div>
+    <ul>
+      <li>竞赛 / 奖项：<span class="placeholder">[xxx]</span></li>
+      <li>开源 / 技术博客：<span class="placeholder">[xxx]</span></li>
+      <li>英语：CET-6 / <span class="placeholder">[xxx]</span></li>
+    </ul>
+  </div>
+
+</body>
+</html>

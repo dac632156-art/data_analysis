@@ -96,6 +96,44 @@ export const uploadFile = async (
   return data;
 };
 
+/** 上传闸门：预约数据插槽。granted=true 直接上传；false 进入排队（附 ticket_id + position） */
+export const uploadGate = async (
+  sessionId: string,
+): Promise<{
+  granted: boolean;
+  session_id?: string;
+  ticket_id?: string;
+  position?: number;
+}> => {
+  const { data } = await api.post('/upload/gate', { session_id: sessionId });
+  return data;
+};
+
+/** 轮询排队状态：ready（附 session_id）/ queued（附 position）/ expired */
+export const getUploadQueueStatus = async (
+  ticketId: string,
+): Promise<{
+  status: 'ready' | 'queued' | 'expired';
+  session_id?: string;
+  position?: number;
+}> => {
+  const { data } = await api.get(`/upload/queue/${ticketId}`);
+  return data;
+};
+
+/** 取消排队：尽力从等待队列移除票据 */
+export const cancelUploadQueue = async (ticketId: string): Promise<void> => {
+  await api.post('/upload/queue/cancel', { ticket_id: ticketId });
+};
+
+/** 手动释放数据插槽：释放 df + 内存并自动晋升队首，让排队中的用户自动入队 */
+export const releaseUploadSlot = async (
+  sessionId: string,
+): Promise<{ success: boolean; released: boolean }> => {
+  const { data } = await api.post('/upload/release', { session_id: sessionId });
+  return data;
+};
+
 /* ===== 数据操作 ===== */
 export const getDataPreview = async (sessionId: string, rows = 100) => {
   const { data } = await api.post<PreviewResponse>('/data/preview', { session_id: sessionId, rows });

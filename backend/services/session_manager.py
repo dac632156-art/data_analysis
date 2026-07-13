@@ -10,7 +10,7 @@ import tempfile
 import dataclasses
 import pandas as pd
 from typing import Dict, Optional, List, Any
-from threading import Lock, Thread
+from threading import RLock, Thread
 
 
 class SessionData:
@@ -27,6 +27,8 @@ class SessionData:
         self.saved_packages: List[Dict[str, Any]] = []   # 用户保存的分析包
         self.api_key: str = ""
         self.custom_title: str = ""          # 用户手动编辑的仪表盘标题
+        self.holds_slot: bool = False        # 是否已占用"数据插槽"（限流=持有数据的会话，上限 max_sessions）
+        self.reserved_at: float = 0.0         # 占用插槽的时间戳（用于预约超时释放）
         self.created_at: float = time.time()
         self.last_access: float = time.time()
 
@@ -34,9 +36,9 @@ class SessionData:
 class SessionManager:
     """会话管理器，线程安全的内存存储"""
     
-    def __init__(self, max_sessions: int = 50, session_timeout: int = 3600):
+    def __init__(self, max_sessions: int = 5, session_timeout: int = 3600):
         self._sessions: Dict[str, SessionData] = {}
-        self._lock = Lock()
+        self._lock = RLock()
         self._max_sessions = max_sessions
         self._session_timeout = session_timeout
         # 原始数据落盘目录（临时盘，重启即丢 —— 属预期的优雅降级）
@@ -46,20 +48,141 @@ class SessionManager:
         # 间隔跟随 timeout：max(60, timeout//12) → 默认 3600//12 = 300s。
         # 最坏滞后 = 间隔，过期会话最多比 timeout 多赖 300s，内存卫生足够及时且不浪费 0.1 CPU。
         self._cleanup_interval = max(60, session_timeout // 12)
+        # 排队队列与已晋升映射（限流相关，均在锁内访问）
+        self._queue: List[Dict[str, Any]] = []          # FIFO: {ticket_id, session_id, created_at}
+        self._promoted: Dict[str, str] = {}             # ticket_id -> session_id（已晋升等待上传）
+        self._QUEUE_TTL = 300                           # 排队票据最长等待（秒），超时丢弃
+        self._RESERVE_TTL = 120                         # 预约插槽但未上传的最长保留（秒），超时释放
+        self._slot_idle_timeout = 600                   # 已加载数据的插槽空闲超时（秒）：释放 df + 内存，腾位给排队者
         self._start_background_cleanup()
     
+    # ===== 限流：数据插槽预约 / 排队 / 晋升 =====
+    def _slot_count(self) -> int:
+        """当前已占用数据插槽的会话数（锁内调用）"""
+        return sum(1 for s in self._sessions.values() if s.holds_slot)
+
+    def acquire_for_upload(self, session_id: str) -> Dict[str, Any]:
+        """预约数据插槽；满员则把该会话入队。
+
+        返回 {'granted': bool, 'session_id'?, 'ticket_id'?, 'position'?}
+        - granted=True：已预约（或已有数据），可立即上传，附 session_id
+        - granted=False：已满员，附 ticket_id 与当前排队位次 position（1 起）
+        """
+        with self._lock:
+            self._cleanup_sync()
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = SessionData()
+                self._sessions[session_id] = session
+            # 已占插槽或已有数据 → 直接放行（幂等，避免重复预约）
+            if session.holds_slot or session.df is not None:
+                return {"granted": True, "session_id": session_id}
+            # 有空位 → 预约该会话
+            if self._slot_count() < self._max_sessions:
+                session.holds_slot = True
+                session.reserved_at = time.time()
+                session.last_access = time.time()
+                return {"granted": True, "session_id": session_id}
+            # 满员 → 入队，返回位次
+            ticket_id = str(uuid.uuid4())
+            self._queue.append({
+                "ticket_id": ticket_id,
+                "session_id": session_id,
+                "created_at": time.time(),
+            })
+            return {"granted": False, "ticket_id": ticket_id, "position": len(self._queue)}
+
+    def queue_status(self, ticket_id: str) -> Dict[str, Any]:
+        """查询排队状态。
+
+        返回 {'status': 'ready'|'queued'|'expired', 'session_id'?, 'position'?}
+        - ready：已晋升，附可上传的 session_id
+        - queued：仍在等待，附当前位次 position（1 起）
+        - expired：票据不存在或已失效（会话丢失）
+        """
+        with self._lock:
+            for i, item in enumerate(self._queue):
+                if item["ticket_id"] == ticket_id:
+                    return {"status": "queued", "position": i + 1}
+            if ticket_id in self._promoted:
+                sid = self._promoted[ticket_id]
+                sess = self._sessions.get(sid)
+                if sess is not None and sess.holds_slot:
+                    return {"status": "ready", "session_id": sid, "position": 0}
+                # 晋升后会话丢失 → 视为过期
+                self._promoted.pop(ticket_id, None)
+            return {"status": "expired"}
+
+    def cancel_queue(self, ticket_id: str) -> None:
+        """从等待队列移除票据（尽力而为；已晋升项无法撤回上传，仅移除映射）。"""
+        with self._lock:
+            self._queue = [it for it in self._queue if it["ticket_id"] != ticket_id]
+            self._promoted.pop(ticket_id, None)
+
+    def _promote_head(self) -> None:
+        """晋升队首到就绪（锁内调用）。循环 drained 直至无队首或无空位。"""
+        while self._queue and self._slot_count() < self._max_sessions:
+            item = self._queue.pop(0)
+            sid = item["session_id"]
+            session = self._sessions.get(sid)
+            if session is None:
+                # 队首会话已不存在 → 新建会话承接票据，避免丢票
+                sid = str(uuid.uuid4())
+                session = SessionData()
+                self._sessions[sid] = session
+            session.holds_slot = True
+            session.reserved_at = time.time()
+            session.last_access = time.time()
+            self._promoted[item["ticket_id"]] = sid
+
+    def reserve_session(self, session_id: str) -> None:
+        """为已有会话占用一个数据插槽（上传兜底路径用，正常前端已预占必有空位）。"""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = SessionData()
+                self._sessions[session_id] = session
+            if not session.holds_slot and session.df is None:
+                session.holds_slot = True
+                session.reserved_at = time.time()
+                session.last_access = time.time()
+
+    def _release_slot_inner(self, session_id: str) -> bool:
+        """锁内复用：释放某会话的数据插槽（丢弃 df 与落盘原文件，但保留会话对象）。
+
+        不含晋升，由调用方在持锁状态下统一调 _promote_head，避免重复加锁。
+        返回是否真的释放了一个插槽。
+        """
+        session = self._sessions.get(session_id)
+        if session is None or not session.holds_slot:
+            return False
+        self._remove_original_file(session_id)
+        session.df = None
+        session.holds_slot = False
+        return True
+
+    def release_slot(self, session_id: str) -> bool:
+        """释放某会话的数据插槽（保留会话对象以便重新上传，但丢弃 DataFrame 与原文件以释放内存）。
+
+        释放后自动晋升队首。返回是否真的释放了一个插槽。
+        这是「自动入队」的现实触发点之一：手动释放（API/按钮）与服务端
+        空闲超时（_slot_idle_timeout）都会经此路径腾出插槽。
+        """
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None or not session.holds_slot:
+                return False
+            self._release_slot_inner(session_id)
+            session.last_access = time.time()
+            self._promote_head()
+            return True
+
     def create_session(self) -> str:
-        """创建新会话，返回 session_id"""
+        """创建新会话，返回 session_id（不再淘汰最老会话，限流改为按数据插槽）。"""
         session_id = str(uuid.uuid4())
         with self._lock:
             # 清理过期会话
             self._cleanup_sync()
-            # 检查会话数限制
-            if len(self._sessions) >= self._max_sessions:
-                oldest = min(self._sessions.keys(), 
-                             key=lambda k: self._sessions[k].last_access)
-                self._remove_original_file(oldest)
-                del self._sessions[oldest]
             self._sessions[session_id] = SessionData()
         return session_id
     
@@ -355,14 +478,20 @@ class SessionManager:
         return full_packages
 
     def clear_data(self, session_id: str):
-        """清除会话数据（同步删除落盘的原始文件）"""
+        """清除会话数据（同步删除落盘的原始文件）；释放插槽后晋升队首"""
         with self._lock:
             self._remove_original_file(session_id)
             self._sessions.pop(session_id, None)
+            self._promote_head()
     
     def _cleanup_sync(self):
-        """清理过期会话（非线程安全，需在锁中调用）"""
+        """清理过期会话（非线程安全，需在锁中调用）。
+
+        同时处理限流相关释放：预约超时未上传的占槽空会话、
+        排队票据超时，并在腾出插槽后晋升队首。
+        """
         now = time.time()
+        # 1) 过期会话（含已占插槽但整体超时的数据会话）
         expired = [
             sid for sid, sdata in self._sessions.items()
             if now - sdata.last_access > self._session_timeout
@@ -370,6 +499,20 @@ class SessionManager:
         for sid in expired:
             self._remove_original_file(sid)
             del self._sessions[sid]
+        # 2) 预约超时未上传（占槽空会话）：释放插槽，避免长期占槽
+        for sid, sdata in list(self._sessions.items()):
+            if sdata.holds_slot and sdata.df is None and (now - sdata.reserved_at) > self._RESERVE_TTL:
+                self._remove_original_file(sid)
+                del self._sessions[sid]
+        # 2.5) 已加载数据但空闲超时（_slot_idle_timeout）的插槽：释放 df + 内存，腾出插槽给排队者
+        # 仅释放插槽、保留会话对象，待整体超时 _session_timeout 才删除，避免丢失用户配置。
+        for sid, sdata in list(self._sessions.items()):
+            if sdata.holds_slot and sdata.df is not None and (now - sdata.last_access) > self._slot_idle_timeout:
+                self._release_slot_inner(sid)
+        # 3) 排队票据超时丢弃
+        self._queue = [it for it in self._queue if now - it["created_at"] <= self._QUEUE_TTL]
+        # 4) 腾出插槽后晋升队首
+        self._promote_head()
     
     def cleanup(self):
         """清理过期会话（线程安全）"""
