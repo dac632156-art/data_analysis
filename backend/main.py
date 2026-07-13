@@ -14,10 +14,10 @@ sys.path.insert(0, project_root)
 from dotenv import load_dotenv
 load_dotenv(os.path.join(project_root, ".env"))
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 # 导入路由
 from backend.routers import upload, data, clean, stats, chart, dashboard, insights, report, analysis, reasoning
@@ -90,10 +90,32 @@ async def new_session():
     return {"session_id": session_id, "success": True}
 
 
+# 前端构建产物目录（Render 部署时随仓库提交 frontend/dist，由后端直接托管）
+FRONTEND_DIST = os.path.join(project_root, "frontend", "dist")
+
+
 @app.get("/")
 async def root():
-    """根路径健康检查"""
+    """根路径：部署时返回前端 SPA 页面，本地未构建时返回健康检查 JSON"""
+    index_html = os.path.join(FRONTEND_DIST, "index.html")
+    if os.path.isfile(index_html):
+        return FileResponse(index_html)
     return {"status": "ok", "version": "1.0.0"}
+
+
+# SPA fallback：非 /api 的 GET 请求先尝试返回对应静态资源，找不到则回退到 index.html
+# 仅在构建产物存在时注册（本地开发走 Vite dev server，无需此后端托管）
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    if not os.path.isdir(FRONTEND_DIST):
+        return {"status": "ok", "version": "1.0.0"}
+    if full_path.startswith("api/"):
+        # 真实 API 路由已在上面注册；此处兜底返回 JSON，避免 SPA 回退吞掉 /api 请求
+        return {"status": "ok", "version": "1.0.0"}
+    file_path = os.path.join(FRONTEND_DIST, full_path)
+    if os.path.isfile(file_path):
+        return FileResponse(file_path)
+    return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
 
 
 if __name__ == "__main__":
