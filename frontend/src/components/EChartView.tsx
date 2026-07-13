@@ -28,7 +28,9 @@ echarts.use([
   CanvasRenderer,
 ]);
 
-// 中国地图 GeoJSON URL（阿里云 DataV）
+// 中国地图 GeoJSON：优先本地 public/china.json（582KB，自部署避免跨域/网络问题），
+// 加载失败时降级到阿里云 DataV。
+const CHINA_GEO_LOCAL = '/china.json';
 const CHINA_GEO_URL = 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json';
 
 // ★ 统一强调色（来自 theme/ Theme Engine，禁止写死）
@@ -42,22 +44,34 @@ let chinaMapLoading: Promise<void> | null = null;
 function ensureChinaMapRegistered(): Promise<void> {
   if (chinaMapRegistered) return Promise.resolve();
   if (chinaMapLoading) return chinaMapLoading;
-  
+
+  // ★ 优先从本地 public/china.json 加载（避免阿里云跨域/网络问题），失败时降级到 DataV
+  const tryLoad = (url: string) =>
+    fetch(url).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    });
+
   chinaMapLoading = new Promise<void>((resolve) => {
-    const script = document.createElement('script');
-    script.type = 'text/javascript';
-    // 使用 fetch 加载 GeoJSON 并注册
-    fetch(CHINA_GEO_URL)
-      .then(r => r.json())
+    tryLoad(CHINA_GEO_LOCAL)
       .then(geo => {
         echarts.registerMap('china', geo as any);
         chinaMapRegistered = true;
         resolve();
       })
       .catch(() => {
-        // 加载失败也放行（使用备用的 2D 地图或散点图）
-        console.warn('中国地图 GeoJSON 加载失败，3D 地图可能无法显示');
-        resolve();
+        // 本地失败时降级到阿里云
+        console.warn('[ECharts] 本地 china.json 加载失败，降级到阿里云 DataV');
+        return tryLoad(CHINA_GEO_URL)
+          .then(geo => {
+            echarts.registerMap('china', geo as any);
+            chinaMapRegistered = true;
+            resolve();
+          })
+          .catch(() => {
+            console.warn('中国地图 GeoJSON 加载失败，地图可能无法显示');
+            resolve();
+          });
       });
   });
   return chinaMapLoading;
