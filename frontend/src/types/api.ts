@@ -71,6 +71,7 @@ export interface InsightsResponse {
 export interface ChatResponse {
   success: boolean;
   answer: string;
+  intents?: Array<Record<string, string>>;
 }
 
 /** 报告 section（五阶段分析流水线输出） */

@@ -371,16 +371,95 @@ export default function AnalysisPage() {
     }
   };
 
+  /** 纯规则兜底：当 LLM 不可用（API key 失效/网络错误/后端报错）时，
+   *  主动调 /intents/default 不依赖 LLM 直接生成默认分析计划，
+   *  让"应用"按钮永远有反应，不让用户卡在"没反应"状态。 */
+  const _applyWithRuleFallback = async (
+    setIntentsFn: (intents: Array<{ business_question: string; analysis_goal: string; priority: string; reason: string; checked: boolean; }>) => void,
+    setComputeResultFn: (msg: string) => void,
+    originalErr?: unknown,
+  ) => {
+    try {
+      const fallback = await api.getDefaultIntents(ds.sessionId);
+      if (fallback.intents && fallback.intents.length > 0) {
+        setIntentsFn(fallback.intents.map((item: Record<string, string>) => ({
+          business_question: item.business_question || '',
+          analysis_goal: item.analysis_goal || '',
+          priority: item.priority || 'medium',
+          reason: `[自动推荐] ${item.reason || '基于数据特征'}`,
+          checked: item.priority === 'high',
+        })));
+        setComputeResultFn(`✅ AI 暂不可用${originalErr ? `（${originalErr instanceof Error ? originalErr.message : '网络错误'}）` : ''}，已基于数据列特征自动生成 ${fallback.intents.length} 个推荐分析问题，请勾选后点击「执行分析」`);
+        return true;
+      }
+      setComputeResultFn(`❌ 无法生成分析计划：数据已上传但后端无分析模板匹配，请检查数据列名是否规范`);
+      return false;
+    } catch (fbErr) {
+      console.error('[apply-rule-fallback] also failed:', fbErr);
+      setComputeResultFn(`❌ 应用失败：${originalErr instanceof Error ? originalErr.message : '未知错误'}，且纯规则兜底也失败：${fbErr instanceof Error ? fbErr.message : '未知错误'}`);
+      return false;
+    }
+  };
+
   /** V2：一键应用洞察 → 调 /insights/generate → 显示 intents 勾选列表
    *  后端三层兜底保证 intents 永不为空：AI JSON → AI 文本解析 → Planner 纯规则
    *  因此前端只需处理 API 网络错误，不需要再处理 intents 为空
+   *
+   *  @param content 可选：聊天消息内容。传入时从该消息中提取 intents（「应用」按钮）；不传时调 /insights/generate 全新生成（一键生成按钮）
    */
-  const handleApplyInsights = async () => {
+  const handleApplyInsights = async (content?: string) => {
     if (!ds.apiKey) {
       alert('请先在左上角配置 AI API Key');
       return;
     }
 
+    // ── 分支 1：从聊天消息内容提取 intents（「应用」按钮） ──
+    if (content) {
+      try {
+        setComputing(true);
+        setComputeResult('⏳ 正在从分析建议中提取可执行计划...');
+
+        const provider = getProviderConfig();
+        const res = await api.chatAnalyze(
+          ds.sessionId,
+          `请从以下分析建议中提取可执行的数据分析计划，返回包含 insights 和 intents 数组的 JSON：\n\n${content}`,
+          ds.apiKey,
+          ds.customBaseUrl || provider?.baseUrl,
+          ds.customModel || provider?.model
+        );
+
+        console.log('[handleApplyInsights:apply] API 返回:', res);
+        console.log('[handleApplyInsights:apply] intents 数量:', res.intents?.length ?? 0);
+
+        if (res.intents && res.intents.length > 0) {
+          setIntents(res.intents.map((item: Record<string, string>) => ({
+            business_question: item.business_question || '',
+            analysis_goal: item.analysis_goal || '',
+            priority: item.priority || 'medium',
+            reason: res.is_fallback ? `[自动推荐] ${item.reason || '基于数据特征'}` : (item.reason || ''),
+            checked: true,
+          })));
+          setComputeResult(
+            res.is_fallback
+              ? `✅ AI 暂不可用，已基于数据特征自动生成 ${res.intents.length} 个推荐分析问题，请勾选后点击「执行分析」`
+              : `✅ 已从分析建议中提取 ${res.intents.length} 个分析问题，请勾选后点击「执行分析」`
+          );
+        } else {
+          // 极端情况：后端既没返回 JSON，Step 3 兜底也失败（不应发生）→ 主动调纯规则兜底
+          console.warn('[handleApplyInsights:apply] 后端未返回 intents，主动调用纯规则兜底');
+          await _applyWithRuleFallback(setIntents, setComputeResult);
+        }
+      } catch (err) {
+        console.error('[handleApplyInsights:apply] 应用失败:', err);
+        // ★ 兜底：LLM 不可用时（如 API key 失效/网络错误）→ 调 /intents/default 让"应用"按钮永远有反应
+        await _applyWithRuleFallback(setIntents, setComputeResult, err);
+      } finally {
+        setComputing(false);
+      }
+      return;
+    }
+
+    // ── 分支 2：一键生成分析计划（页面按钮，无参数） ──
     // 如果已经有 intents，直接提示
     if (intents.length > 0) {
       setComputeResult(`✅ 已有 ${intents.length} 个分析问题，请勾选后点击「执行分析」`);
@@ -415,13 +494,14 @@ export default function AnalysisPage() {
             : `✅ 获取到 ${res.intents.length} 个分析问题，请勾选后点击「执行分析」`
         );
       } else {
-        // 极端情况：后端三层兜底都失败了（不应发生，但防御性编程）
-        setComputeResult('⚠️ 分析计划生成失败，请重试或检查网络连接');
+        // 极端情况：后端三层兜底都失败了（不应发生，但防御性编程）→ 主动调纯规则兜底
+        await _applyWithRuleFallback(setIntents, setComputeResult);
       }
-      setComputing(false);
     } catch (err) {
       console.error('[handleApplyInsights] 网络错误:', err);
-      setComputeResult(`❌ 网络请求失败: ${err instanceof Error ? err.message : '未知错误'}`);
+      // ★ 兜底：LLM 不可用时（API key 失效/网络错误）→ 调 /intents/default 让"一键生成"按钮永远有反应
+      await _applyWithRuleFallback(setIntents, setComputeResult, err);
+    } finally {
       setComputing(false);
     }
   };

@@ -167,6 +167,29 @@ async def api_generate_insights(req: InsightsRequest):
         }
 
 
+@router.post("/intents/default")
+async def api_get_default_intents(req: InsightsRequest):
+    """纯规则兜底接口：不调用 LLM，直接用 Planner 根据数据列特征生成默认分析意图。
+
+    用作"应用"按钮的兜底：当 LLM 失败/超时/网络错误时，前端可调此接口保证用户
+    至少拿到一组可执行的分析计划，不会因 AI 不可用而完全无法继续。
+    """
+    df = manager.get_data(req.session_id)
+    if df is None:
+        raise HTTPException(status_code=404, detail="未找到数据，请先上传")
+    try:
+        intents = _PLANNER.generate_default_intents(df)
+        return {
+            "success": True,
+            "intents": intents,
+            "is_fallback": True,
+            "source": "rule",
+        }
+    except Exception as e:
+        _log.exception("generate_default_intents failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"生成默认分析计划失败：{e}")
+
+
 @router.post("/chat/analyze")
 async def api_chat_analyze(req: ChatRequest):
     """AI 对话分析"""
@@ -193,10 +216,15 @@ async def api_chat_analyze(req: ChatRequest):
         with ThreadPoolExecutor(max_workers=1) as executor:
             answer = await loop.run_in_executor(executor, agent.analyze, req.question, df)
         
-        # 尝试解析 intents（同首次洞察的逻辑）
-        parsed = _parse_ai_result_to_intents(answer)
+        # 尝试解析 intents（同首次洞察的逻辑，传入 df 使 Step 3 兜底生效）
+        parsed = _parse_ai_result_to_intents(answer, df)
         if parsed["success"] and parsed.get("intents"):
-            return {"success": True, "answer": parsed.get("insights", answer), "intents": parsed["intents"]}
+            return {
+                "success": True,
+                "answer": parsed.get("insights", answer),
+                "intents": parsed["intents"],
+                "is_fallback": parsed.get("is_fallback", False),
+            }
         return {"success": True, "answer": answer}
     except Exception as e:
         raise HTTPException(status_code=500, detail=enhance_ai_error(e, model=req.model or "", base_url=req.base_url or ""))

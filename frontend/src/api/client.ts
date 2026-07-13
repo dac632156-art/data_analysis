@@ -471,6 +471,19 @@ export const chatAnalyze = async (sessionId: string, question: string, apiKey: s
   return data;
 };
 
+/** 纯规则兜底：基于数据列特征直接生成默认 intents，不调用 LLM。
+ *  用于"应用"按钮在 LLM 不可用（API key 失效/网络错误）时的最终兜底，
+ *  保证用户至少能拿到一组可执行的分析计划。 */
+export const getDefaultIntents = async (sessionId: string): Promise<{
+  success: boolean;
+  intents: Array<Record<string, string>>;
+  is_fallback?: boolean;
+  source?: string;
+}> => {
+  const { data } = await api.post('/intents/default', { session_id: sessionId });
+  return data;
+};
+
 /* ===== 报告 ===== */
 
 
