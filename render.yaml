@@ -3,6 +3,6 @@ services:
     name: data-analysis
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && cd frontend && npm install && npm run build && cd ..
     startCommand: PYTHONPATH=.. python -m uvicorn main:app --host 0.0.0.0 --port $PORT
     autoDeploy: true

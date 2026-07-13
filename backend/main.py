@@ -17,7 +17,7 @@ load_dotenv(os.path.join(project_root, ".env"))
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 
 # 导入路由
 from backend.routers import upload, data, clean, stats, chart, dashboard, insights, report, analysis, reasoning
@@ -99,7 +99,8 @@ async def root():
     """根路径：部署时返回前端 SPA 页面，本地未构建时返回健康检查 JSON"""
     index_html = os.path.join(FRONTEND_DIST, "index.html")
     if os.path.isfile(index_html):
-        return FileResponse(index_html)
+        # index.html 禁止 CDN 缓存，确保用户总能拿到最新版本
+        return FileResponse(index_html, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return {"status": "ok", "version": "1.0.0"}
 
 
@@ -114,8 +115,12 @@ async def serve_spa(full_path: str):
         return {"status": "ok", "version": "1.0.0"}
     file_path = os.path.join(FRONTEND_DIST, full_path)
     if os.path.isfile(file_path):
-        return FileResponse(file_path)
-    return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))
+        # 带 hash 的静态资源（JS/CSS/图片）缓存 1 年；其他文件不缓存
+        ext = os.path.splitext(full_path)[1].lower()
+        if ext in ('.js', '.css', '.woff', '.woff2', '.ttf', '.svg', '.png', '.jpg', '.ico'):
+            return FileResponse(file_path, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+        return FileResponse(file_path, headers={"Cache-Control": "no-cache"})
+    return FileResponse(os.path.join(FRONTEND_DIST, "index.html"), headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
 
 if __name__ == "__main__":
