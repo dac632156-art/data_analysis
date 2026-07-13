@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>简历 · [你的姓名] · 后端/平台开发实习生</title>
+<title>简历 · [你的姓名] · AI 产品实习生</title>
 <style>
   @page { size: A4; margin: 12mm 14mm; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -39,69 +39,64 @@
   .proj-title { font-weight: 700; font-size: 10.5pt; }
   .proj-meta { color: #5CB8A2; font-weight: 600; font-size: 9pt; }
   .highlight { background: #F3FAF7; border-left: 3px solid #9FD8C8; padding: 4px 8px; margin-top: 4px; font-size: 9pt; color: #3a4a47; }
-  .arch { background:#F7FBFA; border:1px solid #DCEEE8; border-radius:4px; padding:5px 8px; margin-top:4px; font-size:8.8pt; color:#3a4a47; line-height:1.5; }
   .placeholder { color: #b06a6a; }
-  .honest { color:#7a5a2a; font-size:8.8pt; }
 </style>
 </head>
 <body>
 
   <div class="header">
     <div class="name"><span class="placeholder">[你的姓名]</span></div>
-    <div class="target">后端 / 平台开发实习生 · <span class="placeholder">[城市]</span> · <span class="placeholder">[手机号]</span> · <span class="placeholder">[邮箱]</span> · <span class="placeholder">[GitHub/博客]</span></div>
+    <div class="target">AI 产品实习生 · <span class="placeholder">[城市]</span> · <span class="placeholder">[手机号]</span> · <span class="placeholder">[邮箱]</span> · <span class="placeholder">[GitHub]</span></div>
   </div>
 
   <div class="section">
     <div class="section-title">教育背景</div>
     <div class="edu-line"><span class="placeholder">[学校名称]</span> — <span class="placeholder">[专业]</span>（<span class="placeholder">[本科/硕士]</span>） · <span class="placeholder">[入学年月]</span> – <span class="placeholder">[毕业年月]</span></div>
-    <div class="sub">相关课程：数据结构与算法 / 操作系统 / 数据库系统 / 计算机网络 · GPA：<span class="placeholder">[x.x]/4.0</span>（可选）</div>
+    <div class="sub">相关课程：数据结构与算法 / 数据库系统 / 人工智能导论 · GPA：<span class="placeholder">[x.x]/4.0</span>（可选）</div>
   </div>
 
   <div class="section">
-    <div class="section-title">技术技能</div>
-    <div class="skill-grid">
-      <div><span class="b">语言</span>：Python、SQL、TypeScript（通过 AI 协作实践掌握）</div>
-      <div><span class="b">后端框架</span>：FastAPI、Uvicorn/ASGI、Pydantic</div>
-      <div><span class="b">数据处理</span>：pandas、numpy、pickle 序列化</div>
-      <div><span class="b">并发/系统</span>：多线程与锁、信号量限流、异步任务 + 轮询、内存/OOM 治理</div>
-      <div><span class="b">大模型</span>：DeepSeek/OpenAI API、Prompt 工程、结构化 JSON 兜底</div>
-      <div><span class="b">AI 编程工具链</span>：以自然语言驱动 Agent 完成「需求→架构→实现→验收」闭环</div>
-      <div><span class="b">工程能力</span>：RESTful API 设计、规则引擎、模块解耦、降级、Git</div>
-      <div><span class="b">部署</span>：Render / Vercel、环境变量与配置管理</div>
-    </div>
+    <div class="section-title">实习经历</div>
+    <div class="proj-title">[公司名称] · [岗位，如 AI 数据 / 算法实习生] <span class="proj-meta">｜ [起止时间]</span></div>
+    <div class="sub" style="margin:2px 0 3px;">参与计算机视觉模型从数据到上线的全流程，负责数据治理、标注管理、模型训练部署与效果评测。</div>
+    <ul>
+      <li><span class="b">数据治理与标注管理</span>：对客户端 SKU 图片执行下载与分类，剔除曝光异常、过暗、画面杂乱等低质样本；将有效数据划分为训练 / 测试集，协调标注实习生分工并分担标注，建立标注质检流程保障标注质量。</li>
+      <li><span class="b">模型训练与部署</span>：基于 Python 登录服务器维护训练配置（继承历史权重、设定训练轮数、增量纳入新增 SKU 编码）并执行训练；训练产物经转换工具处理后部署至指定服务器，调用模型对测试集预打标。</li>
+      <li><span class="b">模型效果评测</span>：对测试集人工质检后，将质检结果与模型预打标对齐评估，输出各 SKU 的精确率 / 召回率 / F1，以<span class="b">总 F1 &gt; 95%</span> 作为上线量化门槛。</li>
+      <li><span class="b">周检与归因分析</span>：每周对 B 端客户线上数据做质检评估，监控模型整体结果 &gt; 95%；针对单体 SKU F1 &lt; 95% 做归因分析并输出分析报告，形成"监控—归因—优化"闭环。</li>
+    </ul>
   </div>
 
   <div class="section">
     <div class="section-title">项目经验</div>
-    <div class="proj-title">DataMind AI · 数据分析智能体平台 <span class="proj-meta">｜AI 辅助开发 / 我主导设计与架构（Python + FastAPI + React）</span></div>
-    <div class="sub" style="margin:2px 0 3px;">面向"上传数据 → 自动清洗 → 分析 → 可视化 → AI 报告"的一站式数据分析平台。<span class="honest">本人负责需求拆解、架构设计与技术决策，并驱动 AI 编程 Agent 完成实现</span>；后端含 11 个路由模块、40+ REST 端点。</div>
-    <div class="arch">
-      <span class="b">端到端服务链路：</span>上传(Upload) → 会话管理(SessionManager) → 数据清洗(Clean) → 列分类/意图识别 → 分析执行(Planner + 分析引擎) → 可视化(Chart/Dashboard) → 业务推理(Reasoning) → AI 报告(异步任务 + 轮询)
-    </div>
+    <div class="proj-title">DataMind AI · AI 数据分析产品 <span class="proj-meta">｜产品设计 &amp; AI 协作主导</span></div>
+    <div class="sub" style="margin:2px 0 3px;">用户上传数据表即自动完成清洗、分析与业务报告生成；本人从真实使用痛点出发主导产品设计，并驱动 AI 编程工具完成从 0 到 1 实现。</div>
     <ul>
-      <li><span class="b">服务端分层架构（主导设计）</span>：规划 FastAPI 分层结构（Router → Service → Engine），拆分为 upload/clean/data/analysis/chart/dashboard/reasoning/insights/report/stats 共 11 个路由、40+ 端点，明确各模块职责边界与演进路径。</li>
-      <li><span class="b">线程安全会话与内存治理（设计 + AI 实现）</span>：设计 <span class="b">SessionManager</span> 单例方案——原始数据 pickle 落盘、内存只留工作集以<span class="b">防 OOM</span>；LRU 淘汰（最多 50 会话）+ 惰性清理 + 后台守护线程回收过期会话；落盘失败自动回退内存副本，实现优雅降级。</li>
-      <li><span class="b">异步任务系统（设计 + AI 实现）</span>：针对 AI 报告耗时长，设计<span class="b">异步无状态任务 + task_id 轮询</span>模式规避平台 50s HTTP 超时；配合信号量限流，控制并发资源占用。</li>
-      <li><span class="b">大模型调用稳定性工程（设计 + AI 实现）</span>：指定原生 SDK 直连 DeepSeek，<span class="b">关闭 SDK 重试</span>避免超时叠加拖垮请求；设计多级降级（AI 失败回退纯 pandas 统计）+ 结构化 JSON 兜底解析，保证后端在超时预算内稳定返回。</li>
-      <li><span class="b">自研分析/推理引擎（平台化设计 + AI 实现）</span>：① YAML 驱动的分析知识中心（11 类意图，新增分析零代码）；② 三段式推理管道（规则引擎→证据引擎按 STRONG/MODERATE/WEAK 校验→LLM 叙事，可无 LLM 降级）；③ 看板布局引擎（策略规则选择 + 12 栅格自动分配）；统一 <span class="b">AnalysisPackage</span> 数据契约 + Renderer 层解耦数据与前端格式。</li>
+      <li><span class="b">产品定义与差异化</span>：主导定义"上传即分析"的产品形态，并提出<span class="b">"精确计算与 LLM 表达分离"</span>架构——数字由系统算准、LLM 仅做自然语言转写，从架构层面规避大模型幻觉，解决非技术用户"不敢信 AI 结论"的核心痛点。</li>
+      <li><span class="b">0→1 落地与 AI 工具链</span>：以自然语言驱动 AI 编程 Agent（CodeBuddy）完成全栈实现；负责需求拆解、架构设计与关键技术决策（统一数据契约、11 类分析意图的 YAML 知识中心、三段式推理管道），采用"规格驱动"工作法确保复杂系统不失控，并据此输出 PRD 与可交互原型。</li>
+      <li><span class="b">Agent 质量评估方法论（开源）</span>：针对 Agent 易 rush / 幻觉 / 改错的失效模式，沉淀一套可复用质量保障 SOP（五阶段工作流 + 置信度标签 + 根因两层 why + 用户验证清单），<span class="b">开源至 GitHub（github.com/linziquan/everything_skill，MIT）</span>，可作为大模型 / Agent 效果评测方法论。</li>
+      <li><span class="b">工程理解与研发对齐</span>：产品含 FastAPI 后端（11 路由 / 40+ 接口）、异步报告与多级降级；具备技术理解力，能就需求、接口与验收标准与研发高效沟通。</li>
     </ul>
-    <div class="highlight">设计亮点：在全流程中系统权衡了「并发安全 / 内存可控 / 超时不崩 / 失败可降级」，体现了对生产级后端服务的设计理解（由 AI 工具实现、本人主导并可达_code级答辩）。</div>
+    <div class="highlight">产品价值锚点：把重复性的数据分析劳动自动化，并以"算数 / 表达分离"解决非技术用户对 AI 结论的信任问题——从真实痛点而非技术炫技出发。</div>
   </div>
 
   <div class="section">
-    <div class="section-title">核心技术能力总结</div>
-    <ul>
-      <li><span class="b">系统设计</span>：能独立规划分层后端与端到端数据链路，理解并发、状态管理、资源治理与异步任务的权衡。</li>
-      <li><span class="b">AI 编排</span>：擅长以自然语言将模糊需求转化为可落地的系统架构，并驱动 AI 工具完成高质量实现与迭代。</li>
-      <li><span class="b">健壮性思维</span>：熟悉限流、超时、降级、序列化落盘、异常兜底等生产级可靠性手段。</li>
-    </ul>
+    <div class="section-title">能力与工具</div>
+    <div class="skill-grid">
+      <div><span class="b">AI 工具链</span>：CodeBuddy（Cursor 同类）、ChatGPT / Claude 深度使用</div>
+      <div><span class="b">模型评测</span>：精确率 / 召回率 / F1、BadCase 分析、归因与上线标准</div>
+      <div><span class="b">产品基本功</span>：需求拆解、PRD、原型设计、竞品/用户调研</div>
+      <div><span class="b">AI 应用</span>：Agent 架构、Prompt 调优、RAG 取舍</div>
+      <div><span class="b">研发对齐</span>：理解前后端链路、数据契约、异步与降级</div>
+      <div><span class="b">工程</span>：Python、pandas、Git、服务器配置与训练流程</div>
+    </div>
   </div>
 
   <div class="section">
     <div class="section-title">其他（可选，按实际情况删改）</div>
     <ul>
+      <li>开源：Agent 质量保障 SOP（GitHub: github.com/linziquan/everything_skill，MIT）</li>
       <li>竞赛 / 奖项：<span class="placeholder">[xxx]</span></li>
-      <li>开源 / 技术博客：<span class="placeholder">[xxx]</span></li>
       <li>英语：CET-6 / <span class="placeholder">[xxx]</span></li>
     </ul>
   </div>

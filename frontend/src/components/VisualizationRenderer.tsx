@@ -115,6 +115,10 @@ function UnsupportedBlock({ pkg }: { pkg: AnalysisPackage }) {
   const reasons = (pkg.insights || []).filter(s => s);
   const reasonText = reasons.length > 0 ? reasons[0] : '当前数据不支持该分析';
   const fallbackFrom = pkg.fallback_from || '无';
+  // 优先使用后端按分析类型动态生成的建议；缺失时给一个通用的兜底提示
+  const suggestion = (pkg.suggestion && pkg.suggestion.trim())
+    ? pkg.suggestion
+    : '请检查数据是否包含该分析所需的字段（如词云需要文本/分类列，趋势需要日期+数值列），或更换分析表述后重试。';
 
   return (
     <div style={{
@@ -141,7 +145,7 @@ function UnsupportedBlock({ pkg }: { pkg: AnalysisPackage }) {
           原因：{reasonText} | 降级来源：{fallbackFrom}
         </p>
         <p style={{ fontSize: 10, color: P.textDisabled, margin: '6px 0 0', lineHeight: 1.5 }}>
-          💡 建议：检查数据是否包含足够的数值列和时间列。如需分析增长趋势，请确保数据包含日期和数值字段；如需排名分析，请确保包含分类字段。
+          💡 建议：{suggestion}
         </p>
       </div>
     </div>

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DataMind AI · 交互原型 (Wireframe)</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family: -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  body { background:#f5f6f8; color:#1f2937; }
+  .topbar { background:#0f172a; color:#fff; padding:12px 24px; display:flex; align-items:center; gap:20px; position:sticky; top:0; z-index:10; }
+  .logo { font-weight:700; color:#34d399; font-size:18px; letter-spacing:.5px; }
+  .nav { display:flex; gap:6px; }
+  .nav button { background:transparent; color:#cbd5e1; border:none; padding:8px 14px; cursor:pointer; border-radius:6px; font-size:14px; }
+  .nav button:hover { background:#1e293b; color:#fff; }
+  .nav button.active { background:#10b981; color:#fff; }
+  .screen { display:none; max-width:1120px; margin:24px auto; padding:0 24px 60px; }
+  .screen.active { display:block; }
+  .card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:20px; margin-bottom:16px; }
+  .wire { border:2px dashed #cbd5e1; border-radius:8px; background:#f8fafc; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:13px; }
+  h2 { font-size:18px; margin-bottom:4px; }
+  .sub { color:#6b7280; font-size:13px; margin-bottom:16px; }
+  h3 { font-size:15px; margin:16px 0 8px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; }
+  .col { flex:1; min-width:280px; }
+  .btn { background:#10b981; color:#fff; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; }
+  .btn.secondary { background:#e5e7eb; color:#374151; }
+  .btn.ghost { background:transparent; color:#10b981; border:1px solid #10b981; }
+  .pill { display:inline-block; background:#ecfdf5; color:#059669; padding:4px 10px; border-radius:999px; font-size:12px; margin:3px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { border:1px solid #e5e7eb; padding:8px 10px; text-align:left; }
+  th { background:#f1f5f9; font-weight:600; }
+  .drop { height:190px; font-size:15px; }
+  .issue { background:#fff7ed; border:1px solid #fed7aa; color:#c2410c; padding:10px 12px; border-radius:8px; font-size:13px; margin-bottom:8px; }
+  .kpi { text-align:center; padding:18px 10px; border:1px solid #e5e7eb; border-radius:10px; }
+  .kpi .num { font-size:26px; font-weight:700; color:#10b981; }
+  .kpi .lab { font-size:12px; color:#6b7280; margin-top:4px; }
+  .tabs { display:flex; gap:4px; margin-bottom:14px; border-bottom:2px solid #e5e7eb; }
+  .tabs button { background:none; border:none; padding:10px 16px; cursor:pointer; font-size:14px; color:#6b7280; border-bottom:2px solid transparent; margin-bottom:-2px; }
+  .tabs button.active { color:#10b981; border-bottom-color:#10b981; font-weight:600; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+  .conf { font-size:11px; padding:2px 9px; border-radius:999px; font-weight:600; }
+  .conf.strong { background:#dcfce7; color:#166534; }
+  .conf.moderate { background:#fef9c3; color:#854d0e; }
+  .conf.weak { background:#fee2e2; color:#991b1b; }
+  .conclusion { padding:10px 12px; border-left:3px solid #10b981; background:#f0fdf4; border-radius:0 8px 8px 0; margin-bottom:10px; font-size:14px; }
+  .insight { padding:8px 12px; background:#f8fafc; border-radius:8px; margin-bottom:8px; font-size:14px; }
+  .docline { height:12px; background:#eef2f6; border-radius:4px; margin:8px 0; }
+  .filterbar { display:flex; gap:10px; align-items:center; margin-bottom:16px; }
+  .filterbar select { padding:7px 10px; border:1px solid #d1d5db; border-radius:7px; font-size:13px; }
+  .foot { text-align:center; color:#9ca3af; font-size:12px; margin-top:30px; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo">DataMind AI</div>
+    <div class="nav">
+      <button onclick="show('upload','nav-upload')" id="nav-upload" class="active">① 上传</button>
+      <button onclick="show('clean','nav-clean')" id="nav-clean">② 清洗</button>
+      <button onclick="show('analysis','nav-analysis')" id="nav-analysis">③ 分析</button>
+      <button onclick="show('dashboard','nav-dashboard')" id="nav-dashboard">④ 驾驶舱</button>
+    </div>
+  </div>
+
+  <!-- ① 上传 -->
+  <div class="screen active" id="upload">
+    <h2>上传数据</h2><div class="sub">支持 CSV / Excel，自动解析并识别列类型</div>
+    <div class="card"><div class="wire drop">⬆ 拖入数据文件，或点击选择（CSV / XLSX）</div></div>
+    <div class="card">
+      <h3>已上传文件</h3>
+      <table>
+        <tr><th>文件名</th><th>行数</th><th>列数</th><th>识别列类型</th><th>状态</th></tr>
+        <tr><td>店铺订单_2026Q1.csv</td><td>12,480</td><td>14</td><td>数值×6 / 类别×5 / 时间×2 / 地理×1</td><td><span class="pill">已解析</span></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <span class="pill">自动列分类</span><span class="pill">异常预检</span><span class="pill">中文表头兼容</span>
+      <div style="margin-top:14px;"><button class="btn" onclick="show('clean','nav-clean')">开始分析 →</button></div>
+    </div>
+  </div>
+
+  <!-- ② 清洗 -->
+  <div class="screen" id="clean">
+    <h2>智能清洗</h2><div class="sub">系统自动检测脏数据，一键处理或查看 AI 建议</div>
+    <div class="row">
+      <div class="col card">
+        <h3>数据预览（前 6 行）</h3>
+        <div class="wire" style="height:220px;">表格预览占位（14 列 × 6 行，含高亮异常单元格）</div>
+      </div>
+      <div class="col card">
+        <h3>智能检测结果</h3>
+        <div class="issue">⚠ 缺失值：3 列共 218 处空值</div>
+        <div class="issue">⚠ 异常值：金额列检测到 14 个离群点</div>
+        <div class="issue">⚠ 重复行：疑似重复订单 9 行</div>
+        <div style="margin-top:14px;">
+          <button class="btn">一键清洗</button>
+          <button class="btn ghost" style="margin-left:8px;">查看 AI 建议</button>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>AI 清洗建议（示例）</h3>
+      <div class="insight">「金额」列 14 个离群点集中在 99,999，疑似测试数据，建议剔除后再分析。</div>
+      <div class="insight">「地区」列存在"北京/北京市"不一致，建议统一为标准地理名以便地图可视化。</div>
+    </div>
+  </div>
+
+  <!-- ③ 分析 -->
+  <div class="screen" id="analysis">
+    <h2>智能分析 · 业务推理 · 报告</h2><div class="sub">系统自动识别分析意图，计算指标、推理结论并生成报告</div>
+    <div class="tabs">
+      <button onclick="tab('t-analysis','b-analysis')" id="b-analysis" class="active">智能分析</button>
+      <button onclick="tab('t-insight','b-insight')" id="b-insight">AI 洞察</button>
+      <button onclick="tab('t-reason','b-reason')" id="b-reason">业务推理</button>
+      <button onclick="tab('t-report','b-report')" id="b-report">报告</button>
+    </div>
+
+    <div class="panel active" id="t-analysis">
+      <div class="row" style="margin-bottom:16px;">
+        <div class="kpi"><div class="num">¥1.28M</div><div class="lab">总销售额</div></div>
+        <div class="kpi"><div class="num">+18.4%</div><div class="lab">环比增长</div></div>
+        <div class="kpi"><div class="num">3.2%</div><div class="lab">退款率</div></div>
+        <div class="kpi"><div class="num">华东</div><div class="lab">贡献最高区域</div></div>
+      </div>
+      <div class="row">
+        <div class="col card"><h3>销售额趋势（增长意图）</h3><div class="wire" style="height:200px;">折线图占位</div></div>
+        <div class="col card"><h3>区域占比（结构意图）</h3><div class="wire" style="height:200px;">饼图占位</div></div>
+      </div>
+    </div>
+
+    <div class="panel" id="t-insight">
+      <div class="card">
+        <div class="insight">💡 本季度销售额呈稳定上升趋势，3 月增速明显（受促销活动带动）。</div>
+        <div class="insight">💡 华东区销售额占比 34%，但增速放缓，需关注存量市场。</div>
+        <div class="insight">💡 客单价 Top3 商品贡献了 52% 的 GMV，集中度偏高。</div>
+      </div>
+    </div>
+
+    <div class="panel" id="t-reason">
+      <div class="card">
+        <h3>业务结论（带可信度标注）</h3>
+        <div class="conclusion">华东区增长主要靠新客拉动，但复购率在下滑。<span class="conf strong">STRONG</span></div>
+        <div class="conclusion">客单价 Top3 商品贡献过半 GMV，存在集中度风险。<span class="conf moderate">MODERATE</span></div>
+        <div class="conclusion">退款率上升与"金额异常"订单相关，建议排查渠道。<span class="conf weak">WEAK</span>（样本不足）</div>
+        <div style="margin-top:12px; font-size:12px; color:#6b7280;">可信度由证据引擎依据样本量与相关性自动评定，无证据结论将被过滤。</div>
+      </div>
+    </div>
+
+    <div class="panel" id="t-report">
+      <div class="card">
+        <h3>业务分析报告（自动生成）</h3>
+        <div class="docline" style="width:90%"></div>
+        <div class="docline" style="width:96%"></div>
+        <div class="docline" style="width:70%"></div>
+        <p style="font-size:13px; color:#374151; margin-top:10px; line-height:1.7;">【摘要】本期销售额 ¥1.28M，环比 +18.4%。增长由华东区新客驱动，但复购率下滑需关注……<br>【建议】① 对 Top3 商品做集中度风险对冲；② 排查高退款渠道；③ 针对华东存量市场启动复购唤醒……</p>
+        <div style="margin-top:12px;"><button class="btn">导出报告</button><button class="btn secondary" style="margin-left:8px;">查看驾驶舱</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④ 驾驶舱 -->
+  <div class="screen" id="dashboard">
+    <h2>数据驾驶舱</h2><div class="sub">多图组合、筛选与下钻，支持大屏呈现</div>
+    <div class="filterbar">
+      <span style="font-size:13px;color:#6b7280;">筛选：</span>
+      <select><option>全部时间</option><option>2026 Q1</option><option>2026 Q2</option></select>
+      <select><option>全部地区</option><option>华东</option><option>华北</option><option>华南</option></select>
+      <button class="btn ghost">应用</button>
+    </div>
+    <div class="row" style="margin-bottom:16px;">
+      <div class="kpi"><div class="num">¥1.28M</div><div class="lab">GMV</div></div>
+      <div class="kpi"><div class="num">42,310</div><div class="lab">订单数</div></div>
+      <div class="kpi"><div class="num">3.2%</div><div class="lab">退款率</div></div>
+    </div>
+    <div class="row">
+      <div class="col card" style="flex:2;"><h3>销售趋势</h3><div class="wire" style="height:220px;">组合图占位（柱+线）</div></div>
+      <div class="col card"><h3>区域分布</h3><div class="wire" style="height:220px;">地图 / 饼图占位</div></div>
+    </div>
+    <div class="row">
+      <div class="col card"><h3>商品 Top10</h3><div class="wire" style="height:180px;">条形图占位</div></div>
+      <div class="col card"><h3>用户留存</h3><div class="wire" style="height:180px;">漏斗 / 折线占位</div></div>
+      <div class="col card"><h3>词云（用户评价）</h3><div class="wire" style="height:180px;">词云占位</div></div>
+    </div>
+    <div class="card"><h3>3D 地理大屏（P2）</h3><div class="wire" style="height:200px;">echarts-gl 3D 地图占位</div></div>
+  </div>
+
+  <div class="foot">DataMind AI · 交互原型（Wireframe）· 对应 PRD v1.0</div>
+
+<script>
+  function show(id, navId){
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    document.getElementById(navId).classList.add('active');
+    window.scrollTo(0,0);
+  }
+  function tab(panelId, btnId){
+    document.querySelectorAll('#analysis .panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('#analysis .tabs button').forEach(b => b.classList.remove('active'));
+    document.getElementById(panelId).classList.add('active');
+    document.getElementById(btnId).classList.add('active');
+  }
+</script>
+</body>
+</html>

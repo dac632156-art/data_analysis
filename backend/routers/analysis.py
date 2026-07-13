@@ -94,7 +94,8 @@ async def api_analysis_run(req: AnalysisRunRequest):
             else:
                 result = _unsupported(
                     intent.business_question,
-                    plan.get("unsupported_reason", "Planner 判定该问题无法在当前数据上执行")
+                    plan.get("unsupported_reason", "Planner 判定该问题无法在当前数据上执行"),
+                    plan.get("suggestion", ""),
                 )
 
             pkg_id = str(uuid.uuid4())[:8]
@@ -108,8 +109,9 @@ async def api_analysis_run(req: AnalysisRunRequest):
         dim = plan.get("dimension")
         met = plan.get("metric")
 
-        # 2. fallback 递归
-        result = _execute_with_fallback(df, method, dim, met, algorithm,
+        # 2. fallback 递归（若存在 Planner 自动派生的列，使用派生后的 df）
+        exec_df = plan.get("derived_df") if plan.get("derived_df") is not None else df
+        result = _execute_with_fallback(exec_df, method, dim, met, algorithm,
                                          intent.business_question)
 
         # 3. 图表渲染：chart_data → charts（ChartItem + ECharts option）
@@ -207,7 +209,7 @@ def _fallback_via_library(df, method, question, depth, dim=None, met=None):
     return _unsupported(question, f"分析方法 '{method}' 尚未实现且无可用降级方案")
 
 
-def _unsupported(question: str, reason: str) -> AnalysisPackage:
+def _unsupported(question: str, reason: str, suggestion: str = "") -> AnalysisPackage:
     return AnalysisPackage(
         id="",
         analysis_type="unsupported",
@@ -216,8 +218,9 @@ def _unsupported(question: str, reason: str) -> AnalysisPackage:
         dimension=None,
         metric=None,
         can_run=False,
-        insights=[reason],
-        conclusions=[f"原因: {reason}"],
+        insights=[reason] if reason else [],
+        conclusions=[f"原因: {reason}"] if reason else [],
+        suggestion=suggestion,
     )
 
 

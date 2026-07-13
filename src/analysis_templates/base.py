@@ -146,6 +146,7 @@ class AnalysisPackage:
     can_run: bool = True
     fallback_from: str | None = None
     fallback_reason: str | None = None
+    suggestion: str = ""   # 分析失败时的「下一步建议」（按分析类型动态生成，替代通用提示）
     saved_at: str | None = None
     data_profile: dict = field(default_factory=dict)
 

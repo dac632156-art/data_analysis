@@ -198,6 +198,7 @@ export interface AnalysisPackage {
   conclusions: string[];
   can_run: boolean;
   fallback_from: string | null;
+  suggestion?: string;
   saved_at: string | null;
   data_profile: Record<string, string[]>;
 }

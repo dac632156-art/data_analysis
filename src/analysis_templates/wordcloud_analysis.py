@@ -32,20 +32,30 @@ class WordCloudAnalysis(AnalysisTemplate):
     _cache: dict = {}
 
     def can_run(self, df: pd.DataFrame) -> bool:
-        """需要至少 1 个分类列 + 至少 3 行 + 2 个以上不同值"""
+        """需要至少 1 个文本/分类列 + 至少 3 行 + 2 个以上不同值。
+
+        词云本就适合高基数文本（如产品长名称、评论），因此放宽接受任意
+        非数值文本列，而非仅分类器判定的「分类列」（后者会排除高基数文本）。
+        """
         if df is None or len(df) < self.runtime.MIN_ROWS:
             return False
+        text_cols = [c for c in df.columns
+                     if not pd.api.types.is_numeric_dtype(df[c]) and df[c].nunique() >= 2]
+        if text_cols:
+            return True
         cat_cols = self.classifier.get_category_columns(df) if self.classifier else []
-        if len(cat_cols) < 1:
-            return False
-        # 至少需要 2 个不同值才能形成有意义的词云
-        if df[cat_cols[0]].nunique() < 2:
-            return False
-        return True
+        return len(cat_cols) >= 1
 
     def _compute(self, df, dimension, metric, **kwargs):
         """统计 dimension 列中各类别的出现次数"""
-        dim = dimension or self.classifier.get_category_columns(df)[0]
+        dim = dimension
+        if not dim or dim not in df.columns:
+            # 兜底：复用 Planner 同样的「确定性语义解构选列」（2026-07-13 统一选列入口）
+            #   历史上用 text_cols[0] 或 get_category_columns[0]，会把订单号/流水号（每行唯一）
+            #   当成词云维度，导致词云变成 1 个超长词或乱序高频词。
+            dim = self.classifier.select_wordcloud_column(df, "") if self.classifier else None
+        if not dim or dim not in df.columns:
+            return None
         counts = df[dim].value_counts().reset_index()
         counts.columns = [dim, "count"]
         # 截取 Top 50
@@ -99,17 +109,21 @@ class WordCloudAnalysis(AnalysisTemplate):
         if counts is None or len(counts) == 0:
             return []
         dim = self._cache["dimension"]
-        # ECharts 词云需要 [{name, value}] 格式
+        # ECharts 词云需要 [{name, value}] 原生格式（2026-07-13 修复 value=1 链路 bug）
+        # 历史上用 {x, y} 占位键再经 ChartRenderer.rename 改写，会被 create_wordcloud
+        # 二次 value_counts 稀释成 value=1（每行唯一）。直接给 {name, value} 让
+        # create_wordcloud 走"已聚合模式"，保证 value range > 0。
         cloud_data = []
         n = min(50, len(counts))
         for i in range(n):
             name = str(counts.iloc[i].iloc[0])
             value = int(counts.iloc[i]["count"])
-            cloud_data.append({"x": name, "y": value})
+            cloud_data.append({"name": name, "value": value})
 
         return [ChartData(
             slot="word_cloud", chart_type="wordcloud",
-            title=f"{dim}词云图（出现次数）", x=dim, y="count",
+            title=f"{dim}词云图（出现次数）",
+            x=dim, y="count",
             data=cloud_data,
         )]
 

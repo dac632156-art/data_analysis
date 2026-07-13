@@ -714,19 +714,64 @@ def create_treemap(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str] =
 
 def create_wordcloud(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str] = None,
                      title: str = "词云图", **ignored) -> Dict[str, Any]:
-    """创建词云图（用 ECharts 词云扩展，回退到柱状图）"""
-    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-    text_col = x if x and x in cat_cols else (cat_cols[0] if cat_cols else None)
+    """创建词云图（用 ECharts 词云扩展，回退到柱状图）
 
-    if not text_col:
-        raise ValueError("词云图需要文本/分类列")
+    关键约束（基于 echarts-wordcloud 2.1.0 官方支持范围）：
+    - 颜色 textStyle.color 必须是 string 或 function（**不支持 array**）。
+      解决：用合法 JS 字符串拼 function 形式，从 BLUE_PALETTE 闭包取色。
+    - 大小：value 直接传出现次数即可，echarts-wordcloud 会按 value 比例计算
+      fontSize（value 越大 → 字越大 → 越靠中心）。通过 sizeRange 控制字号上下限。
+    - 形状：默认 circle 已能让词分布开；适当减小 gridSize 让字能填更多位置。
 
-    word_counts = df[text_col].value_counts().head(50)
-    max_count = word_counts.max()
-    cloud_data = [
-        {"name": str(w), "value": int(c)}
-        for w, c in zip(word_counts.index, word_counts.values)
-    ]
+    支持两种输入模式（2026-07-13 修复 value=1 链路后新增）：
+    - **已聚合模式**（df 形如 [{name, value}, ...] 或 [{<text>, <count>}, ...]）：
+      直接用 df 已有聚合结果，不重做 value_counts。
+      判定：df 含 'name' 列或 (x,y) 真实列名都存在 → 已聚合。
+    - **明细模式**：df 仍按文本列做 value_counts().head(50)。
+    """
+    # ===== 模式 1：已聚合数据 — df 已有 [{name, value}] 或 [{<text>, <count>}] =====
+    if "name" in df.columns and "value" in df.columns:
+        # 模板 build_charts 直接输出 ECharts 原生格式
+        records = df[["name", "value"]].to_dict("records")
+        cloud_data = [
+            {"name": str(r["name"]), "value": int(r["value"])}
+            for r in records if r.get("name") and r.get("value") is not None
+        ]
+    else:
+        # ===== 模式 2：明细数据 — 选文本列后做 value_counts =====
+        cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+        text_col = x if x and x in cat_cols else (cat_cols[0] if cat_cols else None)
+
+        if not text_col:
+            raise ValueError("词云图需要文本/分类列")
+
+        word_counts = df[text_col].value_counts().head(50)
+        # value 直接是出现次数，ECharts 词云会按 value 自动算 fontSize
+        cloud_data = [
+            {"name": str(w), "value": int(c)}
+            for w, c in zip(word_counts.index, word_counts.values)
+        ]
+
+    if not cloud_data:
+        raise ValueError("词云图无可用数据")
+
+    # ★★ 颜色方案根治（2026-07-13 修复「看板词云全黑、无报错」）★★
+    # 根因（读 echarts-wordcloud 2.1.0 源码确认）：
+    #   - WordCloudSeries.js: visualStyleAccessPath='textStyle'，visualStyleMapper 返回
+    #     { fill: model.get('color') }，即颜色取自 textStyle.color；
+    #   - WordCloudView.js L31: fill = data.getItemVisual(dataIdx, 'style').fill，
+    #     直接把该 fill 交给 zrender 的 Text 元素。
+    #   → 若 textStyle.color 是 **function**，zrender 拿到 function 当作无效填充色，
+    #     所有词回退成默认黑色，且**不抛错**（这就是「全黑但 Console 无报错」的原因）。
+    #   旧版（1.x + echarts4）靠把 color 传给 wordcloud2 的 settings.color 才使 function 生效，
+    #   2.1.0 重构后已废弃该通路，故 color function 方案在 2.1.0 完全失效。
+    #
+    # 正解：**给每个 data item 直接附静态颜色**（合法字符串，非 function）。
+    #   item 含 textStyle → echarts List.hasItemOption=True → 逐 item setItemVisual，
+    #   getItemVisual(idx,'style').fill 得到静态色字符串 → zrender 正确逐词着色。
+    #   无需前端水合、无 function 序列化坑，JSON 无损。
+    for i, item in enumerate(cloud_data):
+        item["textStyle"] = {"color": BLUE_PALETTE[i % len(BLUE_PALETTE)]}
 
     return {
         **_get_default_title(title),
@@ -734,16 +779,30 @@ def create_wordcloud(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str]
         "series": [{
             "type": "wordCloud",
             "shape": "circle",
-            "sizeRange": [12, 48],
+            "left": "center",
+            "top": "center",
+            "width": "95%",
+            "height": "90%",
+            "sizeRange": [16, 80],          # 字号范围，让头部/尾部视觉差异明显
             "rotationRange": [-30, 30],
-            "gridSize": 8,
+            "rotationStep": 15,
+            "gridSize": 6,                  # 调小让字能填更多位置，避免堆中心
             "drawOutOfBound": False,
+            "shrinkToFit": True,
             "textStyle": {
                 "fontFamily": "sans-serif",
                 "fontWeight": "bold",
-                "color": "function() { return ['#38BDF8','#818CF8','#22D3EE','#FBBF24','#F472B6','#FB923C','#84CC16','#C084FC','#60A5FA','#2DD4BF'][Math.floor(Math.random()*10)]; }"
+                # ★ series 级兜底静态色（合法字符串，绝不用 function）：
+                #   万一某环境未逐 item 应用 per-item 色，series 级也是合法蓝、不会黑。
+                "color": BLUE_PALETTE[0],
             },
-            "emphasis": {"textStyle": {"fontSize": 56}},
+            "emphasis": {
+                "focus": "self",
+                "textStyle": {
+                    "textShadowBlur": 12,
+                    "textShadowColor": GALAXY["ai"],
+                }
+            },
             "data": cloud_data,
         }]
     }

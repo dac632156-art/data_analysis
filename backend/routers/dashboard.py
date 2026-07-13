@@ -235,6 +235,21 @@ async def api_dashboard_echarts(req: DashboardChartRequest):
             # ★ 优先复用已保存分析包中渲染好的 option（帕累托线/数值降序已固化），
             #   不再拿原始 df 重新聚合（否则丢图、排序错）。仅 option 缺失时回退重算。
             existing_option = cfg.get("option")
+
+            # ★ 词云专项（2026-07-13 修复「看板词云全黑」）：已保存包里的词云 option
+            #   可能由旧版代码生成，携带损坏/失效的 textStyle.color ——
+            #   旧版 function(word, params){ word.charCodeAt } 会在 echarts 以 function(params)
+            #   调用时抛错；或旧版 array 形式 color 不被 echarts-wordcloud 2.1.0 支持 → 整图黑/空白。
+            #   词云仅是频率云、无用户定制需保留，故始终用当前 create_wordcloud 重算，
+            #   保证下发给前端的 color 一定是合法 function 字符串（前端再水合为真实 function）。
+            if chart_type == 'wordcloud':
+                try:
+                    regen = create_echart(df, 'wordcloud', x=x, title=title_str)
+                    if regen:
+                        existing_option = regen
+                except Exception as e:
+                    logger.warning(f"词云重算失败，沿用已保存 option: {e}")
+
             if existing_option:
                 result.append({
                     "title": title_str,
