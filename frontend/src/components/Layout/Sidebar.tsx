@@ -1,7 +1,7 @@
 /* Sidebar - 侧边栏导航 */
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FiUpload, FiRefreshCw, FiBarChart2, FiLayout } from 'react-icons/fi';
+import { FiUpload, FiRefreshCw, FiBarChart2, FiLayout, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { useData, AI_PROVIDERS } from '../../contexts/DataContext';
 
 const navItems = [
@@ -11,7 +11,7 @@ const navItems = [
   { path: '/dashboard', label: '仪表盘', icon: FiLayout },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { state, dispatch } = useData();
@@ -21,7 +21,7 @@ export default function Sidebar() {
   const defaultBaseUrl = currentProvider?.baseUrl || '';
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 z-20 flex flex-col overflow-y-auto overflow-x-hidden pb-4"
+    <aside className={`fixed left-0 top-0 h-screen z-20 flex flex-col overflow-y-auto overflow-x-hidden pb-4 transition-[width] duration-300 ${collapsed ? 'w-20' : 'w-64'}`}
       style={{
         background: 'rgba(15, 23, 42, 0.85)',
         backdropFilter: 'blur(20px)',
@@ -32,14 +32,27 @@ export default function Sidebar() {
         scrollbarColor: 'rgba(139,92,246,0.35) transparent',
       }}
     >
-      {/* Logo */}
-      <div className="px-5 py-6 border-b border-white/[0.06]">
-        <h1 className="text-xl font-bold text-[#f8fafc] tracking-tight"
-          style={{ textShadow: '0 0 20px rgba(139,92,246,0.4)' }}
+      {/* Logo + 折叠按钮 */}
+      <div className={`flex items-center py-6 border-b border-white/[0.06] ${collapsed ? 'justify-center px-2' : 'px-5 justify-between'}`}>
+        {!collapsed && (
+          <div>
+            <h1 className="text-xl font-bold text-[#f8fafc] tracking-tight"
+              style={{ textShadow: '0 0 20px rgba(139,92,246,0.4)' }}
+            >
+              DataMind AI
+            </h1>
+            <p className="text-sm text-[#94a3b8] mt-0.5">数据分析智能体</p>
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
+          aria-expanded={!collapsed}
+          className="p-1.5 rounded-lg text-[#94a3b8] hover:text-[#f8fafc] hover:bg-[#8B5CF6]/10 transition-colors flex-shrink-0"
         >
-          DataMind AI
-        </h1>
-        <p className="text-sm text-[#94a3b8] mt-0.5">数据分析智能体</p>
+          {collapsed ? <FiChevronRight className="w-4 h-4" /> : <FiChevronLeft className="w-4 h-4" />}
+        </button>
       </div>
 
       {/* 导航菜单 */}
@@ -50,20 +63,25 @@ export default function Sidebar() {
             <button
               key={path}
               onClick={() => navigate(path)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all ${
+              title={collapsed ? label : undefined}
+              aria-label={label}
+              className={`w-full flex items-center gap-3 rounded-lg text-sm transition-all ${
+                collapsed ? 'justify-center px-0' : 'px-4'
+              } py-2.5 ${
                 active
                   ? 'bg-[#8B5CF6]/20 text-[#f8fafc] border border-[#8B5CF6]/30 shadow-[0_0_12px_rgba(139,92,246,0.15)]'
                   : 'text-[#94a3b8] hover:text-[#f8fafc] hover:bg-[#8B5CF6]/8'
               }`}
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
-              <span>{label}</span>
+              {!collapsed && <span>{label}</span>}
             </button>
           );
         })}
       </nav>
 
-      {/* API Key 配置 */}
+      {/* API Key 配置（展开时显示） */}
+      {!collapsed && (
       <div className="flex-shrink-0 px-4 py-4 border-t border-white/[0.06] space-y-2">
         <label className="text-xs text-slate-500 block">AI 模型</label>
         <select
@@ -125,9 +143,10 @@ export default function Sidebar() {
           选择模型后输入对应服务商的 API Key 即可使用
         </p>
       </div>
+      )}
 
-      {/* 数据信息 */}
-      {hasData && (
+      {/* 数据信息（展开时显示） */}
+      {!collapsed && hasData && (
         <div className="flex-shrink-0 px-4 py-3 border-t border-white/[0.06]">
           <p className="text-xs text-slate-500 truncate">{state.fileName}</p>
           <p className="text-xs text-slate-400">{state.rows.toLocaleString()} 行 · {state.columns} 列</p>
