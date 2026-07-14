@@ -3,8 +3,12 @@ import React, { useCallback, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { FiUploadCloud, FiFile } from 'react-icons/fi';
 
-const MAX_SIZE_MB = 50;
-const MAX_SIZE_TEXT = `${MAX_SIZE_MB}MB`;
+// 上传上限：优先读 Vite 环境变量 VITE_MAX_UPLOAD_SIZE_MB（本地 .env.local 可设 5120=5GB）
+// 线上未设置该变量时默认 50MB；需与后端 config.py 的 MAX_UPLOAD_SIZE_MB 保持一致
+const MAX_SIZE_MB = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB) || 50;
+const MAX_SIZE_TEXT = MAX_SIZE_MB >= 1024
+  ? `${(MAX_SIZE_MB / 1024).toFixed(1)}GB`
+  : `${MAX_SIZE_MB}MB`;
 
 interface Props {
   onUpload: (file: File) => Promise<void>;
@@ -40,7 +44,7 @@ export default function FileUploader({ onUpload, disabled }: Props) {
   const onDropRejected = useCallback((rejections: any[]) => {
     for (const r of rejections) {
       if (r.errors?.some((e: any) => e.code === 'file-too-large')) {
-        setError('文件超过 50MB 限制，请上传 50MB 以内的文件');
+        setError(`文件超过 ${MAX_SIZE_TEXT} 限制，请上传 ${MAX_SIZE_TEXT} 以内的文件`);
         return;
       }
     }
