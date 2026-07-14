@@ -15,9 +15,9 @@ APP_TITLE = "DataMind AI - 数据分析智能体"
 APP_ICON = "📊"
 
 # 文件上传配置
-# 通过环境变量 MAX_UPLOAD_SIZE_MB 控制，生产环境默认 200MB（永不更改！）
-# 本地开发在 .env 文件中设置，该文件为 git ignore，不会部署上线
-MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", 200))
+# 通过环境变量 MAX_UPLOAD_SIZE_MB 控制，线上(GitHub HEAD)默认 50MB
+# 本地开发在 .env 文件中设置 MAX_UPLOAD_SIZE_MB=5120 可覆盖到 5GB，该文件为 git ignore 不上线
+MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", 50))
 MAX_FILE_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 SUPPORTED_FORMATS = ["csv", "xlsx", "xls", "json", "db", "sqlite"]
 

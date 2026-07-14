@@ -22,9 +22,11 @@ const ACCEPTED = {
 export default function FileUploader({ onUpload, disabled }: Props) {
   const [uploading, setUploading] = useState(false);
   const uploadingRef = useRef(false);
+  const [error, setError] = useState<string | null>(null);
 
   const onDrop = useCallback(async (files: File[]) => {
     if (!files.length || uploadingRef.current) return;
+    setError(null);
     uploadingRef.current = true;
     setUploading(true);
     try {
@@ -35,10 +37,21 @@ export default function FileUploader({ onUpload, disabled }: Props) {
     }
   }, [onUpload]);
 
+  const onDropRejected = useCallback((rejections: any[]) => {
+    for (const r of rejections) {
+      if (r.errors?.some((e: any) => e.code === 'file-too-large')) {
+        setError('文件超过 50MB 限制，请上传 50MB 以内的文件');
+        return;
+      }
+    }
+  }, []);
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    onDropRejected,
     accept: ACCEPTED,
     maxFiles: 1,
+    maxSize: MAX_SIZE_MB * 1024 * 1024,
     disabled: disabled || uploading,
   });
 
@@ -96,6 +109,11 @@ export default function FileUploader({ onUpload, disabled }: Props) {
           支持 CSV · Excel · JSON · SQLite（最大 {MAX_SIZE_TEXT}）
         </p>
       </div>
+
+      {/* 超限警告 */}
+      {error && (
+        <p className="text-xs text-rose-400 text-center">{error}</p>
+      )}
 
       {/* 格式标签 */}
       <div className="flex gap-2">

@@ -21,13 +21,15 @@ export default function Sidebar() {
   const defaultBaseUrl = currentProvider?.baseUrl || '';
 
   return (
-    <aside className="fixed left-0 top-0 h-screen w-64 z-20 flex flex-col"
+    <aside className="fixed left-0 top-0 h-screen w-64 z-20 flex flex-col overflow-y-auto overflow-x-hidden pb-4"
       style={{
         background: 'rgba(15, 23, 42, 0.85)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
         borderRight: '1px solid rgba(139,92,246,0.1)',
         boxShadow: '4px 0 20px rgba(0, 0, 0, 0.3)',
+        scrollbarWidth: 'thin',
+        scrollbarColor: 'rgba(139,92,246,0.35) transparent',
       }}
     >
       {/* Logo */}
@@ -41,7 +43,7 @@ export default function Sidebar() {
       </div>
 
       {/* 导航菜单 */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-shrink-0 px-3 py-4 space-y-1">
         {navItems.map(({ path, label, icon: Icon }) => {
           const active = location.pathname === path;
           return (
@@ -62,7 +64,7 @@ export default function Sidebar() {
       </nav>
 
       {/* API Key 配置 */}
-      <div className="px-4 py-4 border-t border-white/[0.06] space-y-2">
+      <div className="flex-shrink-0 px-4 py-4 border-t border-white/[0.06] space-y-2">
         <label className="text-xs text-slate-500 block">AI 模型</label>
         <select
           value={state.aiProvider}
@@ -126,7 +128,7 @@ export default function Sidebar() {
 
       {/* 数据信息 */}
       {hasData && (
-        <div className="px-4 py-3 border-t border-white/[0.06]">
+        <div className="flex-shrink-0 px-4 py-3 border-t border-white/[0.06]">
           <p className="text-xs text-slate-500 truncate">{state.fileName}</p>
           <p className="text-xs text-slate-400">{state.rows.toLocaleString()} 行 · {state.columns} 列</p>
         </div>
