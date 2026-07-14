@@ -33,7 +33,7 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
       }}
     >
       {/* Logo + 折叠按钮 */}
-      <div className={`flex items-center py-6 border-b border-white/[0.06] ${collapsed ? 'justify-center px-2' : 'px-5 justify-between'}`}>
+      <div className={`flex-shrink-0 flex items-center py-6 border-b border-white/[0.06] ${collapsed ? 'justify-center px-2' : 'px-5 justify-between'}`}>
         {!collapsed && (
           <div>
             <h1 className="text-xl font-bold text-[#f8fafc] tracking-tight"
@@ -55,8 +55,8 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
         </button>
       </div>
 
-      {/* 导航菜单 */}
-      <nav className="flex-shrink-0 px-3 py-4 space-y-1">
+      {/* 导航菜单（中间区，空间不足时独立滚动） */}
+      <nav className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-1">
         {navItems.map(({ path, label, icon: Icon }) => {
           const active = location.pathname === path;
           return (
@@ -82,24 +82,24 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
 
       {/* API Key 配置（展开时显示） */}
       {!collapsed && (
-      <div className="flex-shrink-0 px-4 py-4 border-t border-white/[0.06] space-y-2">
+      <div className="flex-shrink-0 px-4 py-3 border-t border-white/[0.06] space-y-1.5">
         <label className="text-xs text-slate-500 block">AI 模型</label>
         <select
           value={state.aiProvider}
           onChange={(e) => dispatch({ type: 'SET_AI_PROVIDER', aiProvider: e.target.value })}
-          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
+          className="w-full px-3 py-1.5 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
         >
           {AI_PROVIDERS.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
-        <label className="text-xs text-slate-500 block mt-2">模型名称（可选）</label>
+        <label className="text-xs text-slate-500 block mt-1.5">模型名称（可选）</label>
         <input
           type="text"
           value={state.customModel}
           onChange={(e) => dispatch({ type: 'SET_CUSTOM_MODEL', customModel: e.target.value })}
           placeholder={defaultModel || '默认模型'}
-          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
+          className="w-full px-3 py-1.5 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
         />
         <p className="text-[10px] text-slate-500 mt-0.5">
           留空则使用默认模型（{defaultModel || '—'}），可填入其他模型名覆盖
@@ -120,24 +120,24 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
             常用：glm-4-flash / glm-4-plus / glm-4-long
           </p>
         )}
-        <label className="text-xs text-slate-500 block mt-2">API 地址（可选）</label>
+        <label className="text-xs text-slate-500 block mt-1.5">API 地址（可选）</label>
         <input
           type="text"
           value={state.customBaseUrl}
           onChange={(e) => dispatch({ type: 'SET_CUSTOM_BASE_URL', customBaseUrl: e.target.value })}
           placeholder={defaultBaseUrl || '默认地址'}
-          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
+          className="w-full px-3 py-1.5 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
         />
         <p className="text-[10px] text-slate-500 mt-0.5">
           百炼新版需填：https://{'{'}空间ID{'}'}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
         </p>
-        <label className="text-xs text-slate-500 block mt-2">API Key</label>
+        <label className="text-xs text-slate-500 block mt-1.5">API Key</label>
         <input
           type="password"
           value={state.apiKey}
           onChange={(e) => dispatch({ type: 'SET_API_KEY', apiKey: e.target.value })}
           placeholder="输入 API Key..."
-          className="w-full px-3 py-2 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
+          className="w-full px-3 py-1.5 text-xs rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors"
         />
         <p className="text-[10px] text-slate-600 leading-relaxed">
           选择模型后输入对应服务商的 API Key 即可使用
