@@ -113,11 +113,20 @@ export interface ActionItem {
   action: string;
 }
 
+/** 报告降级说明：对外归因 AI 接口，不泄露原始堆栈 */
+export interface ReportDegradation {
+  degraded: boolean;
+  reason?: 'llm_timeout' | 'llm_unavailable' | 'llm_error';
+  message?: string;
+  canRegenerate?: boolean;
+}
+
 export interface AIReportResponse {
   success: boolean;
   sections: ReportSection[];
   raw_analysis?: Record<string, unknown>;
   warning?: string;
+  degradation?: ReportDegradation;
 }
 
 export interface KPIResponse {

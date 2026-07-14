@@ -1,5 +1,5 @@
 ﻿/* 生成自包含 ECharts 交互式 HTML 大屏文件，保留所有 ECharts 交互和深色主题 */
-import type { EChartItem } from '../types/api';
+import type { EChartItem, ReportDegradation } from '../types/api';
 import type { CardItem, CardMeta } from '../components/cardTypes';
 import { Palette, ChartStyle, withAlpha } from '../theme';
 
@@ -1610,6 +1610,7 @@ function buildReportHTML(
   aiSummary: string,
   aiConclusion: string,
   rowCount: number = 0,
+  degradation?: ReportDegradation,
 ): string {
   // 鈽?sections 涓虹┖/杩囧皯鏃讹紝鐢熸垚鍏嶈矗鎶ュ憡缁撴瀯
   const effectiveSections = sections && sections.length > 0 ? sections : _buildFallbackReportSections(kpis, echarts, aiSummary, aiConclusion);
@@ -1872,6 +1873,8 @@ function buildReportHTML(
   </div>
 </div>
 
+${degradation && degradation.degraded ? '<div class="warning-box"><strong>⚠️ 报告已降级为统计摘要</strong><p style="margin:8px 0 0;">' + (degradation.message || 'AI 服务暂不可用，本报告已降级为纯统计摘要。您的统计数据完整准确，仅缺少 AI 解读。') + '</p></div>' : ''}
+
 <div class="toc">
   <strong>📋 报告目录</strong>
   <ol>${tocItems.map(t => `<li>${t}</li>`).join('')}</ol>
@@ -1925,6 +1928,7 @@ export function generateEChartsDashboardHTML(
   // 数据看板（medical）导出以 cards 为唯一数据源，与屏幕上 MedicalDashboard 完全一致
   cards?: CardItem[],
   meta?: CardMeta,
+  degradation?: ReportDegradation,
 ): string {
   switch (template) {
     case 'grid':
@@ -1946,6 +1950,7 @@ export function generateEChartsDashboardHTML(
         reportSummary || `数据共包含 ${kpis.length} 项关键指标，涵盖 ${echarts.length} 个可视化图表。`,
         reportConclusion || generateDefaultConclusion(kpis),
         rowCount,
+        degradation,
       );
     default:
       return buildGridLayout(kpis, echarts, title, hideChartTitle);

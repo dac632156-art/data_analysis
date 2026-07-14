@@ -11,7 +11,7 @@ import KPICards, { type KPIItem } from '../components/KPICards';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
 import * as api from '../api/client';
 import { generateEChartsDashboardHTML, generateAIDashboardHTML, downloadEChartsHTML } from '../utils/exportEChartsDashboard';
-import type { EChartItem } from '../types/api';
+import type { EChartItem, ReportDegradation } from '../types/api';
 import type { DashboardSchema } from '../types/dashboard';
 
 type TemplateType = 'command' | 'grid' | 'medical' | 'report' | 'schema';
@@ -356,6 +356,7 @@ export default function DashboardPage() {
   }>>([]);
   const [reportSummary, setReportSummary] = useState('');
   const [reportConclusion, setReportConclusion] = useState('');
+  const [reportDegraded, setReportDegraded] = useState<ReportDegradation | null>(null);
 
   const handleExportReport = async () => {
     if (!ds.apiKey) { alert('请先在左上角配置 AI API Key'); return; }
@@ -382,6 +383,8 @@ export default function DashboardPage() {
 
       // ★ 异步提交 + 轮询（内部规避 Render 50s HTTP 超时）
       const result = await api.generateAIReport(ds.sessionId, pk, bu, md, localPackages);
+      // 记录降级说明：AI 接口超时/不可达导致降级时，向体验者透明展示原因（与报告能力脱钩）
+      setReportDegraded(result.degradation?.degraded ? result.degradation : null);
       const sections: Array<{
         type: string; title: string; content?: string;
         insights?: Array<string | { chart_title: string; analysis: string }>;
@@ -438,6 +441,9 @@ export default function DashboardPage() {
         summaryText,
         conclusionText,
         ds?.rows ?? 0,
+        undefined,  // cards（report 模板不用）
+        undefined,  // meta（report 模板不用）
+        result.degradation,  // 降级说明透传给导出 HTML
       );
 
       // 同时将 HTML 写入后端返回的结构化 sections 中
@@ -613,6 +619,24 @@ export default function DashboardPage() {
               )}
               {reportError && (
                 <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{reportError}</p>
+              )}
+              {reportDegraded && (
+                <div className="flex flex-col gap-3 p-4 rounded-lg border border-[#FBBF24]/50 bg-[#FBBF24]/[0.08]">
+                  <div className="flex items-start gap-2">
+                    <span className="text-[#FBBF24] text-lg leading-none">⚠️</span>
+                    <div className="text-sm">
+                      <div className="font-semibold text-[#FBBF24] mb-1">报告已降级为统计摘要</div>
+                      <p className="leading-relaxed text-slate-200">{reportDegraded.message}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleExportReport}
+                    disabled={reportGenerating}
+                    className="self-start px-4 py-2 text-sm font-semibold rounded-lg bg-[#8B5CF6] text-white hover:bg-[#7C4DF0] hover:shadow-[0_0_16px_rgba(139,92,246,0.45)] focus:outline-none focus:shadow-[0_0_16px_rgba(139,92,246,0.45)] disabled:opacity-50 transition-all"
+                  >
+                    {reportGenerating ? `⏳ ${reportText}` : '🔄 重新生成（AI 洞察版）'}
+                  </button>
+                </div>
               )}
               {!reportGenerating && !reportError && !ds.apiKey && (
                 <p className="text-sm text-slate-400">（请先在左上角配置 AI API Key）</p>

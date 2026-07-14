@@ -97,6 +97,7 @@ def _run_report_task(
                 "packages_used": result.get("packages_used", 0),
                 "charts": chart_options,
                 "warning": result.get("warning"),
+                "degradation": result.get("degradation"),
             })
             with _report_tasks_lock:
                 _report_tasks[task_id] = {"status": "done", "result": payload, "ts": time.time()}

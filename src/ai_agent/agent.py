@@ -398,12 +398,31 @@ class DataAnalysisAgent:
                 "success": True,
                 "sections": sections,
                 "packages_used": len(packages),
+                # 成功路径也返回结构化 degradation（degraded=False），让前端判断逻辑统一
+                "degradation": {
+                    "degraded": False,
+                    "reason": "ok",
+                    "message": "",
+                    "canRegenerate": False,
+                },
             }
 
         except Exception as e:
             import logging as _logging; _logging.getLogger("agent").warning(f"report fallback: {e}")
             _tb.print_exc()
             warning = f"AI 报告生成失败（{str(e)}），以下为已有分析数据的直接汇总。"
+
+            # 解析异常类型，构造对用户友好的结构化降级说明（归因 AI 接口，不泄露原始堆栈）
+            err_text = str(e).lower()
+            if "timeout" in err_text or "timed out" in err_text:
+                reason = "llm_timeout"
+                message = "检测到 AI 接口响应超时，本报告已自动降级为纯统计摘要。您的统计数据完整准确，仅缺少 AI 智能解读，可稍后点击「重新生成（AI 洞察版）」重试。"
+            elif any(k in err_text for k in ("connection", "connect", "econn", "unreachable", "refused", "reset")):
+                reason = "llm_unavailable"
+                message = "检测到 AI 接口暂时不可达，本报告已自动降级为纯统计摘要。您的统计数据完整准确，仅缺少 AI 智能解读，可稍后点击「重新生成（AI 洞察版）」重试。"
+            else:
+                reason = "llm_error"
+                message = "AI 服务暂不可用，本报告已自动降级为纯统计摘要。您的统计数据完整准确，仅缺少 AI 智能解读，可稍后点击「重新生成（AI 洞察版）」重试。"
 
             try:
                 fallback_sections = _build_fallback_from_packages(packages, report_input)
@@ -414,6 +433,12 @@ class DataAnalysisAgent:
                     "sections": fallback_sections,
                     "packages_used": len(packages),
                     "warning": warning,
+                    "degradation": {
+                        "degraded": True,
+                        "reason": reason,
+                        "message": message,
+                        "canRegenerate": True,
+                    },
                 }
             except Exception as fb_e:
                 return {
