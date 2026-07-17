@@ -15,6 +15,23 @@ function renderMarkdown(text: string): string {
   return marked.parse(text) as string;
 }
 
+// 与 sendChat 对齐的防御性兜底：后端可能返回被 {} 包裹的原始 JSON（旧版 /insights/generate），
+// 此时抽取其中的 .insights 字段；正常 markdown 原样透传。
+function normalizeInsights(raw: string | undefined): string {
+  if (!raw) return '';
+  const s = raw.trim();
+  if (s.startsWith('{') && s.endsWith('}')) {
+    try {
+      const d = JSON.parse(s) as Record<string, unknown>;
+      return (d.insights as string) || (d.message as string) || (d.answer as string) || s;
+    } catch {
+      return s;
+    }
+  }
+  return s;
+}
+
+
 // 从 ECharts option 中提取标题文字（title 可能是对象 {text: "xxx"} 或纯字符串）
 function getOptionTitle(option: Record<string, unknown> | undefined, fallback = '同环比趋势'): string {
   if (!option) return fallback;
@@ -296,7 +313,7 @@ export default function AnalysisPage() {
       if (!provider) { alert('请先在左上角选择 AI 模型提供商'); setLoading(false); return; }
       const res = await api.chatAnalyze(ds.sessionId, reportPrompt, ds.apiKey, ds.customBaseUrl || provider.baseUrl, ds.customModel || provider.model);
       if (res.answer) {
-        setInsights(res.answer);
+        setInsights(normalizeInsights(res.answer));
         setTab('chat');
       }
     } catch (err) {
@@ -486,7 +503,7 @@ export default function AnalysisPage() {
           checked: item.priority === 'high',
         })));
         if (res.insights) {
-          setInsights(res.insights);
+          setInsights(normalizeInsights(res.insights));
         }
         setComputeResult(
           res.is_fallback
@@ -575,7 +592,7 @@ export default function AnalysisPage() {
     try {
       const provider = getProviderConfig();
       const res = await api.generateInsights(ds.sessionId, ds.apiKey, ds.customBaseUrl || provider?.baseUrl, ds.customModel || provider?.model);
-      setInsights(res.insights || '');
+      setInsights(normalizeInsights(res.insights || ''));
       // ★ 同步提取 intents（后端三层兜底保证不为空）
       if (res.intents && res.intents.length > 0) {
         setIntents(res.intents.map((item: Record<string, string>) => ({
