@@ -37,3 +37,18 @@ INFO:     Started server process [32688]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 WARNING:  StatReload detected changes in 'src\analysis_templates\base.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [32688]
+INFO:     Started server process [18264]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src\ai_agent\agent.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [18264]
+INFO:     Started server process [9944]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

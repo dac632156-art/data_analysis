@@ -38,7 +38,7 @@
 
   .proj-title { font-weight: 700; font-size: 10.5pt; }
   .proj-meta { color: #5CB8A2; font-weight: 600; font-size: 9pt; }
-  .highlight { background: #F3FAF7; border-left: 3px solid #9FD8C8; padding: 4px 8px; margin-top: 4px; font-size: 9pt; color: #3a4a47; }
+  .proj-date { color: #777; font-weight: 400; font-size: 9pt; float: right; margin-top: 1px; }
   .placeholder { color: #b06a6a; }
 </style>
 </head>
@@ -49,55 +49,77 @@
     <div class="target">AI 产品实习生 · <span class="placeholder">[城市]</span> · <span class="placeholder">[手机号]</span> · <span class="placeholder">[邮箱]</span> · <span class="placeholder">[GitHub]</span></div>
   </div>
 
+  <!-- ==================== 教育经历 ==================== -->
   <div class="section">
-    <div class="section-title">教育背景</div>
-    <div class="edu-line"><span class="placeholder">[学校名称]</span> — <span class="placeholder">[专业]</span>（<span class="placeholder">[本科/硕士]</span>） · <span class="placeholder">[入学年月]</span> – <span class="placeholder">[毕业年月]</span></div>
-    <div class="sub">相关课程：数据结构与算法 / 数据库系统 / 人工智能导论 · GPA：<span class="placeholder">[x.x]/4.0</span>（可选）</div>
+    <div class="section-title">教育经历</div>
+    <div class="edu-line">广东财经大学　　数据科学与大数据技术　　本科　　　　2023.09 – 2027.06</div>
+    <ul style="margin-top: 3px;">
+      <li><span class="b">主修课程</span>：SQL数据库、大数据分析方法、数学建模、数据采集、数据可视化</li>
+      <li><span class="b">荣誉/奖项</span>：2024–2025 连续两年获得"全国大学生数学建模竞赛省级三等奖"、25 年获得"全国大学生统计建模大赛省级三等奖"</li>
+    </ul>
   </div>
 
+  <!-- ==================== 实习工作经历 ==================== -->
   <div class="section">
-    <div class="section-title">实习经历</div>
-    <div class="proj-title">[公司名称] · [岗位，如 AI 数据 / 算法实习生] <span class="proj-meta">｜ [起止时间]</span></div>
-    <div class="sub" style="margin:2px 0 3px;">参与计算机视觉模型从数据到上线的全流程，负责数据治理、标注管理、模型训练部署与效果评测。</div>
-    <ul>
-      <li><span class="b">数据治理与标注管理</span>：对客户端 SKU 图片执行下载与分类，剔除曝光异常、过暗、画面杂乱等低质样本；将有效数据划分为训练 / 测试集，协调标注实习生分工并分担标注，建立标注质检流程保障标注质量。</li>
+    <div class="section-title">实习工作经历</div>
+    <div class="edu-line">广州市玄武无线科技股份有限公司　　AIOT 产品事业部　　　建模实习生　　　　2026.02 – 2026.06</div>
+    <ul style="margin-top: 3px;">
+      <li><span class="b">数据治理与标注管理</span>：对客户端 SKU 图片执行下载与分类，剔除曝光异常、过暗、画面杂乱等低质样本；将有效数据划分为训练 / 测试集。<span class="b">协调标注实习生分工并分担标注</span>，建立标注质量保障流程注重质量。</li>
       <li><span class="b">模型训练与部署</span>：基于 Python 登录服务器维护训练配置（继承历史权重、设定训练轮数、增量纳入新增 SKU 编码）并执行训练；训练产物经转换工具处理后部署至指定服务器，调用模型对测试集预打标。</li>
-      <li><span class="b">模型效果评测</span>：对测试集人工质检后，将质检结果与模型预打标对齐评估，输出各 SKU 的精确率 / 召回率 / F1，以<span class="b">总 F1 &gt; 95%</span> 作为上线量化门槛。</li>
-      <li><span class="b">周检与归因分析</span>：每周对 B 端客户线上数据做质检评估，监控模型整体结果 &gt; 95%；针对单体 SKU F1 &lt; 95% 做归因分析并输出分析报告，形成"监控—归因—优化"闭环。</li>
+      <li><span class="b">模型效果评测</span>：对测试集人工质检后，将质检结果与模型预打标对标作评估，输出各 SKU 的精确率 / 召回率 / F1，以<span class="b">总 F1 &gt; 95%</span> 作为上线门槛，完成<span class="b">模型效果测试与验收</span>。</li>
+      <li><span class="b">周检与归因分析</span>：每周对 B 端客户线上数据做质检评估，监控模型整体结果 &gt; 95%；针对单体 SKU F1 &lt; 95% 做归因分析并输出报告，形成"监控→归因→优化"闭环。</li>
     </ul>
   </div>
 
+  <!-- ==================== 项目经历 ==================== -->
   <div class="section">
-    <div class="section-title">项目经验</div>
-    <div class="proj-title">DataMind AI · AI 数据分析产品 <span class="proj-meta">｜产品设计 &amp; AI 协作主导</span></div>
-    <div class="sub" style="margin:2px 0 3px;">用户上传数据表即自动完成清洗、分析与业务报告生成；本人从真实使用痛点出发主导产品设计，并驱动 AI 编程工具完成从 0 到 1 实现。</div>
-    <ul>
-      <li><span class="b">产品定义与差异化</span>：主导定义"上传即分析"的产品形态，并提出<span class="b">"精确计算与 LLM 表达分离"</span>架构——数字由系统算准、LLM 仅做自然语言转写，避免让大模型直接算数出错；让不会写 prompt 的人也能拿到结构化分析结论，并把重复的清洗 / 画图 / 写结论劳动自动化。</li>
-      <li><span class="b">0→1 落地与 AI 工具链</span>：以自然语言驱动 AI 编程 Agent（CodeBuddy）完成全栈实现；负责需求拆解、架构设计与关键技术决策（统一数据契约、11 类分析意图的 YAML 知识中心、三段式推理管道），采用"规格驱动"工作法（先定模块边界与数据契约、再驱动 Agent 分步实现）确保复杂系统不失控。</li>
-      <li><span class="b">Agent 质量评估方法论（开源）</span>：针对 Agent 易 rush / 幻觉 / 改错的失效模式，沉淀一套可复用质量保障 SOP（五阶段工作流 + 置信度标签 + 根因两层 why + 用户验证清单），<span class="b">开源至 GitHub（github.com/linziquan/everything_skill，MIT）</span>，可作为大模型 / Agent 效果评测方法论。</li>
-      <li><span class="b">工程理解与研发对齐</span>：产品含 FastAPI 后端（11 路由 / 40+ 接口）、异步报告与多级降级；具备技术理解力，能就需求、接口与验收标准与研发高效沟通。</li>
-    </ul>
-    <div class="highlight">产品价值锚点：把重复性的数据分析劳动自动化、把分析门槛降到"会上传数据就会用"——从真实痛点而非技术炫技出发。</div>
-  </div>
+    <div class="section-title">项目经历</div>
 
-  <div class="section">
-    <div class="section-title">能力与工具</div>
-    <div class="skill-grid">
-      <div><span class="b">AI 工具链</span>：CodeBuddy（Cursor 同类）深度使用；熟悉 ChatGPT / Claude 等主流 AI 工具</div>
-      <div><span class="b">模型评测</span>：精确率 / 召回率 / F1、BadCase 分析、归因与上线标准</div>
-      <div><span class="b">产品基本功</span>：需求拆解、PRD 与原型设计（作品集实践）</div>
-      <div><span class="b">AI 应用</span>：Agent 架构、Prompt 调优、RAG 取舍</div>
-      <div><span class="b">研发对齐</span>：理解前后端链路、数据契约、异步与降级</div>
-      <div><span class="b">工程（基础）</span>：Python、Git；服务器配置与训练流程（实习实践）</div>
+    <!-- ---- DataMind ---- -->
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;">
+      <div class="proj-title">DataMind —— 数据分析平台</div>
+      <div class="proj-date">2026.06 – 2026.07</div>
     </div>
+    <div class="sub" style="margin-bottom:2px;">数据分析平台：<a href="https://data-analysis-teal-eight.vercel.app/upload" target="_blank" style="color:#5CB8A2;text-decoration:none;">https://data-analysis-teal-eight.vercel.app/upload</a></div>
+    <div class="sub" style="margin-bottom:3px;"><span class="b">项目简介：</span>源于实习期间每周高频产出数据周报的痛点，从内部验证 Demo 起步，逐步迭代扩展为交互式自然语言数据分析平台。通过接入通义千问免费接口，构建了低成本、高效的 AI 辅助分析链路，实现了从数据清洗、图表渲染到报告生成的端到端辅助闭环。</div>
+    <ul>
+      <li><span class="b">痛点拆解与最小可用版本跑通</span>：针对实习中"周检"流程繁琐、重复性高的问题，拆解出"数据清洗、指标计算、图表生成、结论产出"四个核心环节；先以本地 demo 固化规则、跑通自身工作流，确认能替代重复劳动后，才演进为平台；并基于成品用 AI 辅助工具整理 PRD 与可交互原型。</li>
+      <li><span class="b">平台化架构设计与演进</span>：在 Demo 基础上主导平台化演进——以"计算与表达分离"+三段式推理管道（规则→证据→LLM）确保结论可验证、防幻觉，构成核心差异化；并驱动 Agent 协同实现前后端，扩展为含多场景模板、看板引擎、异步报告与会话管理的完整分析平台。</li>
+      <li><span class="b">意图识别与可靠性设计</span>：构建基于 YAML 的结构化意图体系，将用户需求标准化为可执行指令；由意图层先校验数据 Schema、用计算器补齐派生度量（如同比/环比），规避大模型直接绘图时虚构不存在的列；并设计多级兜底（意图回退/图表注入/超时降级），保障输出稳定。</li>
+      <li><span class="b">用户验证与产品迭代</span>：将平台开放给早期用户试用，收集真实使用反馈与功能 bug；作为首个使用者主导功能验收与问题定位，驱动 Agent 持续迭代修复（含交互优化与 Prompt 调优），建立看板渲染的自动化测试保障多类型图表与交互逻辑正确。</li>
+    </ul>
+
+    <!-- ---- 高影响力与用户辨识的分层分析 ---- -->
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;margin-bottom:2px;">
+      <div class="proj-title">高影响力与用户辨识的分层分析</div>
+      <div><span class="proj-meta">队长</span>　<span class="proj-date">2025.11 – 2025.12</span></div>
+    </div>
+    <ul>
+      <li><span class="b">数据全流</span>：基于 Kaggle 百万社交媒体数据，独立完成从获取、清洗到建模的全流程数据实践。</li>
+      <li><span class="b">指标构建</span>：用 Python 处理缺失值，检测异常值并标准化数据，构建平均社交长度等 3 项核心分析指标。</li>
+      <li><span class="b">用户分层</span>：运用 K-Means 算法划分核心、高潜力及普通用户群体，精准分析不同群体行为特征差异。</li>
+      <li><span class="b">特征顺藤</span>：通过 TDA 发现正向内容占比、平均发帖间隔与用户影响力呈强相关性，为模型提供关键依据。</li>
+      <li><span class="b">模型优化</span>：构建随机森林模型识别高影响力用户，用 SMOTE 解决样本不平衡，提炼出 4 个关键影响因素，测试集准确率达 92%。</li>
+    </ul>
   </div>
 
+  <!-- ==================== 技能与技术理解 ==================== -->
   <div class="section">
-    <div class="section-title">其他（可选，按实际情况删改）</div>
+    <div class="section-title">技能与技术理解</div>
     <ul>
-      <li>开源：Agent 质量保障 SOP（GitHub: github.com/linziquan/everything_skill，MIT）</li>
-      <li>竞赛 / 奖项：<span class="placeholder">[xxx]</span></li>
-      <li>英语：CET-6 / <span class="placeholder">[xxx]</span></li>
+      <li><span class="b">技术工具</span>：Python（Pandas / NumPy）；SQL（基础查询）；Excel（透视表 / VLOOKUP）；了解 ECharts 可视化；了解 Figma</li>
+      <li><span class="b">AI 工具</span>：CodeBuddy（自然语言驱动 AI 编程 Agent，Cursor 同类，主导全栈构建）；熟悉 ChatGPT / Claude</li>
+      <li><span class="b">Prompt 工程</span>：约束规则设计、结构化输出（JSON）</li>
+      <li><span class="b">技术理解</span>：理解 LLM 基本原理与常见应用场景；了解 RAG / Agent 概念与适用边界；了解 FastAPI + React 应用架构（经 AI 编程实践）</li>
+    </ul>
+  </div>
+
+  <!-- ==================== 个人总结 ==================== -->
+  <div class="section">
+    <div class="section-title">个人总结</div>
+    <ul>
+      <li><span class="b">数据分析能力强</span>：独立完成亿级电商数据清洗及多维度分析，确保结果准确可靠</li>
+      <li><span class="b">善于团队协作</span>：在可视化项目中与小组高效配合，保障项目按时高质量交付</li>
     </ul>
   </div>
 
