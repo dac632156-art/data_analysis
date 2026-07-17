@@ -65,6 +65,63 @@ def _extract_json_by_brace_balance(text: str) -> str:
     return text[start:]
 
 
+def _extract_json_string_value(text: str, key: str):
+    """从文本中抽取 `"key": "..."` 的 JSON 字符串值（正确处理转义），失败返回 None。
+
+    逐字符扫描以处理值内部的转义引号/反斜杠，比正则更可靠。
+    """
+    pattern = r'"' + _re.escape(key) + r'"\s*:\s*"'
+    m = _re.search(pattern, text)
+    if not m:
+        return None
+    i = m.end()  # 指向起始引号后的第一个字符（值的开始）
+    n = len(text)
+    out = []
+    esc_map = {'n': '\n', 't': '\t', 'r': '\r', '"': '"', '\\': '\\', '/': '/', 'b': '\b', 'f': '\f'}
+    while i < n:
+        c = text[i]
+        if c == '\\' and i + 1 < n:
+            out.append(esc_map.get(text[i + 1], text[i + 1]))
+            i += 2
+            continue
+        if c == '"':
+            return ''.join(out)  # 未转义的闭合引号 → 结束
+        out.append(c)
+        i += 1
+    return ''.join(out)  # 未找到闭合引号（如截断）→ 返回已扫描内容
+
+
+def _extract_insights_text(data: dict, raw: str) -> str:
+    """兼容 'insights' / 'ins' 双 key 抽取洞察 Markdown；皆空则回退 raw。"""
+    ins = data.get("insights")
+    if isinstance(ins, str) and ins.strip():
+        return ins
+    ins2 = data.get("ins")
+    if isinstance(ins2, str) and ins2.strip():
+        return ins2
+    return raw
+
+
+def _extract_intents(data: dict) -> list:
+    """兼容 'intents' / 'intent' 双 key 抽取意图列表；非 list 返回 []。"""
+    intents = data.get("intents")
+    if isinstance(intents, list):
+        return intents
+    intents2 = data.get("intent")
+    if isinstance(intents2, list):
+        return intents2
+    return []
+
+
+def _best_effort_extract_ins(raw: str) -> str:
+    """json.loads 彻底失败时，尽力从原始文本抽取 ins/insights 字符串值；失败回退 raw。"""
+    for key in ("insights", "ins"):
+        val = _extract_json_string_value(raw, key)
+        if val and val.strip():
+            return val
+    return raw
+
+
 def _parse_ai_result_to_intents(result: str, df=None) -> dict:
     """三层解析 AI 输出 → 确保 intents 永不为空
     
@@ -80,10 +137,10 @@ def _parse_ai_result_to_intents(result: str, df=None) -> dict:
         candidate = json_match.group(1).strip()
         try:
             data = _json.loads(candidate)
-            intents = data.get("intents", [])
-            if isinstance(intents, list) and len(intents) > 0:
+            intents = _extract_intents(data)
+            if len(intents) > 0:
                 _log.info(f"Step 1 成功: 正则提取 → intents {len(intents)} 个")
-                return {"success": True, "insights": data.get("insights", result), "intents": intents}
+                return {"success": True, "insights": _extract_insights_text(data, result), "intents": intents}
             _log.info(f"Step 1: 正则提取成功但 intents 为空，继续 Step 2")
         except _json.JSONDecodeError as e:
             _log.info(f"Step 1 失败: 正则提取后 JSON 解析错误 ({e})，继续 Step 2")
@@ -94,10 +151,10 @@ def _parse_ai_result_to_intents(result: str, df=None) -> dict:
         # 说明提取了一段子串，尝试解析
         try:
             data = _json.loads(balanced)
-            intents = data.get("intents", [])
-            if isinstance(intents, list) and len(intents) > 0:
+            intents = _extract_intents(data)
+            if len(intents) > 0:
                 _log.info(f"Step 2 成功: 括号平衡提取 → intents {len(intents)} 个")
-                return {"success": True, "insights": data.get("insights", result), "intents": intents}
+                return {"success": True, "insights": _extract_insights_text(data, result), "intents": intents}
             _log.info(f"Step 2: 括号平衡提取成功但 intents 为空，继续 Step 3")
         except _json.JSONDecodeError as e:
             _log.info(f"Step 2 失败: 括号平衡提取后 JSON 解析错误 ({e})，继续 Step 3")
@@ -105,10 +162,10 @@ def _parse_ai_result_to_intents(result: str, df=None) -> dict:
         # balanced == raw，尝试直接解析整段
         try:
             data = _json.loads(raw)
-            intents = data.get("intents", [])
-            if isinstance(intents, list) and len(intents) > 0:
+            intents = _extract_intents(data)
+            if len(intents) > 0:
                 _log.info(f"Step 2 成功: 直接解析 → intents {len(intents)} 个")
-                return {"success": True, "insights": data.get("insights", result), "intents": intents}
+                return {"success": True, "insights": _extract_insights_text(data, result), "intents": intents}
             _log.info(f"Step 2: 直接解析成功但 intents 为空，继续 Step 3")
         except _json.JSONDecodeError:
             _log.info(f"Step 2 失败: 直接解析 JSON 错误，继续 Step 3")
@@ -116,10 +173,11 @@ def _parse_ai_result_to_intents(result: str, df=None) -> dict:
     # ---- Step 3: Planner 纯规则兜底 ----
     default_intents = _PLANNER.generate_default_intents(df) if df is not None else []
     _log.info(f"Step 3 兜底: Planner 生成 {len(default_intents)} 个 default intents")
-    # insights 文本仍保留 AI 返回的原始内容（即使不是 JSON）
+    # insights 文本尽力抽取（JSON 解析失败可能是 key 漂移/超长截断），
+    # 抽取不到时再回退原始内容，避免向前端返回裸 JSON 字符串。
     return {
         "success": True,
-        "insights": result,
+        "insights": _best_effort_extract_ins(result),
         "intents": default_intents,
         "is_fallback": True,  # 标记这是兜底生成，前端可据此调整 UI
     }
