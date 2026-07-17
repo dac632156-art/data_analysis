@@ -2,12 +2,19 @@
    根据 type 字段分发渲染：chart / table / kpi / insight / unsupported
    ★ 所有颜色统一来自 theme/（Galaxy Executive Dashboard），禁止写死。 */
 import React from 'react';
+import { marked } from 'marked';
 import EChartView, { EChartsOption } from './EChartView';
 import { theme } from '../theme';
 import type { AnalysisPackage, PackageKPIItem, PackageTableData, PackageChartItem } from '../types/api';
 
 const P = theme.palette;
 const C = theme.chart;
+
+// 与 AnalysisPage 的 renderMarkdown 保持一致：洞察/结论由后端 AI 生成（可信源），
+// 用 marked 渲染 Markdown（## 标题、- 列表、**加粗**），避免原始 Markdown 文本裸显。
+function renderMarkdown(text: string): string {
+  return marked.parse(text || '') as string;
+}
 
 interface Props {
   packages: AnalysisPackage[];
@@ -91,7 +98,7 @@ function InsightBlock({ insights }: { insights: string[] }) {
   return (
     <div style={{ marginTop: 8, padding: '10px 14px', background: 'rgba(139,92,246,0.059)', borderRadius: 8, border: '1px solid rgba(139,92,246,0.12)' }}>
       {insights.map((ins, i) => (
-        <p key={i} style={{ fontSize: 12, color: P.textSecondary, margin: '4px 0', lineHeight: 1.6 }}>{ins}</p>
+        <div key={i} className="md-body" style={{ fontSize: 12, color: P.textSecondary, margin: '4px 0', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: renderMarkdown(ins) }} />
       ))}
     </div>
   );
@@ -103,9 +110,10 @@ function ConclusionBlock({ conclusions }: { conclusions: string[] }) {
     <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(139,92,246,0.059)', borderRadius: 8, border: '1px solid rgba(139,92,246,0.15)' }}>
       <p style={{ fontSize: 11, color: '#8B5CF6', fontWeight: 600, marginBottom: 6 }}>核心结论</p>
       {conclusions.map((c, i) => (
-        <p key={i} style={{ fontSize: 12, color: P.textPrimary, margin: '4px 0', lineHeight: 1.6 }}>
-          <span style={{ color: '#8B5CF6', fontWeight: 700 }}>{i + 1}.</span> {c}
-        </p>
+        <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 12, color: P.textPrimary, margin: '6px 0', lineHeight: 1.6 }}>
+          <span style={{ color: '#8B5CF6', fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
+          <div className="md-body" style={{ flex: 1, minWidth: 0 }} dangerouslySetInnerHTML={{ __html: renderMarkdown(c) }} />
+        </div>
       ))}
     </div>
   );
