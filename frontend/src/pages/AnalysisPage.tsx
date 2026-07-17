@@ -976,7 +976,7 @@ export default function AnalysisPage() {
             <div className="glass-card p-4 space-y-3">
               <h3 className="text-sm font-semibold text-slate-300 mb-2">📊 数据洞察报告</h3>
               <div 
-                className="text-sm text-slate-300 leading-relaxed prose-a:text-[#8B5CF6] prose-strong:text-[#f8fafc] max-h-96 overflow-y-auto pr-2"
+                className="text-sm text-slate-300 leading-relaxed md-body max-h-96 overflow-y-auto pr-2"
                 style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(139,92,246,0.3) transparent' }}
                 dangerouslySetInnerHTML={{ __html: renderMarkdown(insights) }}
               />
@@ -1023,7 +1023,7 @@ export default function AnalysisPage() {
                     <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
                   ) : (
                     <div>
-                      <div className="leading-relaxed prose-a:text-[#8B5CF6] prose-strong:text-[#f8fafc] max-h-64 overflow-y-auto pr-1"
+                      <div className="leading-relaxed md-body max-h-64 overflow-y-auto pr-1"
                         style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(139,92,246,0.3) transparent' }}
                         dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
                       />

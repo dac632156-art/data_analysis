@@ -675,3 +675,85 @@ select option {
 .text-cosmic-galaxy { color: var(--cosmic-galaxy); }
 .text-cosmic-moon { color: var(--cosmic-moon); }
 .text-cosmic-aurora { color: var(--cosmic-aurora); }
+
+/* ============================================================
+   12. Markdown 正文（数据洞察报告 / AI 对话富文本）
+   仅作用于 .md-body 后代，不影响页面其它组件
+   ============================================================ */
+.md-body {
+  color: #CBD5E1;
+  line-height: 1.7;
+  font-size: 13px;
+  word-break: break-word;
+}
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4 {
+  color: #F8FAFC;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 14px 0 8px;
+}
+.md-body h1 { font-size: 18px; }
+.md-body h2 { font-size: 16px; border-left: 3px solid #8B5CF6; padding-left: 10px; }
+.md-body h3 { font-size: 14px; color: #A78BFA; }
+.md-body h4 { font-size: 13px; color: #A78BFA; }
+
+.md-body p { margin: 6px 0; }
+.md-body ul { list-style: disc; padding-left: 22px; margin: 6px 0; }
+.md-body ol { list-style: decimal; padding-left: 22px; margin: 6px 0; }
+.md-body li { margin: 3px 0; padding-left: 2px; }
+.md-body li::marker { color: #8B5CF6; }
+
+.md-body strong { color: #F8FAFC; font-weight: 600; }
+.md-body em { color: #E2E8F0; font-style: italic; }
+
+.md-body a { color: #8B5CF6; text-decoration: underline; text-underline-offset: 2px; }
+.md-body a:hover { color: #A78BFA; }
+
+.md-body code {
+  background: rgba(139, 92, 246, 0.12);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: #E9D5FF;
+}
+.md-body pre {
+  background: rgba(2, 6, 23, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.md-body pre code { background: transparent; padding: 0; color: #CBD5E1; }
+
+.md-body blockquote {
+  border-left: 3px solid #8B5CF6;
+  padding-left: 12px;
+  margin: 8px 0;
+  color: #94A3B8;
+}
+
+.md-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.md-body th,
+.md-body td {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 5px 8px;
+  text-align: left;
+}
+.md-body th { background: rgba(139, 92, 246, 0.1); color: #F8FAFC; font-weight: 600; }
+.md-body tbody tr:nth-child(even) { background: rgba(148, 163, 184, 0.04); }
+
+.md-body hr { border: none; border-top: 1px solid rgba(148, 163, 184, 0.15); margin: 12px 0; }
+.md-body img { max-width: 100%; border-radius: 8px; }
