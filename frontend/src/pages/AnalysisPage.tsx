@@ -827,7 +827,7 @@ export default function AnalysisPage() {
             {insights && !insights.startsWith('⚠️') && (
               <div className="glass-card p-4 space-y-3">
                 <div 
-                  className="text-sm text-slate-300 leading-relaxed prose-a:text-[#8B5CF6] prose-strong:text-[#f8fafc] max-h-80 overflow-y-auto pr-2"
+                  className="text-sm text-slate-300 leading-relaxed md-body max-h-80 overflow-y-auto pr-2"
                   style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(139,92,246,0.3) transparent' }}
                   dangerouslySetInnerHTML={{ __html: renderMarkdown(insights) }}
                 />
