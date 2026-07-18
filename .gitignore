@@ -6,9 +6,6 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Build output
-frontend/dist/
-
 # Environment / secrets
 .env
 .env.local
