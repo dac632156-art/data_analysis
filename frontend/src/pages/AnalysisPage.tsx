@@ -800,12 +800,12 @@ export default function AnalysisPage() {
           )}
 
           <div>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <h2 className="text-lg font-semibold text-[#f8fafc]">
                 🤖 AI 深度洞察
                 {!ds.apiKey && <span className="ml-2 text-xs text-slate-500 font-normal">（需配置 API Key）</span>}
               </h2>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button onClick={generateInsights} disabled={loading} className={btnClass}>
                   {loading ? '分析中...' : '生成洞察'}
                 </button>

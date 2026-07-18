@@ -480,8 +480,8 @@ select option {
   -webkit-backdrop-filter: blur(20px);
   border: 1.5px solid rgba(196,181,253,0.45);
   border-radius: 50%;
-  width: 360px;
-  height: 360px;
+  width: min(360px, 78vw);
+  height: min(360px, 78vw);
   margin: 0 auto;
   display: flex;
   align-items: center;

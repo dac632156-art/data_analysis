@@ -505,10 +505,10 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-full">
       {/* 控制栏 */}
-      <div className="flex items-center justify-between px-4 py-3" style={{ background: 'rgba(10,10,30,0.8)', borderBottom: '1px solid rgba(139,92,246,0.1)' }}>
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-4 py-3" style={{ background: 'rgba(10,10,30,0.8)', borderBottom: '1px solid rgba(139,92,246,0.1)' }}>
+        <div className="flex items-center gap-3 flex-wrap">
           {/* 模板切换 */}
-          <div className="flex rounded-lg overflow-hidden border border-[#1a1f3a]">
+          <div className="flex rounded-lg overflow-hidden border border-[#1a1f3a] flex-wrap">
             {TEMPLATES.map((tpl) => (
               <button
                 key={tpl.id}
@@ -530,7 +530,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* 恢复默认 */}
           <button onClick={() => template === 'schema' ? loadSchema() : loadEChartsDashboard()}
             className="px-2 py-1.5 text-xs rounded text-slate-500 hover:text-slate-300 transition-colors">

@@ -11,7 +11,17 @@ const navItems = [
   { path: '/dashboard', label: '仪表盘', icon: FiLayout },
 ];
 
-export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+export default function Sidebar({
+  collapsed,
+  onToggle,
+  mobileOpen,
+  onClose,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+  mobileOpen: boolean;
+  onClose: () => void;
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const { state, dispatch } = useData();
@@ -20,8 +30,26 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
   const defaultModel = currentProvider?.model || '';
   const defaultBaseUrl = currentProvider?.baseUrl || '';
 
+  // 移动端：点击导航项后关闭抽屉
+  const go = (path: string) => {
+    navigate(path);
+    onClose();
+  };
+
   return (
-    <aside className={`fixed left-0 top-0 h-screen z-20 flex flex-col overflow-y-auto overflow-x-hidden pb-4 transition-[width] duration-300 ${collapsed ? 'w-20' : 'w-64'}`}
+    <>
+      {/* 移动端遮罩：仅小屏、抽屉打开时显示 */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/55 md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+      <aside
+        className={`fixed left-0 top-0 h-screen z-40 flex flex-col overflow-y-auto overflow-x-hidden pb-4 transition-[transform,width] duration-300
+          ${collapsed ? 'md:w-20' : 'md:w-64'} w-64
+          ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
       style={{
         background: 'rgba(15, 23, 42, 0.85)',
         backdropFilter: 'blur(20px)',
@@ -33,8 +61,8 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
       }}
     >
       {/* Logo + 折叠按钮 */}
-      <div className={`flex-shrink-0 flex items-center py-6 border-b border-white/[0.06] ${collapsed ? 'justify-center px-2' : 'px-5 justify-between'}`}>
-        {!collapsed && (
+      <div className={`flex-shrink-0 flex items-center py-6 border-b border-white/[0.06] ${collapsed ? 'md:justify-center md:px-2' : 'md:px-5 md:justify-between'} px-5 justify-between`}>
+        {(!collapsed || mobileOpen) && (
           <div>
             <h1 className="text-xl font-bold text-[#f8fafc] tracking-tight"
               style={{ textShadow: '0 0 20px rgba(139,92,246,0.4)' }}
@@ -46,7 +74,7 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
         )}
         <button
           type="button"
-          onClick={onToggle}
+          onClick={() => { onToggle(); onClose(); }}
           aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
           aria-expanded={!collapsed}
           className="p-1.5 rounded-lg text-[#94a3b8] hover:text-[#f8fafc] hover:bg-[#8B5CF6]/10 transition-colors flex-shrink-0"
@@ -62,19 +90,19 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
           return (
             <button
               key={path}
-              onClick={() => navigate(path)}
+              onClick={() => go(path)}
               title={collapsed ? label : undefined}
               aria-label={label}
               className={`w-full flex items-center gap-3 rounded-lg text-sm transition-all ${
-                collapsed ? 'justify-center px-0' : 'px-4'
-              } py-2.5 ${
+                collapsed ? 'md:justify-center md:px-0' : 'md:px-4'
+              } px-4 py-2.5 ${
                 active
                   ? 'bg-[#8B5CF6]/20 text-[#f8fafc] border border-[#8B5CF6]/30 shadow-[0_0_12px_rgba(139,92,246,0.15)]'
                   : 'text-[#94a3b8] hover:text-[#f8fafc] hover:bg-[#8B5CF6]/8'
               }`}
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
-              {!collapsed && <span>{label}</span>}
+              {(!collapsed || mobileOpen) && <span>{label}</span>}
             </button>
           );
         })}
@@ -153,5 +181,6 @@ export default function Sidebar({ collapsed, onToggle }: { collapsed: boolean; o
         </div>
       )}
     </aside>
+    </>
   );
 }
