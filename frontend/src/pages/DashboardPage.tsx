@@ -589,36 +589,36 @@ export default function DashboardPage() {
             )
         ) : template === 'report' ? (
           /* 分析报告生成面板 */
-          <div className="flex-1 flex items-center justify-center p-8" style={{ background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)' }}>
-            <div className="max-w-2xl w-full text-center space-y-6 p-12 rounded-2xl bg-white shadow-lg border border-gray-200">
+          <div className="flex-1 flex items-center justify-center p-8 bg-transparent">
+            <div className="max-w-2xl w-full text-center space-y-6 p-12 rounded-2xl bg-[#0F172A]/[0.85] backdrop-blur-sm border border-[#8B5CF6]/20 shadow-[0_0_32px_rgba(139,92,246,0.15)]">
               <div className="text-6xl">📊</div>
-              <h2 className="text-2xl font-bold text-gray-800">生成数据分析报告</h2>
-              <p className="text-gray-500 leading-relaxed">
-                AI 将基于<strong>精确统计数据</strong>，自动执行五阶段分析流水线，生成专业数据分析报告：
+              <h2 className="text-2xl font-bold text-slate-100">生成数据分析报告</h2>
+              <p className="text-slate-300 leading-relaxed">
+                AI 将基于<strong className="text-[#22D3EE]">精确统计数据</strong>，自动执行五阶段分析流水线，生成专业数据分析报告：
               </p>
-              <div className="text-left text-sm text-gray-600 space-y-2 bg-gray-50 rounded-lg p-4">
-                <div>🔍 <strong>阶段1-2</strong>：字段识别 → 图表规划（Python pandas 精确计算）</div>
-                <div>📊 <strong>阶段3</strong>：统计分析 → 趋势/同比/TOP/异常/结构（代码计算）</div>
-                <div>💡 <strong>阶段4</strong>：洞察生成 → 5类洞察（趋势/结构/集中度/异常/风险）</div>
-                <div>📄 <strong>阶段5</strong>：报告生成 → 结构化报告（概览→指标→趋势→结构→TOP→异常→结论→建议）</div>
+              <div className="text-left text-sm text-slate-300 space-y-2 bg-[#1E293B]/50 border border-slate-700/40 rounded-lg p-4">
+                <div>🔍 <strong className="text-slate-100">阶段1-2</strong>：字段识别 → 图表规划（Python pandas 精确计算）</div>
+                <div>📊 <strong className="text-slate-100">阶段3</strong>：统计分析 → 趋势/同比/TOP/异常/结构（代码计算）</div>
+                <div>💡 <strong className="text-slate-100">阶段4</strong>：洞察生成 → 5类洞察（趋势/结构/集中度/异常/风险）</div>
+                <div>📄 <strong className="text-slate-100">阶段5</strong>：报告生成 → 结构化报告（概览→指标→趋势→结构→TOP→异常→结论→建议）</div>
               </div>
               {!ds.apiKey && (
-                <div className="text-sm text-orange-600 bg-orange-50 p-3 rounded-lg">
+                <div className="text-sm text-[#FBBF24] bg-[#FBBF24]/[0.08] border border-[#FBBF24]/30 p-3 rounded-lg">
                   ⚠️ 请先在左上角配置 AI API Key，报告需要 AI 来编写分析洞察
                 </div>
               )}
               <button
                 onClick={handleExportReport}
                 disabled={reportGenerating || !ds.apiKey}
-                className="px-8 py-3 text-base font-semibold rounded-lg bg-gradient-to-r from-[#0d1b2a] to-[#1b4965] text-white hover:shadow-lg disabled:opacity-50 transition-all"
+                className="px-8 py-3 text-base font-semibold rounded-lg bg-gradient-to-r from-[#0d1b2a] to-[#1b4965] text-white hover:shadow-[0_0_20px_rgba(56,189,248,0.35)] disabled:opacity-50 transition-all"
               >
                 {reportGenerating ? `⏳ ${reportText}` : '🚀 生成分析报告并下载'}
               </button>
               {reportGenerating && (
-                <p className="text-sm text-blue-600 animate-pulse">{reportText}</p>
+                <p className="text-sm text-[#22D3EE] animate-pulse">{reportText}</p>
               )}
               {reportError && (
-                <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">{reportError}</p>
+                <p className="text-sm text-[#FB7185] bg-[#FB7185]/[0.08] border border-[#FB7185]/30 p-3 rounded-lg">{reportError}</p>
               )}
               {reportDegraded && (
                 <div className="flex flex-col gap-3 p-4 rounded-lg border border-[#FBBF24]/50 bg-[#FBBF24]/[0.08]">
