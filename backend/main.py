@@ -91,7 +91,22 @@ async def new_session():
 
 
 # 前端构建产物目录（Render 部署时随仓库提交 frontend/dist，由后端直接托管）
-FRONTEND_DIST = os.path.join(project_root, "frontend", "dist")
+# 兼容不同部署目录结构：在多个候选路径中查找 frontend/dist
+def _resolve_frontend_dist():
+    """在多个候选路径中寻找 frontend/dist，兼容不同部署目录结构"""
+    candidates = [
+        os.path.join(project_root, "frontend", "dist"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend", "dist"),
+        os.path.join(os.getcwd(), "frontend", "dist"),
+        os.path.join(os.path.dirname(os.getcwd()), "frontend", "dist"),
+    ]
+    for c in candidates:
+        if os.path.isdir(c):
+            return os.path.abspath(c)
+    # 兜底：返回标准路径（即使不存在，main.py 会回退到 JSON）
+    return os.path.join(project_root, "frontend", "dist")
+
+FRONTEND_DIST = _resolve_frontend_dist()
 
 
 @app.get("/")
