@@ -17,6 +17,7 @@ from backend.utils.ai_error import enhance_ai_error
 from src.data_loader import get_data_info, get_column_info
 from src.utils.json_serializer import sanitize_json
 from src.utils.helpers import get_numeric_columns, get_categorical_columns, get_datetime_columns
+from config import QUOTA_BYTES
 
 def _parse_missing_rate(row) -> float:
     """解析缺失率，兼容字符串 '0.0%' 和数字格式"""
@@ -643,3 +644,44 @@ async def data_download(req: DownloadRequest):
         media_type="text/csv",
         headers={"Content-Disposition": disposition},
     )
+
+
+class DatasetSelectRequest(BaseModel):
+    session_id: str
+    dataset_id: str
+
+
+class DatasetRemoveRequest(BaseModel):
+    session_id: str
+    dataset_id: str
+
+
+@router.post("/data/select")
+async def data_select(req: DatasetSelectRequest):
+    """切换当前分析对象（active 数据集）；按需 reload 内存 df + 释放其余非 active 内存 df"""
+    ok = manager.select_dataset(req.session_id, req.dataset_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="数据集不存在")
+    return sanitize_json({"success": True, "active_dataset_id": req.dataset_id})
+
+
+@router.get("/data/datasets")
+async def data_datasets(session_id: str):
+    """返回会话全部数据集元信息（供前端"已上传报表"列表 / 刷新拉回）+ 累计额度"""
+    session = manager.get_session(session_id)
+    used = session.uploaded_bytes if session else 0
+    return sanitize_json({
+        "success": True,
+        "datasets": manager.get_datasets(session_id),
+        "used_bytes": used,
+        "quota_bytes": QUOTA_BYTES,
+    })
+
+
+@router.post("/data/remove-dataset")
+async def data_remove_dataset(req: DatasetRemoveRequest):
+    """删除指定数据集（删落盘 + 减额度 + 回退 active）；修复五"""
+    ok = manager.remove_dataset(req.session_id, req.dataset_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="数据集不存在")
+    return sanitize_json({"success": True})

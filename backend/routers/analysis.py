@@ -1,50 +1,29 @@
 """
 分析执行与保存 API 路由
 
-V2：模板通过 AnalysisLibrary + 动态导入管理，_TEMPLATES 仅做懒加载缓存。
+V2：模板通过 AnalysisLibrary + 动态导入管理。
+分析执行逻辑抽到 backend.routers._analysis_pipeline（供 /analysis/run 与 /analysis/process-datasets 共用）。
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Set
 import uuid
-import dataclasses
-import importlib
-from datetime import datetime
+import threading
+import time as _time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from backend.services.session_manager import manager
 from src.planner import Planner
-from src.chart_renderer import ChartRenderer
-from src.analysis_templates.base import AnalysisPackage
 from src.utils.json_serializer import sanitize_json
-from src.analysis_library import AnalysisLibrary
+from backend.routers._analysis_pipeline import run_intents_to_packages
+from src.mapping.column_mapper import map_dataset_columns
+from src.merge.dataset_merger import build_analysis_units, AnalysisUnit
 
 router = APIRouter()
 
-# ===== 模板懒加载缓存 =====
-_TEMPLATES: dict = {}
-
-_LIBRARY = AnalysisLibrary()
-_RENDERER = ChartRenderer()
+# 规则意图生成器（v1 不调 LLM，修复二）
 _PLANNER = Planner()
 
-def _get_template_class(template_name: str):
-    """通过 AnalysisLibrary 动态导入模板类（带缓存）
-
-    V3：Planner.TEMPLATE_MODULES 已移除，改为通过 AnalysisLibrary 查询。
-    template_name 是模板名（如 growth_analysis），需先查找对应的 intent。
-    """
-    if template_name in _TEMPLATES:
-        return _TEMPLATES[template_name]
-
-    # V3：遍历 Library 中所有 intent，找到 template 匹配的
-    for intent_obj in _LIBRARY.get_all():
-        if intent_obj.template == template_name:
-            cls = _LIBRARY.load_template_class(intent_obj.intent)
-            if cls:
-                _TEMPLATES[template_name] = cls
-            return cls
-
-    return None
 # ===== 请求模型 =====
 
 class IntentItem(BaseModel):
@@ -57,6 +36,10 @@ class IntentItem(BaseModel):
 class AnalysisRunRequest(BaseModel):
     session_id: str
     intents: List[IntentItem]
+    # 选填：LLM 兜底映射所需配置（缺省则降级为已有映射，不阻断分析）
+    api_key: Optional[str] = ""
+    base_url: Optional[str] = None
+    model: Optional[str] = None
 
 
 class AnalysisSaveRequest(BaseModel):
@@ -64,7 +47,7 @@ class AnalysisSaveRequest(BaseModel):
     package_ids: List[str]
 
 
-# ===== 分析执行 =====
+# ===== 分析执行（委托共享流水线，行为不变）=====
 
 @router.post("/analysis/run")
 async def api_analysis_run(req: AnalysisRunRequest):
@@ -72,156 +55,19 @@ async def api_analysis_run(req: AnalysisRunRequest):
     if df is None:
         raise HTTPException(status_code=404, detail="会话数据不存在")
 
-    packages: list = []
-    package_map: dict = {}
+    # 列名映射（次路径无 dataset_id，传 None；指纹仅基于 columns 计算）
+    llm_cfg = {
+        "api_key": req.api_key,
+        "base_url": req.base_url,
+        "model": req.model,
+    }
+    df = map_dataset_columns(req.session_id, None, df, llm_cfg)
 
-    for intent in req.intents:
-        # 1. Planner 翻译
-        plan = _PLANNER.plan(intent.model_dump(), df)
-        method = plan["analysis_method"]
-
-        # Planner 返回 unsupported → 尝试 YAML fallback_intents 链
-        if method == "unsupported":
-            fallback_intents = plan.get("fallback_intents", [])
-            dim = plan.get("dimension")
-            met = plan.get("metric")
-
-            if fallback_intents:
-                # 按 YAML 配置的 fallback 顺序逐一尝试
-                result = _try_fallback_chain(df, fallback_intents, dim, met,
-                                              intent.business_question,
-                                              plan.get("unsupported_reason", ""))
-            else:
-                result = _unsupported(
-                    intent.business_question,
-                    plan.get("unsupported_reason", "Planner 判定该问题无法在当前数据上执行"),
-                    plan.get("suggestion", ""),
-                )
-
-            pkg_id = str(uuid.uuid4())[:8]
-            result.id = pkg_id
-            result.business_question = intent.business_question
-            packages.append(dataclasses.asdict(result))
-            package_map[pkg_id] = result
-            continue
-
-        algorithm = plan.get("algorithm")
-        dim = plan.get("dimension")
-        met = plan.get("metric")
-
-        # 2. fallback 递归（若存在 Planner 自动派生的列，使用派生后的 df）
-        exec_df = plan.get("derived_df") if plan.get("derived_df") is not None else df
-        result = _execute_with_fallback(exec_df, method, dim, met, algorithm,
-                                         intent.business_question)
-
-        # 3. 图表渲染：chart_data → charts（ChartItem + ECharts option）
-        result.charts = _RENDERER.render_all(result.chart_data) if result.chart_data else []
-
-        pkg_id = str(uuid.uuid4())[:8]
-        result.id = pkg_id
-        result.business_question = intent.business_question
-
-        packages.append(dataclasses.asdict(result))
-        package_map[pkg_id] = result
-
-    # 3. 缓存到 Session（临时）
-    manager.set_analysis_packages(req.session_id, package_map)
-
-    return {"packages": sanitize_json(packages)}
-
-
-def _try_fallback_chain(df, fallback_intents: list, dim, met,
-                         business_question: str, original_reason: str) -> AnalysisPackage:
-    """按 YAML 配置的 fallback 顺序逐一尝试，第一个 can_run 成功即返回"""
-    for fb_intent in fallback_intents:
-        fb_entry = _LIBRARY.get_by_intent(fb_intent)
-        if fb_entry is None:
-            continue
-        template_name = fb_entry.template
-        template_cls = _get_template_class(template_name)
-        if template_cls is None:
-            continue
-
-        template = template_cls()
-        if template.can_run(df):
-            pkg = template.execute(df, dim, met, fb_entry.default_algorithm)
-            pkg.fallback_from = fb_intent
-            pkg.fallback_reason = f"当前数据不支持原始分析，已自动降级为「{fb_entry.display_name}」。" \
-                                  f"原因：{original_reason}"
-            return pkg
-
-    return _unsupported(business_question, original_reason)
-
-
-def _execute_with_fallback(df, method: str, dim, met, algorithm,
-                            business_question: str,
-                            fallback_from=None, depth=0) -> AnalysisPackage:
-
-    if depth > 5:
-        return _unsupported(business_question, "递归深度超限")
-
-    # 模板不存在 → 用 Library fallback
-    template_cls = _get_template_class(method)
-    if template_cls is None:
-        return _fallback_via_library(df, method, business_question, depth, dim, met)
-
-    template = template_cls()
-
-    if template.can_run(df):
-        pkg = template.execute(df, dim, met, algorithm)
-        pkg.fallback_from = fallback_from
-        return pkg
-
-    # can_run 失败 → 降级（用 TemplateRuntime 的 FALLBACK）
-    fallback_method = template_cls.runtime.FALLBACK
-    if fallback_method:
-        pkg = _execute_with_fallback(df, fallback_method, dim, met, algorithm,
-                                       business_question, fallback_from=method,
-                                       depth=depth + 1)
-        pkg.fallback_reason = f"当前数据不满足「{method}」的运行条件，已自动降级为「{fallback_method}」"
-        return pkg
-
-    return _unsupported(business_question, f"分析 '{method}' 无法执行且无降级方案")
-
-
-def _fallback_via_library(df, method, question, depth, dim=None, met=None):
-    """模板不存在时，从 Library 的 YAML fallback 列表中查找降级方案"""
-    # 查找该 method 对应的 Library intent，获取其 fallback 列表
-    for intent_obj in _LIBRARY.get_all():
-        if intent_obj.template == method:
-            if intent_obj.fallback:
-                return _try_fallback_chain(df, intent_obj.fallback, dim, met, question,
-                                           f"分析方法「{method}」尚未实现")
-            break
-
-    # 兜底：尝试 ranking
-    fb_entry = _LIBRARY.get_by_intent("ranking")
-    if fb_entry:
-        template_cls = _get_template_class(fb_entry.template)
-        if template_cls:
-            template = template_cls()
-            if template.can_run(df):
-                pkg = template.execute(df, dim, met, None)
-                pkg.fallback_from = method
-                pkg.fallback_reason = f"分析方法「{method}」尚未实现，已自动使用排名分析替代"
-                return pkg
-
-    return _unsupported(question, f"分析方法 '{method}' 尚未实现且无可用降级方案")
-
-
-def _unsupported(question: str, reason: str, suggestion: str = "") -> AnalysisPackage:
-    return AnalysisPackage(
-        id="",
-        analysis_type="unsupported",
-        business_question=question,
-        algorithm=None,
-        dimension=None,
-        metric=None,
-        can_run=False,
-        insights=[reason] if reason else [],
-        conclusions=[f"原因: {reason}"] if reason else [],
-        suggestion=suggestion,
+    packages, package_map = run_intents_to_packages(
+        df, [intent.model_dump() for intent in req.intents]
     )
+    manager.set_analysis_packages(req.session_id, package_map)
+    return {"packages": sanitize_json(packages)}
 
 
 # ===== 分析保存 =====
@@ -236,3 +82,240 @@ async def api_analysis_save(req: AnalysisSaveRequest):
     packages = manager.get_saved_packages(req.session_id)
     saved_ids = [p.get("id") for p in packages if p.get("id") in req.package_ids]
     return sanitize_json({"saved_count": len(saved_ids), "package_ids": saved_ids})
+
+
+# ===== 后台多数据集并行处理（照搬 report.py 骨架，修复二/三/七）=====
+
+_PROCESS_TASKS: Dict[str, dict] = {}
+_PROCESS_TASKS_LOCK = threading.Lock()
+_PROCESS_TTL = 900  # 任务内存表 TTL（秒），防泄漏
+# 修复七：只留线程池控"同时 2 个"，不再另设信号量 / LLM 信号量
+class ProcessDatasetsRequest(BaseModel):
+    session_id: str
+    dataset_ids: Optional[List[str]] = None  # 省略=处理全部
+    # v1 不要求 api_key（规则意图）；保留字段供后续 LLM 增强
+    api_key: Optional[str] = ""
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+
+
+def _cleanup_process_tasks():
+    """清理过期任务内存表项（须在锁内调用）"""
+    now = _time.time()
+    expired = [tid for tid, t in _PROCESS_TASKS.items()
+               if now - t.get("ts", 0) > _PROCESS_TTL]
+    for tid in expired:
+        _PROCESS_TASKS.pop(tid, None)
+
+
+def _process_one(session_id: str, dataset_id: str, llm_cfg: dict = None) -> int:
+    """处理单个数据集：列名映射 → 规则意图 → 流水线 → 分桶存储。返回生成的包数量。"""
+    df = manager.get_dataset_df(session_id, dataset_id)
+    if df is None:
+        raise RuntimeError("数据集为空或读取失败")
+    # 列名映射：统一为规范标准名，供下游图表生成使用一致语义列名
+    df = map_dataset_columns(session_id, dataset_id, df, llm_cfg)
+    # 修复二：v1 纯规则意图，不调 LLM
+    intents = _PLANNER.generate_default_intents(df)
+    packages, package_map = run_intents_to_packages(df, intents)
+    manager.set_dataset_packages(session_id, dataset_id, package_map)
+    return len(package_map)
+
+
+def _resolve_process_items(session_id: str, dataset_ids: List[str]) -> List[dict]:
+    """载入各表 df → 研判合并 → 注册宽表 → 产出处理项列表。
+
+    返回 [{"kind":"single"/"merged","dataset_id":str,
+            "sources":[...],"merge_keys":[...]}, ...]。
+    合并失败/异常一律降级为原多表单表项，保证端到端不阻断。
+
+    合并阶段位于「数据清洗之后、列名映射之前」：进入本函数时数据集已是
+    清洗后状态（清洗由用户在按开始分析前用 /clean/* 交互完成），不再触发清洗。
+    """
+    session = manager.get_session(session_id)
+    file_names: Dict[str, str] = {}
+    loaded = []
+    merged_existing: List[str] = []   # 已是宽表的数据集，直接单表处理，不参与二次合并
+    for did in dataset_ids:
+        df = manager.get_dataset_df(session_id, did)
+        if df is None:
+            continue
+        dsobj = session.datasets.get(did) if session else None
+        file_names[did] = dsobj.file_name if dsobj else did
+        if dsobj is not None and getattr(dsobj, "is_merged", False):
+            merged_existing.append(did)
+            continue
+        loaded.append((did, df))
+    if not loaded and not merged_existing:
+        return []
+    # 若本次选中的目标已含「合并宽表」：
+    # - 旧宽表本身与它的「来源原表」直接单表重分析，不再二次合并
+    #   （否则反复运行会把宽表与原始表再次连通，不断注册重复宽表）；
+    # - 真正「新增且不属于任何旧宽表来源」的表，彼此间仍可正常合并成新宽表。
+    if merged_existing:
+        merged_sources: Set[str] = set()
+        for mdid in merged_existing:
+            mobj = session.datasets.get(mdid) if session else None
+            if mobj is not None:
+                merged_sources.update(getattr(mobj, "sources", []) or [])
+        items = [{"kind": "single", "dataset_id": d} for d in merged_existing]
+        for d, _ in loaded:
+            if d in merged_sources:
+                items.append({"kind": "single", "dataset_id": d})
+        fresh = [(d, df) for d, df in loaded if d not in merged_sources]
+        if fresh:
+            try:
+                fresh_units = build_analysis_units(fresh, file_names)
+            except Exception:
+                fresh_units = [AnalysisUnit(kind="single", dataset_id=d,
+                                            file_name=file_names.get(d, d)) for d, _ in fresh]
+            for unit in fresh_units:
+                if unit.kind == "single":
+                    items.append({"kind": "single", "dataset_id": unit.dataset_id})
+                else:
+                    try:
+                        new_did = manager.add_merged_dataset(
+                            session_id, unit.df, unit.sources, unit.keys,
+                            file_name=unit.file_name or "合并宽表")
+                        items.append({
+                            "kind": "merged", "dataset_id": new_did,
+                            "sources": unit.sources, "merge_keys": unit.keys,
+                        })
+                    except Exception:
+                        for sd in unit.sources:
+                            items.append({"kind": "single", "dataset_id": sd})
+        return items
+    try:
+        units = build_analysis_units(loaded, file_names)
+    except Exception:
+        # 合并研判异常 → 降级为原多表单表
+        units = [AnalysisUnit(kind="single", dataset_id=d,
+                              file_name=file_names.get(d, d)) for d, _ in loaded]
+    items: List[dict] = []
+    for unit in units:
+        if unit.kind == "single":
+            items.append({"kind": "single", "dataset_id": unit.dataset_id})
+        else:
+            # 注册宽表入库（set_active=False，不抢占当前视图）
+            try:
+                new_did = manager.add_merged_dataset(
+                    session_id, unit.df, unit.sources, unit.keys,
+                    file_name=unit.file_name or "合并宽表")
+                items.append({
+                    "kind": "merged", "dataset_id": new_did,
+                    "sources": unit.sources, "merge_keys": unit.keys,
+                })
+            except Exception:
+                # 注册失败 → 来源表各自单表
+                for sd in unit.sources:
+                    items.append({"kind": "single", "dataset_id": sd})
+    return items
+
+
+def _run_process_task(task_id: str, session_id: str,
+                      process_items: List[dict], llm_cfg: dict = None):
+    # process_items: [{"kind":"single"/"merged","dataset_id":str,
+    #                   "sources":[...],"merge_keys":[...]}, ...]
+    total = len(process_items)
+    datasets_status: Dict[str, dict] = {}
+    for it in process_items:
+        did = it["dataset_id"]
+        extra = {}
+        if it["kind"] == "merged":
+            extra = {"kind": "merged",
+                     "sources": it.get("sources", []),
+                     "merge_keys": it.get("merge_keys", [])}
+        datasets_status[did] = {"status": "pending", **extra}
+    status = "running"
+    try:
+        futures = {}
+        # 修复七：线程池 max_workers=2 限制同时并行数（防 512MB OOM）
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            for it in process_items:
+                did = it["dataset_id"]
+                datasets_status[did] = {**datasets_status[did], "status": "running"}
+                futures[ex.submit(_process_one, session_id, did, llm_cfg)] = did
+            for fut in as_completed(futures):
+                did = futures[fut]
+                try:
+                    pkg_count = fut.result()
+                    datasets_status[did] = {**datasets_status[did],
+                                             "status": "done", "pkg_count": pkg_count}
+                except Exception as e:
+                    datasets_status[did] = {**datasets_status[did],
+                                             "status": "error", "error": str(e)}
+        status = "done"
+    except Exception as e:  # 顶层异常（如 executor 创建失败）
+        status = "error"
+        for did in list(datasets_status.keys()):
+            if datasets_status[did].get("status") in ("pending", "running"):
+                datasets_status[did] = {**datasets_status[did],
+                                         "status": "error", "error": str(e)}
+    finally:
+        with _PROCESS_TASKS_LOCK:
+            _PROCESS_TASKS[task_id].update({
+                "status": status,
+                "total": total,
+                "completed": sum(1 for v in datasets_status.values()
+                                  if v.get("status") == "done"),
+                "datasets": datasets_status,
+                "ts": _time.time(),
+            })
+
+
+@router.post("/analysis/process-datasets")
+async def api_process_datasets(req: ProcessDatasetsRequest):
+    """提交后台并行处理任务，立即返回 task_id；前端轮询 status 获取进度。"""
+    session = manager.get_session(req.session_id)
+    if session is None or not session.datasets:
+        raise HTTPException(status_code=404, detail="会话无数据集，请先上传")
+    target = req.dataset_ids if req.dataset_ids else list(session.datasets.keys())
+    target = [d for d in target if d in session.datasets]
+    if not target:
+        raise HTTPException(status_code=400, detail="指定的数据集不存在")
+
+    # 组装 LLM 兜底映射所需配置
+    llm_cfg = {
+        "api_key": req.api_key,
+        "base_url": req.base_url,
+        "model": req.model,
+    }
+
+    # 合并研判：数据清洗之后、列名映射之前。生成宽表并注册，产出处理项。
+    # 无关联键 / 合并失败 → 自动降级为原多表分别处理（端到端不阻断）。
+    process_items = _resolve_process_items(req.session_id, target)
+    if not process_items:
+        raise HTTPException(status_code=400, detail="指定的数据集读取失败")
+
+    task_id = str(uuid.uuid4())
+    initial = {}
+    for it in process_items:
+        extra = {"kind": it["kind"]}
+        if it["kind"] == "merged":
+            extra["sources"] = it["sources"]
+            extra["merge_keys"] = it["merge_keys"]
+        initial[it["dataset_id"]] = {"status": "pending", **extra}
+    with _PROCESS_TASKS_LOCK:
+        _PROCESS_TASKS[task_id] = {
+            "status": "running",
+            "total": len(process_items),
+            "completed": 0,
+            "datasets": initial,
+            "ts": _time.time(),
+        }
+    threading.Thread(
+        target=_run_process_task, args=(task_id, req.session_id, process_items, llm_cfg),
+        daemon=True,
+    ).start()
+    return {"task_id": task_id, "total": len(process_items)}
+
+
+@router.get("/analysis/process-datasets/status/{task_id}")
+async def api_process_status(task_id: str):
+    """轮询处理进度：running / done / error / 404(过期)"""
+    with _PROCESS_TASKS_LOCK:
+        _cleanup_process_tasks()
+        task = _PROCESS_TASKS.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="任务不存在或已过期")
+        return sanitize_json(dict(task))

@@ -5,6 +5,8 @@ import type {
   UploadResponse, PreviewResponse, StatsResponse,
   InsightsResponse, ChatResponse,
   AIReportResponse, KPIResponse, EChartResponse, EChartItem,
+  DatasetInfo, DatasetListResponse,
+  ProcessSubmitResponse, ProcessStatusResponse,
 } from '../types/api';
 import type { ChartConfig } from '../types';
 
@@ -197,11 +199,6 @@ export const handleOutliers = async (sessionId: string, column: string, method =
   const { data } = await api.post('/clean/handle-outliers', { session_id: sessionId }, {
     params: { column, method, action },
   });
-  return data;
-};
-
-export const dropDuplicates = async (sessionId: string) => {
-  const { data } = await api.post('/clean/drop-duplicates', { session_id: sessionId });
   return data;
 };
 
@@ -481,6 +478,44 @@ export const getDefaultIntents = async (sessionId: string): Promise<{
   source?: string;
 }> => {
   const { data } = await api.post('/intents/default', { session_id: sessionId });
+  return data;
+};
+
+/* ===== 多数据集管理 ===== */
+
+/** 切换当前分析对象（active 数据集）*/
+export const selectDataset = async (sessionId: string, datasetId: string): Promise<{ success: boolean; active_dataset_id: string }> => {
+  const { data } = await api.post('/data/select', { session_id: sessionId, dataset_id: datasetId });
+  return data;
+};
+
+/** 拉回会话全部数据集（刷新后恢复列表）*/
+export const listDatasets = async (sessionId: string): Promise<DatasetListResponse> => {
+  const { data } = await api.get<DatasetListResponse>('/data/datasets', { params: { session_id: sessionId } });
+  return data;
+};
+
+/** 删除指定数据集（删落盘 + 减额度 + 回退 active）*/
+export const removeDataset = async (sessionId: string, datasetId: string): Promise<{ success: boolean }> => {
+  const { data } = await api.post('/data/remove-dataset', { session_id: sessionId, dataset_id: datasetId });
+  return data;
+};
+
+/** 提交后台并行处理任务，返回 task_id（datasetIds 省略=全部）*/
+export const processDatasets = async (
+  sessionId: string,
+  datasetIds?: string[],
+): Promise<ProcessSubmitResponse> => {
+  const { data } = await api.post<ProcessSubmitResponse>('/analysis/process-datasets', {
+    session_id: sessionId,
+    dataset_ids: datasetIds || null,
+  });
+  return data;
+};
+
+/** 轮询处理进度 */
+export const getProcessStatus = async (taskId: string): Promise<ProcessStatusResponse> => {
+  const { data } = await api.get<ProcessStatusResponse>(`/analysis/process-datasets/status/${taskId}`);
   return data;
 };
 

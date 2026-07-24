@@ -11,14 +11,51 @@ import dataclasses
 import pandas as pd
 from typing import Dict, Optional, List, Any
 from threading import RLock, Thread
+from config import QUOTA_BYTES
+
+
+@dataclasses.dataclass
+class Dataset:
+    """单个数据集（每张上传的报表对应一个）"""
+    dataset_id: str
+    file_name: str
+    file_size_bytes: int
+    df: Optional[pd.DataFrame] = None          # 非 active 数据集可为 None（pickle 保留，按需 reload）
+    df_original: Optional[pd.DataFrame] = None  # 仅落盘失败时的兜底内存副本；正常为 None
+    original_path: Optional[str] = None        # 原始数据落盘路径(pickle)，释放内存时保留
+    rows: int = 0
+    columns: List[str] = dataclasses.field(default_factory=list)
+    column_info: List[dict] = dataclasses.field(default_factory=list)
+    preview: List[dict] = dataclasses.field(default_factory=list)
+    uploaded_at: float = 0.0
+    # 多表合并标记（合并宽表专用）
+    is_merged: bool = False                    # 是否为合并生成的宽表
+    sources: List[str] = dataclasses.field(default_factory=list)   # 来源 dataset_id 列表
+    merge_keys: List[str] = dataclasses.field(default_factory=list) # 实际使用的关联键列名
+
+
+def _parse_missing_rate(row) -> float:
+    """从 column_info 行解析缺失率（兼容百分比字符串 '12.3%' 与纯数字）。"""
+    try:
+        v = row.get("缺失率")
+        if v is None:
+            return 0.0
+        if isinstance(v, str):
+            return float(v.replace("%", "").strip()) / 100.0
+        return float(v)
+    except Exception:
+        return 0.0
 
 
 class SessionData:
-    """单个会话的数据"""
+    """单个会话的数据（支持多数据集）"""
     def __init__(self):
-        self.df: Optional[pd.DataFrame] = None
-        self.df_original: Optional[pd.DataFrame] = None  # 仅落盘失败时的兜底内存副本；正常为 None
-        self.original_path: Optional[str] = None         # 原始数据落盘路径(pickle)，释放内存
+        # ===== 多数据集存储 =====
+        self.datasets: Dict[str, Dataset] = {}        # key=dataset_id
+        self.active_dataset_id: Optional[str] = None  # 当前分析对象
+        self.uploaded_bytes: int = 0                  # 累计已上传字节（=Σ file_size_bytes）
+        self.dataset_packages: Dict[str, Dict[str, Any]] = {}  # dataset_id→{pkg_id:pkg}
+        # 向后兼容：df / df_original / original_path 改为委托到 active 数据集的属性（见下方 property）
         self.df_undo_stack: List[pd.DataFrame] = []  # 撤销栈（最多保存 20 步）
         self.cleaning_history: List[Dict] = []
         self.analysis_history: List[Dict] = []
@@ -31,6 +68,45 @@ class SessionData:
         self.reserved_at: float = 0.0         # 占用插槽的时间戳（用于预约超时释放）
         self.created_at: float = time.time()
         self.last_access: float = time.time()
+
+    # ===== df / df_original / original_path 委托到 active 数据集（向后兼容下游 ~30 处 get_data 调用）=====
+    def _active_dataset(self) -> Optional["Dataset"]:
+        if self.active_dataset_id is not None:
+            return self.datasets.get(self.active_dataset_id)
+        return None
+
+    @property
+    def df(self) -> Optional[pd.DataFrame]:
+        ds = self._active_dataset()
+        return ds.df if ds else None
+
+    @df.setter
+    def df(self, value: Optional[pd.DataFrame]):
+        ds = self._active_dataset()
+        if ds is not None:
+            ds.df = value
+
+    @property
+    def df_original(self) -> Optional[pd.DataFrame]:
+        ds = self._active_dataset()
+        return ds.df_original if ds else None
+
+    @df_original.setter
+    def df_original(self, value: Optional[pd.DataFrame]):
+        ds = self._active_dataset()
+        if ds is not None:
+            ds.df_original = value
+
+    @property
+    def original_path(self) -> Optional[str]:
+        ds = self._active_dataset()
+        return ds.original_path if ds else None
+
+    @original_path.setter
+    def original_path(self, value: Optional[str]):
+        ds = self._active_dataset()
+        if ds is not None:
+            ds.original_path = value
 
 
 class SessionManager:
@@ -75,14 +151,16 @@ class SessionManager:
                 session = SessionData()
                 self._sessions[session_id] = session
             # 已占插槽或已有数据 → 直接放行（幂等，避免重复预约）
-            if session.holds_slot or session.df is not None:
-                return {"granted": True, "session_id": session_id}
+            if session.holds_slot or session.active_dataset_id is not None:
+                return {"granted": True, "session_id": session_id,
+                        "used_bytes": session.uploaded_bytes, "quota_bytes": QUOTA_BYTES}
             # 有空位 → 预约该会话
             if self._slot_count() < self._max_sessions:
                 session.holds_slot = True
                 session.reserved_at = time.time()
                 session.last_access = time.time()
-                return {"granted": True, "session_id": session_id}
+                return {"granted": True, "session_id": session_id,
+                        "used_bytes": session.uploaded_bytes, "quota_bytes": QUOTA_BYTES}
             # 满员 → 入队，返回位次
             ticket_id = str(uuid.uuid4())
             self._queue.append({
@@ -194,16 +272,19 @@ class SessionManager:
                 session.last_access = time.time()
             return session
     
-    def set_data(self, session_id: str, df: pd.DataFrame):
-        """设置 DataFrame，如果 session 不存在则自动创建。
+    def add_dataset(self, session_id: str, df: pd.DataFrame, *, file_name: str,
+                    file_size_bytes: int, rows: int, columns: List[str],
+                    column_info: List[dict], preview: List[dict],
+                    dataset_id: Optional[str] = None, set_active: bool = True,
+                    account_quota: bool = True) -> str:
+        """新增一个数据集（不覆盖旧表）。返回 dataset_id。
 
-        原始数据落盘(pickle)以释放内存，内存只保留一份工作集 df。
+        原始数据落盘(pickle)以释放内存；非 active 数据集仅保留 pickle、释放内存 df（防 OOM）。
         落盘失败(磁盘满/权限)时兜底保留内存副本，保证功能不丢。
         """
         with self._lock:
             session = self._sessions.get(session_id)
             if session is None:
-                # 自动创建 session（前端可能用旧的 session_id 重连）
                 session = SessionData()
                 self._sessions[session_id] = session
             # 去除重复列名，避免后续 df[col] 返回 DataFrame 而非 Series
@@ -211,22 +292,109 @@ class SessionManager:
                 dup_cols = df.columns[df.columns.duplicated()].unique().tolist()
                 import logging as _logging; _logging.getLogger("session").warning(f"removing duplicate columns: {dup_cols}")
                 df = df.loc[:, ~df.columns.duplicated()]
-            # 原始数据落盘：重传先删旧文件，避免孤儿文件堆积
+            did = dataset_id or str(uuid.uuid4())
+            if did in session.datasets:
+                did = str(uuid.uuid4())  # 重名则重新生成，避免覆盖
+            path = os.path.join(self._original_dir, f"{session_id}_{did}.pkl")
             try:
-                if session.original_path and os.path.exists(session.original_path):
-                    try: os.remove(session.original_path)
-                    except OSError: pass
-                path = os.path.join(self._original_dir, f"{session_id}.pkl")
                 df.to_pickle(path)
-                session.original_path = path
-                session.df_original = None  # 正常路径不保留内存副本
+                original_path = path
+                df_original = None  # 正常路径不保留内存副本
             except Exception as e:  # 兜底：落盘失败则保留内存副本
                 import logging as _logging
                 _logging.getLogger("session").warning(f"原始数据落盘失败，回退内存保留: {e}")
-                session.df_original = df.copy()
-                session.original_path = None
-            session.df = df.copy()
+                original_path = None
+                df_original = df.copy()
+            ds = Dataset(
+                dataset_id=did, file_name=file_name, file_size_bytes=file_size_bytes,
+                df=df.copy(), df_original=df_original, original_path=original_path,
+                rows=rows, columns=list(columns), column_info=list(column_info),
+                preview=list(preview), uploaded_at=time.time(),
+            )
+            session.datasets[did] = ds
+            # account_quota=False 时只落库不累计额度（多 sheet 文件在首个 sheet 已计一次）
+            session.uploaded_bytes += file_size_bytes if account_quota else 0
+            if set_active:
+                session.active_dataset_id = did
+                # 修复一：驱逐其余非 active 数据集的内存 df（pickle 保留）
+                for other in session.datasets.values():
+                    if other.dataset_id != did and other.df is not None:
+                        other.df = None
+                # 闭环：新数据集成为 active，同步其（可能为空）产物
+                session.analysis_packages = dict(session.dataset_packages.get(did, {}))
             session.last_access = time.time()
+            return did
+
+    def add_merged_dataset(self, session_id: str, df: pd.DataFrame,
+                            sources: List[str], keys: List[str],
+                            file_name: str = "合并宽表") -> str:
+        """合并宽表入库：构造与上传一致的元信息，在锁内注册新数据集
+        （set_active=False，不抢占当前视图），并补写 is_merged/sources/merge_keys，
+        返回新 dataset_id。
+
+        合并阶段在 process-datasets 流水线中调用，宽表一旦注册即可被下游
+        列名映射与规则分析流水线正常识别。
+        """
+        import logging as _logging
+        import numpy as np
+        from src.data_loader import get_column_info, get_data_info
+
+        # 先去除重复列名（合并可能引入同名非键列），再构造元信息
+        if df.columns.duplicated().any():
+            df = df.loc[:, ~df.columns.duplicated()]
+        preview = df.head(100).replace({np.nan: None}).to_dict(orient="records")
+        column_info_df = get_column_info(df)
+        columns_list = []
+        for _, row in column_info_df.iterrows():
+            columns_list.append({
+                "name": str(row.get("列名", row.get("column", ""))),
+                "dtype": str(row.get("数据类型", row.get("dtype", ""))),
+                "missing": int(row.get("缺失值", row.get("missing", 0)) or 0),
+                "missing_rate": _parse_missing_rate(row),
+                "unique": int(row.get("唯一值数", row.get("unique", 0)) or 0),
+                "sample": str(row.get("示例值", row.get("sample", ""))),
+            })
+        data_info = get_data_info(df)
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = SessionData()
+                self._sessions[session_id] = session
+            did = str(uuid.uuid4())
+            while did in session.datasets:
+                did = str(uuid.uuid4())
+            path = os.path.join(self._original_dir, f"{session_id}_{did}.pkl")
+            try:
+                df.to_pickle(path)
+                original_path = path
+                df_original = None
+            except Exception as e:
+                _logging.getLogger("session").warning(f"合并宽表落盘失败，回退内存保留: {e}")
+                original_path = None
+                df_original = df.copy()
+            ds = Dataset(
+                dataset_id=did, file_name=file_name,
+                file_size_bytes=int(df.memory_usage(deep=True).sum()),
+                df=df.copy(), df_original=df_original, original_path=original_path,
+                rows=int(data_info.get("行数", len(df))),
+                columns=list(df.columns), column_info=list(columns_list),
+                preview=list(preview), uploaded_at=time.time(),
+                is_merged=True, sources=list(sources), merge_keys=list(keys),
+            )
+            session.datasets[did] = ds
+            # 不抢占当前 active 视图、不驱逐、不计额度
+            session.last_access = time.time()
+            return did
+
+    def set_data(self, session_id: str, df: pd.DataFrame):
+        """向后兼容：等价于新增一个默认 dataset（老调用方用）"""
+        self.add_dataset(
+            session_id, df,
+            file_name="data",
+            file_size_bytes=int(df.memory_usage(deep=True).sum()),
+            rows=int(df.shape[0]), columns=list(df.columns),
+            column_info=[], preview=[],
+        )
     
     def get_data(self, session_id: str) -> Optional[pd.DataFrame]:
         """获取当前 DataFrame"""
@@ -241,24 +409,175 @@ class SessionManager:
         session = self.get_session(session_id)
         if session is None:
             return None
+        ds = session._active_dataset()
+        if ds is None:
+            return None
         # 兜底：落盘失败时的内存副本
-        if session.df_original is not None:
-            return session.df_original
-        if session.original_path and os.path.exists(session.original_path):
+        if ds.df_original is not None:
+            return ds.df_original
+        if ds.original_path and os.path.exists(ds.original_path):
             try:
-                return pd.read_pickle(session.original_path)
+                return pd.read_pickle(ds.original_path)
             except Exception:
                 return None
         return None
 
     def _remove_original_file(self, session_id: str):
-        """删除会话对应的原始数据落盘文件（须在锁内调用；忽略异常）"""
+        """删除会话对应所有数据集的原始数据落盘文件（须在锁内调用；忽略异常）"""
         session = self._sessions.get(session_id)
-        if session and session.original_path and os.path.exists(session.original_path):
+        if session:
+            self._clear_session_datasets(session)
+
+    def _clear_session_datasets(self, session: SessionData):
+        """清空会话全部数据集（删除落盘 + 释放内存 + 归零额度）；须在锁内"""
+        for ds in list(session.datasets.values()):
+            if ds.original_path and os.path.exists(ds.original_path):
+                try:
+                    os.remove(ds.original_path)
+                except OSError:
+                    pass
+        session.datasets.clear()
+        session.active_dataset_id = None
+        session.uploaded_bytes = 0
+        session.df = None
+        session.df_original = None
+        session.original_path = None
+
+    # ===== 多数据集新方法 =====
+    def get_dataset_df(self, session_id: str, dataset_id: str) -> Optional[pd.DataFrame]:
+        """获取指定数据集的 df（缺失则从 pickle reload 回内存）"""
+        session = self.get_session(session_id)
+        if session is None:
+            return None
+        ds = session.datasets.get(dataset_id)
+        if ds is None:
+            return None
+        if ds.df is not None:
+            return ds.df
+        if ds.original_path and os.path.exists(ds.original_path):
             try:
-                os.remove(session.original_path)
-            except OSError:
-                pass
+                ds.df = pd.read_pickle(ds.original_path)
+                return ds.df
+            except Exception:
+                if ds.df_original is not None:
+                    ds.df = ds.df_original
+                    return ds.df
+                return None
+        if ds.df_original is not None:
+            ds.df = ds.df_original
+            return ds.df
+        return None
+
+    def select_dataset(self, session_id: str, dataset_id: str) -> bool:
+        """切换当前分析对象（active）；按需 reload + 驱逐其余非 active 内存 df（修复一）"""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None or dataset_id not in session.datasets:
+                return False
+            session.active_dataset_id = dataset_id
+            # 闭环：切换后把当前数据集的分析产物同步进 analysis_packages（看板/报告统一读取入口）
+            session.analysis_packages = dict(session.dataset_packages.get(dataset_id, {}))
+            ds = session.datasets[dataset_id]
+            # 按需 reload 内存 df
+            if ds.df is None:
+                if ds.original_path and os.path.exists(ds.original_path):
+                    try:
+                        ds.df = pd.read_pickle(ds.original_path)
+                    except Exception:
+                        if ds.df_original is not None:
+                            ds.df = ds.df_original
+                elif ds.df_original is not None:
+                    ds.df = ds.df_original
+            # 驱逐其余非 active 数据集的内存 df（pickle 保留）
+            for other in session.datasets.values():
+                if other.dataset_id != dataset_id and other.df is not None:
+                    other.df = None
+            session.last_access = time.time()
+            return True
+
+    def get_datasets(self, session_id: str) -> List[Dict[str, Any]]:
+        """返回全部数据集的元信息列表（供前端"已上传报表"列表 / 刷新拉回）"""
+        session = self.get_session(session_id)
+        if session is None:
+            return []
+        result = []
+        for ds in session.datasets.values():
+            result.append({
+                "dataset_id": ds.dataset_id,
+                "file_name": ds.file_name,
+                "file_size_bytes": ds.file_size_bytes,
+                "rows": ds.rows,
+                "columns": ds.columns,
+                "column_info": ds.column_info,
+                "preview": ds.preview,
+                "uploaded_at": ds.uploaded_at,
+                "is_active": ds.dataset_id == session.active_dataset_id,
+                "is_merged": ds.is_merged,
+                "sources": ds.sources,
+                "merge_keys": ds.merge_keys,
+            })
+        # 按上传时间倒序（最新在前）
+        result.sort(key=lambda x: x.get("uploaded_at", 0), reverse=True)
+        return result
+
+    def remove_dataset(self, session_id: str, dataset_id: str) -> bool:
+        """删除指定数据集（删落盘 + 减额度 + 回退 active）"""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None or dataset_id not in session.datasets:
+                return False
+            ds = session.datasets.pop(dataset_id)
+            # 删落盘
+            if ds.original_path and os.path.exists(ds.original_path):
+                try:
+                    os.remove(ds.original_path)
+                except OSError:
+                    pass
+            # 减额度
+            session.uploaded_bytes = max(0, session.uploaded_bytes - ds.file_size_bytes)
+            # 若该表原是 active，回退到最近剩余表的 active 并 reload
+            if session.active_dataset_id == dataset_id:
+                if session.datasets:
+                    # 选 uploaded_at 最大的剩余表
+                    next_id = max(session.datasets.values(),
+                                  key=lambda d: d.uploaded_at).dataset_id
+                    session.active_dataset_id = next_id
+                    session.analysis_packages = dict(session.dataset_packages.get(next_id, {}))
+                    nd = session.datasets[next_id]
+                    if nd.df is None:
+                        if nd.original_path and os.path.exists(nd.original_path):
+                            try:
+                                nd.df = pd.read_pickle(nd.original_path)
+                            except Exception:
+                                if nd.df_original is not None:
+                                    nd.df = nd.df_original
+                        elif nd.df_original is not None:
+                            nd.df = nd.df_original
+                else:
+                    session.active_dataset_id = None
+                    session.analysis_packages = {}
+            session.last_access = time.time()
+            return True
+
+    def set_dataset_packages(self, session_id: str, dataset_id: str, package_map: Dict[str, Any]):
+        """按 dataset_id 分桶保存分析产物（修复三）"""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = SessionData()
+                self._sessions[session_id] = session
+            session.dataset_packages[dataset_id] = package_map
+            # 修复三闭环：若正好是 active 数据集，同步进 session.analysis_packages 供看板/报告直接读取
+            if session.active_dataset_id == dataset_id:
+                session.analysis_packages = dict(package_map)
+            session.last_access = time.time()
+
+    def get_dataset_packages(self, session_id: str, dataset_id: str) -> Dict[str, Any]:
+        """获取指定数据集的分析产物（分桶）"""
+        session = self.get_session(session_id)
+        if session is None:
+            return {}
+        return dict(session.dataset_packages.get(dataset_id, {}))
 
     def update_data(self, session_id: str, df: pd.DataFrame):
         """更新当前 DataFrame（清洗后），如果 session 不存在则自动创建"""
@@ -323,6 +642,9 @@ class SessionManager:
                 session = SessionData()
                 self._sessions[session_id] = session
             session.analysis_packages = packages
+            # 闭环：把结果同时写进当前 active 数据集的桶，避免切换回来后丢失
+            if session.active_dataset_id:
+                session.dataset_packages[session.active_dataset_id] = packages
             session.last_access = time.time()
     
     def push_undo_state(self, session_id: str):

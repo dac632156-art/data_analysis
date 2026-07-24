@@ -149,16 +149,6 @@ export default function CleanPage() {
     }
   };
 
-  const handleDropDuplicates = async () => {
-    try {
-      const res = await api.dropDuplicates(ds.sessionId);
-      addMessage('success', `已删除 ${res.rows_dropped} 行重复数据`);
-      await refreshAllData();
-    } catch (err) {
-      addMessage('error', err instanceof Error ? err.message : '处理失败');
-    }
-  };
-
   const handleResetData = async () => {
     if (!window.confirm('确认要恢复到上传时的原始数据吗？所有清洗操作将被撤销。')) return;
     try {
@@ -253,7 +243,7 @@ export default function CleanPage() {
                 value={aiInput}
                 onChange={(e) => setAiInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAiClean()}
-                placeholder="例如：把缺失值用均值填充、删除重复行、把日期列转为日期类型、删除利润率大于200%的异常值..."
+                placeholder="例如：把缺失值用均值填充、把日期列转为日期类型、删除利润率大于200%的异常值..."
                 className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#A78BFA]/50"
               />
               <button onClick={handleAiClean} disabled={aiLoading || !aiInput.trim()}
@@ -411,16 +401,6 @@ export default function CleanPage() {
                   <option value="category">分类</option>
                 </select>
               </div>
-            </div>
-
-            {/* 删除重复行 */}
-            <div className="glass-card p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-                <FiTrash2 className="w-4 h-4 text-orange-400" /> 重复行处理
-              </h3>
-              <button onClick={handleDropDuplicates} className="px-4 py-2 text-sm rounded-lg bg-orange-600/80 text-white hover:bg-orange-600 transition-colors">
-                删除所有重复行
-              </button>
             </div>
 
             {/* 恢复原始数据 */}

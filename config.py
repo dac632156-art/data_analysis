@@ -20,6 +20,8 @@ APP_ICON = "📊"
 MAX_UPLOAD_SIZE_MB = int(os.environ.get("MAX_UPLOAD_SIZE_MB", 30))
 MAX_FILE_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 SUPPORTED_FORMATS = ["csv", "xlsx", "xls", "json", "db", "sqlite"]
+# 单会话累计文件额度（所有已上传文件字节之和 ≤ 此值）；上线固定 30MB 防 OOM
+QUOTA_BYTES = MAX_FILE_SIZE_BYTES
 
 # 图表配色（清新浅绿渐变方案）
 CHART_COLORS = ["#9FD8C8", "#5CB8A2", "#5A7C74", "#94B0A9", "#C7E6DF", "#2A4A43"]

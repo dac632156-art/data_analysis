@@ -19,6 +19,22 @@ export const AI_PROVIDERS: AiProviderConfig[] = [
   { id: 'agnes', name: 'Agnes AI', baseUrl: 'https://apihub.agnes-ai.com/v1', model: 'agnes-2.0-flash' },
 ];
 
+export interface DatasetInfo {
+  dataset_id: string;
+  file_name: string;
+  file_size_bytes: number;
+  rows: number;
+  columns: string[];
+  column_info: ColumnInfo[];
+  preview: Record<string, unknown>[];
+  uploaded_at: number;
+  is_active?: boolean;
+  // 多表合并宽表标记
+  is_merged?: boolean;
+  sources?: string[];
+  merge_keys?: string[];
+}
+
 interface AnalysisState {
   tab: string;
   stats: Record<string, unknown>[] | null;
@@ -50,6 +66,11 @@ interface DataState {
   loading: boolean;
   error: string | null;
   analysis: AnalysisState;
+  // ===== 多数据集管理（顶层 fileName/rows/columns/preview/columnInfo 始终代表 active 数据集，下游零改）=====
+  datasets: DatasetInfo[];
+  activeDatasetId: string | null;
+  usedBytes: number;
+  quotaBytes: number;
 }
 
 type Action =
@@ -64,7 +85,12 @@ type Action =
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_ERROR'; error: string | null }
   | { type: 'SET_ANALYSIS'; payload: Partial<AnalysisState> }
-  | { type: 'CLEAR_DATA' };
+  | { type: 'CLEAR_DATA' }
+  | { type: 'ADD_DATASET'; payload: DatasetInfo }
+  | { type: 'SELECT_DATASET'; datasetId: string }
+  | { type: 'REMOVE_DATASET'; datasetId: string }
+  | { type: 'SET_DATASETS'; datasets: DatasetInfo[] }
+  | { type: 'SET_QUOTA'; usedBytes: number; quotaBytes: number };
 
 const initialAnalysis: AnalysisState = {
   tab: 'stats',
@@ -97,7 +123,24 @@ const initialState: DataState = {
   loading: false,
   error: null,
   analysis: initialAnalysis,
+  datasets: [],
+  activeDatasetId: null,
+  usedBytes: 0,
+  quotaBytes: 0,
 };
+
+// 把某个数据集的字段回放到顶层（fileName/rows/columns/preview/columnInfo）
+// 无 active 数据集时清空顶层，避免删除/刷新后残留旧数据
+function replayToTop(state: DataState, ds: DatasetInfo | undefined): Partial<DataState> {
+  if (!ds) return { fileName: '', rows: 0, columns: 0, preview: [], columnInfo: [] };
+  return {
+    fileName: ds.file_name,
+    rows: ds.rows,
+    columns: ds.columns.length,
+    preview: ds.preview,
+    columnInfo: ds.column_info,
+  };
+}
 
 function dataReducer(state: DataState, action: Action): DataState {
   switch (action.type) {
@@ -123,6 +166,52 @@ function dataReducer(state: DataState, action: Action): DataState {
       return { ...state, error: action.error };
     case 'SET_ANALYSIS':
       return { ...state, analysis: { ...state.analysis, ...action.payload } };
+    case 'ADD_DATASET': {
+      const datasets = [...state.datasets, action.payload];
+      // 仅当该数据集显式 is_active（多 sheet 拆分的首个 sheet）或列表原本为空时才切换 active，
+      // 避免批量上传多 sheet 时 active 被逐个覆盖为最后一个
+      const makeActive = action.payload.is_active === true || state.datasets.length === 0;
+      const activeDatasetId = makeActive ? action.payload.dataset_id : state.activeDatasetId;
+      const activeDs = makeActive ? action.payload : (datasets.find(d => d.dataset_id === activeDatasetId) || null);
+      return {
+        ...state,
+        datasets,
+        activeDatasetId,
+        ...replayToTop(state, activeDs),
+      };
+    }
+    case 'SELECT_DATASET': {
+      const ds = state.datasets.find(d => d.dataset_id === action.datasetId);
+      return {
+        ...state,
+        activeDatasetId: action.datasetId,
+        ...replayToTop(state, ds),
+      };
+    }
+    case 'REMOVE_DATASET': {
+      const datasets = state.datasets.filter(d => d.dataset_id !== action.datasetId);
+      let next = { ...state, datasets, activeDatasetId: state.activeDatasetId };
+      if (state.activeDatasetId === action.datasetId) {
+        const nextActive = datasets[0];
+        next = {
+          ...next,
+          activeDatasetId: nextActive ? nextActive.dataset_id : null,
+          ...replayToTop(state, nextActive),
+        };
+      }
+      return next;
+    }
+    case 'SET_DATASETS': {
+      // 刷新拉回：替换列表；若 active 仍在列表则回放其字段
+      const ds = action.datasets.find(d => d.dataset_id === state.activeDatasetId);
+      return {
+        ...state,
+        datasets: action.datasets,
+        ...replayToTop(state, ds),
+      };
+    }
+    case 'SET_QUOTA':
+      return { ...state, usedBytes: action.usedBytes, quotaBytes: action.quotaBytes };
     case 'CLEAR_DATA':
       return { ...initialState, sessionId: state.sessionId, apiKey: state.apiKey, aiProvider: state.aiProvider, customModel: state.customModel, customBaseUrl: state.customBaseUrl };
     default:

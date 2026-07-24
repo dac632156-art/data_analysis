@@ -23,6 +23,37 @@ export interface UploadResponse {
     unique: number;
     sample: string;
   }[];
+  dataset_id: string;
+  used_bytes: number;
+  quota_bytes: number;
+  file_size_bytes: number;
+  /** 顶层列名数组（首表），供单表兜底路径使用 */
+  column_names?: string[];
+  /** 多 sheet Excel 时返回所有被识别出的数据表清单；单表时长度为 1 */
+  datasets?: UploadDatasetItem[];
+  sheet_count?: number;
+}
+
+/** 上传响应中单个数据表的元信息（多 sheet 拆分后每个 sheet 一项） */
+export interface UploadDatasetItem {
+  dataset_id: string;
+  file_name: string;
+  rows: number;
+  columns: number;
+  memory_usage: string;
+  total_missing: number;
+  duplicate_rows: number;
+  preview: Record<string, unknown>[];
+  column_info: {
+    name: string;
+    dtype: string;
+    missing: number;
+    missing_rate: number;
+    unique: number;
+    sample: string;
+  }[];
+  /** 该数据表的列名数组（与 DatasetInfo.columns 语义一致） */
+  column_names?: string[];
 }
 
 export interface PreviewResponse {
@@ -254,4 +285,59 @@ export interface CardMeta {
   total_cards: number;
   insight_strength: number;
   data_quality: number;
+}
+
+/* ===== 多数据集管理类型 ===== */
+
+export interface DatasetInfo {
+  dataset_id: string;
+  file_name: string;
+  file_size_bytes: number;
+  rows: number;
+  columns: string[];
+  column_info: {
+    name: string;
+    dtype: string;
+    missing: number;
+    missing_rate: number;
+    unique: number;
+    sample: string;
+  }[];
+  preview: Record<string, unknown>[];
+  uploaded_at: number;
+  is_active?: boolean;
+  // 多表合并宽表标记（合并生成的宽表才有）
+  is_merged?: boolean;
+  sources?: string[];   // 来源 dataset_id 列表
+  merge_keys?: string[]; // 实际使用的关联键列名
+}
+
+export interface DatasetListResponse {
+  success: boolean;
+  datasets: DatasetInfo[];
+}
+
+/** /analysis/process-datasets 提交响应 */
+export interface ProcessSubmitResponse {
+  task_id: string;
+  total: number;
+}
+
+/** 单个数据集的处理状态 */
+export interface DatasetProcessStatus {
+  status: 'pending' | 'running' | 'done' | 'error';
+  pkg_count?: number;
+  error?: string;
+  // 合并宽表处理项携带的元信息
+  kind?: 'single' | 'merged';
+  sources?: string[];
+  merge_keys?: string[];
+}
+
+/** /analysis/process-datasets/status/{task_id} 轮询响应 */
+export interface ProcessStatusResponse {
+  status: 'running' | 'done' | 'error';
+  total: number;
+  completed: number;
+  datasets: Record<string, DatasetProcessStatus>;
 }

@@ -3,7 +3,7 @@
 """
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any
 
 def get_missing_value_report(df: pd.DataFrame) -> Dict[str, Any]:
     """生成缺失值报告"""
@@ -177,10 +177,3 @@ def handle_outliers(df: pd.DataFrame, column: str, method: str, action: str = 'r
         df_new[column] = df_new[column].clip(lower=lower, upper=upper)
     
     return df_new
-
-def drop_duplicate_rows(df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
-    """删除重复行，返回删除后的数据和删除的行数"""
-    before = len(df)
-    df_new = df.drop_duplicates()
-    after = len(df_new)
-    return df_new, before - after

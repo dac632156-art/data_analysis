@@ -4,8 +4,8 @@ import { useDropzone } from 'react-dropzone';
 import { FiUploadCloud, FiFile } from 'react-icons/fi';
 
 // 上传上限：优先读 Vite 环境变量 VITE_MAX_UPLOAD_SIZE_MB（本地 .env.local 可设 5120=5GB）
-// 线上未设置该变量时默认 50MB；需与后端 config.py 的 MAX_UPLOAD_SIZE_MB 保持一致
-const MAX_SIZE_MB = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB) || 50;
+// 线上未设置该变量时默认 30MB；需与后端 config.py 的 MAX_UPLOAD_SIZE_MB 保持一致（修复八）
+const MAX_SIZE_MB = Number(import.meta.env.VITE_MAX_UPLOAD_SIZE_MB) || 30;
 const MAX_SIZE_TEXT = MAX_SIZE_MB >= 1024
   ? `${(MAX_SIZE_MB / 1024).toFixed(1)}GB`
   : `${MAX_SIZE_MB}MB`;
@@ -33,11 +33,22 @@ export default function FileUploader({ onUpload, disabled }: Props) {
     setError(null);
     uploadingRef.current = true;
     setUploading(true);
+    // 修复六：逐文件顺序上传，部分失败不影响其余；收集失败提示
+    const failures: string[] = [];
     try {
-      await onUpload(files[0]);
+      for (const f of files) {
+        try {
+          await onUpload(f);
+        } catch (e: any) {
+          failures.push(`${f.name}：${e?.message || '上传失败'}`);
+        }
+      }
     } finally {
       uploadingRef.current = false;
       setUploading(false);
+    }
+    if (failures.length) {
+      setError(`部分文件未上传（${failures.length} 个）：${failures[0]}`);
     }
   }, [onUpload]);
 
@@ -48,13 +59,16 @@ export default function FileUploader({ onUpload, disabled }: Props) {
         return;
       }
     }
+    if (rejections.length) {
+      setError('存在不支持的文件格式（支持 CSV · Excel · JSON · SQLite）');
+    }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     onDropRejected,
     accept: ACCEPTED,
-    maxFiles: 1,
+    // 修复八：放开 maxFiles，支持一次性多文件
     maxSize: MAX_SIZE_MB * 1024 * 1024,
     disabled: disabled || uploading,
   });

@@ -1,0 +1,109 @@
+# 列名映射词典（无歧义词典）
+# 格式：标准字段名 -> 该字段可能的所有原始列名变体（中英文均可）
+# 标准字段名是下游分析使用的「规范列名」（中文语义名）。
+#
+# 重要：有歧义的列名（如 name，在客户表/订单表含义不同）不要写进本词典，
+#       这类列会由系统按整表指纹 / 包含度 / 相似度 / LLM 自动解析归属。
+# 写入本词典的变体必须无歧义（每个变体只对应唯一标准字段）。
+mappings:
+  用户ID:
+    - user_id
+    - uid
+    - customer_id
+    - member_id
+    - account_id
+    - userid
+    - 客户编号
+    - 用户编码
+    - 会员编号
+  年龄:
+    - age
+    - 岁数
+  性别:
+    - gender
+    - sex
+    - 用户性别
+  教育水平:
+    - education
+    - 学历
+  成交金额:
+    - 金额
+    - 成交额
+    - 销售金额
+  出生年份:
+    - year_birth
+    - 出生年
+    - 生日年份
+  婚姻状况:
+    - marital_status
+    - 婚否
+    - 婚姻
+  收入:
+    - income
+    - 月收入
+    - 年收入
+    - 薪资
+  家中儿童数:
+    - kidhome
+    - 儿童数
+    - 小孩数
+  家中青少年数:
+    - teenhome
+    - 青少年数
+    - 少年数
+  注册日期:
+    - dt_customer
+    - 注册日期
+    - 客户注册日期
+    - 注册时间
+  最近消费天数:
+    - recency
+    - 最近消费
+    - 未消费天数
+  葡萄酒消费金额:
+    - mntwines
+    - 红酒消费金额
+    - 葡萄酒金额
+  水果消费金额:
+    - mntfruits
+    - 水果金额
+  肉类消费金额:
+    - mntmeatproducts
+    - 肉类金额
+  鱼类消费金额:
+    - mntfishproducts
+    - 鱼类金额
+  甜食消费金额:
+    - mntsweetproducts
+    - 甜食金额
+  黄金产品消费金额:
+    - mntgoldprods
+    - 贵金属消费金额
+    - 黄金金额
+  优惠购买次数:
+    - numdealspurchases
+    - 优惠次数
+    - 促销购买次数
+  网购次数:
+    - numwebpurchases
+    - 网购下单次数
+    - 线上购买次数
+  目录购买次数:
+    - numcatalogpurchases
+    - 目录下单次数
+  门店购买次数:
+    - numstorepurchases
+    - 实体店购买次数
+    - 门店下单次数
+  月网页访问次数:
+    - numwebvisitsmonth
+    - 月访问次数
+    - 网页访问次数
+  投诉标记:
+    - complain
+    - 是否投诉
+    - 投诉
+  营销响应:
+    - response
+    - 活动响应
+    - 营销反馈

@@ -14,7 +14,7 @@ from backend.utils.ai_error import enhance_ai_error
 from src.data_cleaner import (
     get_missing_value_report, handle_missing_values,
     detect_data_type_issues, convert_column_type,
-    detect_outliers, handle_outliers, drop_duplicate_rows
+    detect_outliers, handle_outliers
 )
 
 router = APIRouter()
@@ -116,24 +116,6 @@ async def api_handle_outliers(req: SessionRequest, column: str, method: str = "i
     return {
         "success": True,
         "preview": df_clean.head(100).replace({np.nan: None}).to_dict(orient="records"),
-        "rows": len(df_clean),
-    }
-
-
-@router.post("/clean/drop-duplicates")
-async def api_drop_duplicates(req: SessionRequest):
-    """删除重复行"""
-    df = manager.get_data(req.session_id)
-    if df is None:
-        raise HTTPException(status_code=404, detail="未找到数据")
-    df_clean, dropped = drop_duplicate_rows(df)
-    manager.push_undo_state(req.session_id)  # 保存撤销点
-    manager.update_data(req.session_id, df_clean)
-    manager.add_cleaning_step(req.session_id, {"action": "删除重复行", "dropped": dropped})
-    return {
-        "success": True,
-        "preview": df_clean.head(100).replace({np.nan: None}).to_dict(orient="records"),
-        "rows_dropped": dropped,
         "rows": len(df_clean),
     }
 
@@ -247,15 +229,12 @@ async def api_ai_clean(req: AICleanRequest):
         if miss > 0:
             missing_report[col] = int(miss)
 
-    dup_count = int(df.duplicated().sum())
-
     prompt = f"""你是一个专业的数据清洗助手。用户上传了一份数据，需要你帮TA清洗。
 
 【数据信息】
 - 行数: {len(df)}
 - 列名和类型: {dict(df.dtypes.astype(str))}
 - 含缺失值的列: {missing_report if missing_report else '无'}
-- 完全重复行: {dup_count} 行
 - 前20行预览:
 {data_preview}
 
@@ -268,7 +247,6 @@ async def api_ai_clean(req: AICleanRequest):
     "explanation": "用中文简短说明你打算怎么做（2-3句话）",
     "steps": [
         {{"action": "fill_missing", "column": "列名", "method": "fill_mean|fill_median|fill_mode|fill_0|fill_unknown|drop", "reason": "原因"}},
-        {{"action": "drop_duplicates", "reason": "原因"}},
         {{"action": "handle_outliers", "column": "列名", "method": "iqr|zscore", "do": "remove|cap", "reason": "原因"}},
         {{"action": "convert_type", "column": "列名", "target_type": "numeric|datetime|string|category", "reason": "原因"}}
     ]
@@ -276,7 +254,8 @@ async def api_ai_clean(req: AICleanRequest):
 
 注意：
 - 只返回 JSON，不要有任何其他文字
-- action 必须是: fill_missing / drop_duplicates / handle_outliers / convert_type 之一
+- action 必须是: fill_missing / handle_outliers / convert_type 之一
+- 严禁删除重复行（drop_duplicates），本系统不支持去重操作
 - 如果用户没有明确说明，不要随意删除数据
 - 如果清洗步骤不适用于数据（比如没有缺失值），就不要包含那个步骤
 - 优先使用 fill_mean（均值填充），如果是分类列则用 fill_mode（众数填充）"""
@@ -336,12 +315,6 @@ async def api_ai_clean(req: AICleanRequest):
                         desc += f"（删除了 {change} 行）"
                     applied.append({"step": desc, "reason": reason, "success": True})
                     manager.add_cleaning_step(req.session_id, {"type": "ai_fill_missing", "column": column, "method": method, "reason": reason})
-
-                elif action == "drop_duplicates":
-                    before = len(df)
-                    df, dropped = drop_duplicate_rows(df)
-                    applied.append({"step": f"删除重复行（删除了 {dropped} 行）", "reason": reason, "success": True})
-                    manager.add_cleaning_step(req.session_id, {"type": "ai_drop_dupes", "dropped": int(dropped), "reason": reason})
 
                 elif action == "handle_outliers" and column:
                     method = step.get("method", "iqr")

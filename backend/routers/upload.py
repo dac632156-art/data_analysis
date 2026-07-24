@@ -9,9 +9,9 @@ from typing import Dict, Any
 import pandas as pd
 import numpy as np
 
-from src.data_loader import load_csv, load_excel, load_json, load_sqlite, get_data_info, get_column_info
+from src.data_loader import load_csv, load_json, load_sqlite, get_data_info, get_column_info, identify_excel_data_sheets
 from backend.services.session_manager import manager
-from config import MAX_FILE_SIZE_BYTES, MAX_UPLOAD_SIZE_MB
+from config import MAX_FILE_SIZE_BYTES, MAX_UPLOAD_SIZE_MB, QUOTA_BYTES
 
 router = APIRouter()
 
@@ -42,6 +42,10 @@ class UploadResponse(BaseModel):
     columns: int
     preview: list
     column_info: list
+    dataset_id: str = ""
+    used_bytes: int = 0
+    quota_bytes: int = 0
+    file_size_bytes: int = 0
 
 
 @router.post("/upload/gate")
@@ -90,12 +94,27 @@ async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
     """
     上传数据文件
     支持 CSV/Excel/JSON/SQLite 格式
-    返回数据预览和字段信息
+    返回数据预览和字段信息；每张文件作为独立数据集追加（不覆盖旧表）
     """
-    # 验证文件大小
+    # 创建或使用已有会话（前置，便于累计额度判断）
+    if not session_id:
+        # 正常路径前端必带 sessionId（已预占插槽），此兜底理论不触发；仍计入上限以保一致
+        session_id = manager.create_session()
+        manager.reserve_session(session_id)
+
+    # 验证文件大小（单文件上限）
     content = await file.read()
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=413, detail=f"文件大小超过 {MAX_UPLOAD_SIZE_MB}MB 限制")
+
+    # 累计 30MB 额度拦截（所有已上传文件字节之和）
+    session = manager.get_session(session_id)
+    used = session.uploaded_bytes if session else 0
+    if used + len(content) > QUOTA_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"累计上传额度已用尽：已用 {used / 1024 / 1024:.1f}MB / 剩余 {(QUOTA_BYTES - used) / 1024 / 1024:.1f}MB。请删除部分报表或释放插槽。",
+        )
 
     # 验证文件格式
     filename = file.filename.lower()
@@ -107,67 +126,108 @@ async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
             detail=f"不支持的文件格式: .{ext}。支持: CSV, Excel, JSON, SQLite"
         )
 
-    # 创建或使用已有会话
-    if not session_id:
-        # 正常路径前端必带 sessionId（已预占插槽），此兜底理论不触发；仍计入上限以保一致
-        session_id = manager.create_session()
-        manager.reserve_session(session_id)
-
     try:
         # 加载数据（解析移入线程池 + 信号量限流，见 _PARSE_SEMAPHORE 说明）
+        # 解析为若干 (sheet_name, df) 候选；Excel 自动识别全部数据表 sheet
         if ext == 'csv':
-            df = await asyncio.to_thread(load_csv, content, file.filename)
+            sheets = [(None, await asyncio.to_thread(load_csv, content, file.filename))]
         elif ext in ('xlsx', 'xls'):
             async with _PARSE_SEMAPHORE:
-                df = await asyncio.to_thread(load_excel, content)
+                identified = await asyncio.to_thread(identify_excel_data_sheets, content)
+            if not identified:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Excel 中未识别到任何数据表（可能都是空表或说明页）",
+                )
+            sheets = [(s["sheet_name"], s["df"]) for s in identified]
         elif ext == 'json':
-            df = await asyncio.to_thread(load_json, content)
+            sheets = [(None, await asyncio.to_thread(load_json, content))]
         elif ext in ('db', 'sqlite'):
             async with _PARSE_SEMAPHORE:
                 tables = await asyncio.to_thread(load_sqlite, content)
             # 取第一个表作为数据
             if isinstance(tables, dict):
                 first_table = list(tables.keys())[0]
-                df = tables[first_table]
+                sheets = [(first_table, tables[first_table])]
             else:
-                df = tables
+                sheets = [(None, tables)]
         else:
             raise HTTPException(status_code=400, detail="不支持的文件格式")
 
-        if df is None or df.empty:
+        # 逐个数据表落库（多 sheet Excel → 多个独立数据集）
+        created = []          # [{dataset_id, file_name, rows, columns, ...}] 供前端批量建表
+        first_meta = None
+        for idx, (sheet_name, df) in enumerate(sheets):
+            if df is None or df.empty:
+                continue
+            preview = df.head(100).replace({np.nan: None}).to_dict(orient="records")
+            column_info = get_column_info(df)
+            data_info = get_data_info(df)
+
+            # 转换列信息为列表
+            columns_list = []
+            for _, row in column_info.iterrows():
+                columns_list.append({
+                    "name": str(row.get("列名", row.get("column", ""))),
+                    "dtype": str(row.get("数据类型", row.get("dtype", ""))),
+                    "missing": int(row.get("缺失值", row.get("missing", 0))),
+                    "missing_rate": _parse_missing_rate(row),
+                    "unique": int(row.get("唯一值数", row.get("unique", 0))),
+                    "sample": str(row.get("示例值", row.get("sample", ""))),
+                })
+
+            # 多 sheet：文件名带 sheet 标识；首个 sheet 计全额额度，其余只落库不计额度
+            ds_name = file.filename if sheet_name is None else f"{file.filename} ▸ {sheet_name}"
+            dataset_id = manager.add_dataset(
+                session_id, df,
+                file_name=ds_name,
+                file_size_bytes=len(content) if idx == 0 else 0,
+                rows=int(data_info.get("行数", len(df))),
+                columns=list(df.columns),
+                column_info=columns_list,
+                preview=preview,
+                set_active=(idx == 0),
+                account_quota=(idx == 0),
+            )
+            meta = {
+                "dataset_id": dataset_id,
+                "file_name": ds_name,
+                "rows": int(data_info.get("行数", len(df))),
+                "columns": int(data_info.get("列数", len(df.columns))),
+                "memory_usage": str(data_info.get("内存占用", data_info.get("memory_usage", ""))),
+                "total_missing": int(data_info.get("缺失值总数", data_info.get("total_missing", 0))),
+                "duplicate_rows": int(data_info.get("重复行数", data_info.get("duplicate_rows", 0))),
+                "preview": preview,
+                "column_info": columns_list,
+                "column_names": list(df.columns),
+            }
+            created.append(meta)
+            if first_meta is None:
+                first_meta = meta
+
+        if not created:
             raise HTTPException(status_code=400, detail="文件内容为空或无法读取")
 
-        # 存储数据到会话
-        manager.set_data(session_id, df)
-
-        # 获取预览和数据信息（将 NaN 替换为 None 以确保 JSON 可序列化）
-        preview = df.head(100).replace({np.nan: None}).to_dict(orient="records")
-        column_info = get_column_info(df)
-        data_info = get_data_info(df)
-
-        # 转换列信息为列表
-        columns_list = []
-        for _, row in column_info.iterrows():
-            columns_list.append({
-                "name": str(row.get("列名", row.get("column", ""))),
-                "dtype": str(row.get("数据类型", row.get("dtype", ""))),
-                "missing": int(row.get("缺失值", row.get("missing", 0))),
-                "missing_rate": _parse_missing_rate(row),
-                "unique": int(row.get("唯一值数", row.get("unique", 0))),
-                "sample": str(row.get("示例值", row.get("sample", ""))),
-            })
-
+        used_after = manager.get_session(session_id).uploaded_bytes
         return {
             "session_id": session_id,
+            "dataset_id": first_meta["dataset_id"],
             "success": True,
-            "file_name": file.filename,
-            "rows": int(data_info.get("行数", len(df))),
-            "columns": int(data_info.get("列数", len(df.columns))),
-            "memory_usage": str(data_info.get("内存占用", data_info.get("memory_usage", ""))),
-            "total_missing": int(data_info.get("缺失值总数", data_info.get("total_missing", 0))),
-            "duplicate_rows": int(data_info.get("重复行数", data_info.get("duplicate_rows", 0))),
-            "preview": preview,
-            "column_info": columns_list,
+            "used_bytes": used_after,
+            "quota_bytes": QUOTA_BYTES,
+            "file_size_bytes": len(content),
+            "file_name": first_meta["file_name"],
+            "rows": first_meta["rows"],
+            "columns": first_meta["columns"],
+            "memory_usage": first_meta["memory_usage"],
+            "total_missing": first_meta["total_missing"],
+            "duplicate_rows": first_meta["duplicate_rows"],
+            "preview": first_meta["preview"],
+            "column_info": first_meta["column_info"],
+            "column_names": first_meta["column_names"],
+            # 多 sheet：返回所有被识别出的数据表清单（单表时长度为 1，前端统一走列表）
+            "datasets": created,
+            "sheet_count": len(created),
         }
 
     except ValueError as e:

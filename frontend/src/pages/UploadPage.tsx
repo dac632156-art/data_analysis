@@ -1,259 +1,317 @@
-/* UploadPage - 数据上传与预览 */
-import React, { useState, useRef, useCallback } from 'react';
-import FileUploader from '../components/FileUploader';
-import DataTable from '../components/DataTable';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { FileText, Loader2, Trash2, Play, CheckCircle2, AlertTriangle, Database, GitMerge } from 'lucide-react';
+import TopNav from '../components/TopNav';
+import Sidebar from '../components/Sidebar';
 import MetricCard from '../components/MetricCard';
-import ErrorBoundary from '../components/ErrorBoundary';
-import QueueModal from '../components/QueueModal';
+import DataTable from '../components/DataTable';
+import FileUploader from '../components/FileUploader';
 import { useData } from '../contexts/DataContext';
-import { uploadFile, uploadGate, getUploadQueueStatus, cancelUploadQueue, releaseUploadSlot } from '../api/client';
+import { formatBytes } from '../utils/format';
+import {
+  uploadFile, listDatasets, removeDataset, selectDataset,
+  processDatasets, getProcessStatus, releaseUploadSlot,
+} from '../api/client';
+import type { DatasetInfo, DatasetProcessStatus } from '../types/api';
 
-// 并发数据插槽上限（与后端 SessionManager.max_sessions 保持一致，仅用于弹窗展示）
-const MAX_SESSIONS = 5;
+const QUOTA_DEFAULT = 30 * 1024 * 1024;
 
 export default function UploadPage() {
   const { state, dispatch } = useData();
+  const { sessionId, datasets, activeDatasetId, usedBytes, quotaBytes, fileName, rows, columns, loading, error, preview, columnInfo } = state;
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [queue, setQueue] = useState<{ open: boolean; position: number; ticketId: string | null }>({
-    open: false,
-    position: 1,
-    ticketId: null,
-  });
-  const cancelRef = useRef(false);
+  const [processing, setProcessing] = useState(false);
+  const [processStatus, setProcessStatus] = useState<Record<string, DatasetProcessStatus>>({});
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // sessionId 可能在组件生命周期内变化，pollStatus 用 [] 闭包需经 ref 读取最新值
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
 
-  // 真正执行上传（含 session_id 同步与数据写入），供直接上传与排到后自动上传复用
-  const doUpload = useCallback(async (file: File, sessionId: string) => {
-    const res = await uploadFile(file, sessionId);
-    // 同步后端返回的 session_id，确保后续页面能找到数据
-    if (res.session_id && res.session_id !== state.sessionId) {
-      dispatch({ type: 'SET_SESSION', sessionId: res.session_id });
-      localStorage.setItem('sessionId', res.session_id);
-    }
-    // 防御性处理：确保所有字段都有默认值
-    const safeRes = {
-      file_name: res.file_name ?? file.name,
-      rows: res.rows ?? 0,
-      columns: res.columns ?? 0,
-      preview: Array.isArray(res.preview) ? res.preview : [],
-      column_info: Array.isArray(res.column_info) ? res.column_info.map((col: Record<string, unknown>) => ({
-        name: String(col.name ?? ''),
-        dtype: String(col.dtype ?? ''),
-        missing: Number(col.missing ?? 0),
-        missing_rate: Number(col.missing_rate ?? 0),
-        unique: Number(col.unique ?? 0),
-        sample: String(col.sample ?? ''),
-      })) : [],
-      memory_usage: String(res.memory_usage ?? ''),
-      total_missing: Number(res.total_missing ?? 0),
-      duplicate_rows: Number(res.duplicate_rows ?? 0),
+  // 修复九：挂载拉回列表 + 额度（刷新后内存清空，从后端恢复）
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await listDatasets(sessionId);
+        if (!alive) return;
+        dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
+        dispatch({ type: 'SET_QUOTA', usedBytes: res.used_bytes, quotaBytes: res.quota_bytes });
+        const active = res.datasets.find(d => d.is_active);
+        if (active) dispatch({ type: 'SELECT_DATASET', datasetId: active.dataset_id });
+      } catch { /* 会话暂无数据，忽略 */ }
+    })();
+    return () => {
+      alive = false;
+      if (timerRef.current) clearInterval(timerRef.current);
     };
-    dispatch({
-      type: 'SET_DATA',
-      payload: {
-        fileName: safeRes.file_name,
-        rows: safeRes.rows,
-        columns: safeRes.columns,
-        preview: safeRes.preview,
-        columnInfo: safeRes.column_info,
-        dataInfo: {
-          rows: safeRes.rows,
-          columns: safeRes.columns,
-          memory_usage: safeRes.memory_usage,
-          total_missing: safeRes.total_missing,
-          duplicate_rows: safeRes.duplicate_rows,
-        },
-      },
-    });
-  }, [state.sessionId, dispatch]);
+  }, [sessionId]);
 
-  // 后台轮询排队状态，轮到（ready）返回可用 session_id；取消/失效则抛错
-  const waitForTurn = useCallback(async (ticketId: string): Promise<string> => {
-    const POLL_INTERVAL = 2500;
-    while (true) {
-      if (cancelRef.current) throw new Error('已取消排队');
-      const st = await getUploadQueueStatus(ticketId);
-      if (st.status === 'ready') return st.session_id as string;
-      if (st.status === 'expired') throw new Error('排队已失效，请重新上传');
-      setQueue((q) => ({ ...q, position: st.position ?? q.position }));
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+  // 逐文件上传（修复四 + 修复八：累计额度前置判断）
+  const doUpload = useCallback(async (file: File) => {
+    if (state.usedBytes + file.size > (state.quotaBytes || QUOTA_DEFAULT)) {
+      throw new Error('累计上传额度已满，无法继续上传');
     }
+    setUploadError(null);
+    try {
+      const res = await uploadFile(sessionId, file);
+      // 多 sheet Excel 会返回 datasets 列表，单表时为长度为 1 的列表；统一走列表
+      const items = (res.datasets && res.datasets.length)
+        ? res.datasets
+        : [{
+            dataset_id: res.dataset_id,
+            file_name: res.file_name ?? file.name,
+            rows: res.rows,
+            columns: res.columns,
+            memory_usage: res.memory_usage,
+            total_missing: res.total_missing,
+            duplicate_rows: res.duplicate_rows,
+            preview: res.preview,
+            column_info: res.column_info,
+            column_names: (res.column_info?.map(c => c.name)) ?? [],
+          }];
+      items.forEach((d, i) => {
+        const ds: DatasetInfo = {
+          dataset_id: d.dataset_id,
+          file_name: d.file_name ?? file.name,
+          file_size_bytes: i === 0 ? res.file_size_bytes : 0,
+          rows: d.rows,
+          columns: d.column_names ?? [],
+          column_info: d.column_info,
+          preview: d.preview,
+          uploaded_at: Date.now(),
+          is_active: i === 0,
+        };
+        dispatch({ type: 'ADD_DATASET', payload: ds });
+      });
+      dispatch({ type: 'SET_QUOTA', usedBytes: res.used_bytes, quotaBytes: res.quota_bytes });
+    } catch (e: any) {
+      const msg = e?.response?.data?.detail || e?.message || '上传失败';
+      throw new Error(msg);
+    }
+  }, [sessionId, state.usedBytes, state.quotaBytes]);
+
+  const handleSelect = useCallback(async (datasetId: string) => {
+    try { await selectDataset(sessionId, datasetId); } catch { /* ignore */ }
+    dispatch({ type: 'SELECT_DATASET', datasetId });
+  }, [sessionId]);
+
+  const handleRemove = useCallback(async (datasetId: string) => {
+    try { await removeDataset(sessionId, datasetId); } catch { /* ignore */ }
+    try {
+      const res = await listDatasets(sessionId);
+      dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
+      dispatch({ type: 'SET_QUOTA', usedBytes: res.used_bytes, quotaBytes: res.quota_bytes });
+      const active = res.datasets.find(d => d.is_active);
+      if (active) dispatch({ type: 'SELECT_DATASET', datasetId: active.dataset_id });
+    } catch { /* ignore */ }
+  }, [sessionId]);
+
+  const pollStatus = useCallback((taskId: string) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(async () => {
+      try {
+        const st = await getProcessStatus(taskId);
+        setProcessStatus(st.datasets);
+        if (st.status === 'done' || st.status === 'error') {
+          if (timerRef.current) clearInterval(timerRef.current);
+          setProcessing(false);
+          // 处理期间后端可能注册了「合并宽表」(新 dataset_id)，必须重新拉取列表
+          // 否则合并出的宽表不会出现在 UI 上，用户无法选中它。
+          try {
+            const res = await listDatasets(sessionIdRef.current);
+            dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
+            dispatch({ type: 'SET_QUOTA', usedBytes: res.used_bytes, quotaBytes: res.quota_bytes });
+          } catch { /* 刷新列表失败不阻断主流程 */ }
+        }
+      } catch {
+        if (timerRef.current) clearInterval(timerRef.current);
+        setProcessing(false);
+        setUploadError('处理任务已过期，请重新点击处理');
+      }
+    }, 2000);
   }, []);
 
-  const handleUpload = useCallback(async (file: File) => {
-    cancelRef.current = false;
-    setUploadError(null);
-    dispatch({ type: 'SET_LOADING', loading: true });
+  const startProcess = useCallback(async (ids?: string[]) => {
+    setProcessing(true);
+    setProcessStatus({});
     try {
-      // 1) 先过闸门预约数据插槽
-      const gate = await uploadGate(state.sessionId);
-      let sessionId = gate.session_id ?? state.sessionId;
-      if (!gate.granted) {
-        // 2) 满员 → 进入排队弹窗并后台轮询，轮到后自动上传
-        setQueue({ open: true, position: gate.position ?? 1, ticketId: gate.ticket_id ?? null });
-        sessionId = await waitForTurn(gate.ticket_id as string);
-      }
-      // 3) 拿到插槽后上传（直接 or 排到自动）
-      await doUpload(file, sessionId);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '上传失败';
-      setUploadError(message);
-      console.error('[UploadPage] Upload failed:', message);
-    } finally {
-      setQueue({ open: false, position: 1, ticketId: null });
-      dispatch({ type: 'SET_LOADING', loading: false });
+      const res = await processDatasets(sessionId, ids);
+      pollStatus(res.task_id);
+    } catch (e: any) {
+      setProcessing(false);
+      const msg = e?.response?.data?.detail || e?.message || '提交处理失败';
+      setUploadError(msg);
     }
-  }, [state.sessionId, dispatch, waitForTurn, doUpload]);
+  }, [sessionId, pollStatus]);
 
-  // 取消排队：置标志 + 通知后端移除票据 + 关闭弹窗
-  const handleCancelQueue = useCallback(async () => {
-    cancelRef.current = true;
-    if (queue.ticketId) {
-      try {
-        await cancelUploadQueue(queue.ticketId);
-      } catch {
-        // 尽力而为，忽略后端异常
-      }
-    }
-    setUploadError('已取消排队');
-    setQueue({ open: false, position: 1, ticketId: null });
-    dispatch({ type: 'SET_LOADING', loading: false });
-  }, [queue.ticketId, dispatch]);
+  const handleRelease = async () => {
+    if (!confirm('确定释放插槽？所有已上传报表与额度将被清空。')) return;
+    await releaseUploadSlot(sessionId);
+    dispatch({ type: 'CLEAR_DATA' });
+    dispatch({ type: 'SET_QUOTA', usedBytes: 0, quotaBytes: 0 });
+    setProcessStatus({});
+  };
 
-  // 手动释放数据插槽：二次确认后释放并清空本地预览，让排队中的用户自动入队
-  const handleReleaseSlot = useCallback(async () => {
-    const ok = window.confirm(
-      '确认结束本会话并释放数据插槽？释放后排队中的用户可自动入队，您需要重新上传才能继续使用。'
-    );
-    if (!ok) return;
-    try {
-      const res = await releaseUploadSlot(state.sessionId);
-      if (res.released) {
-        dispatch({ type: 'CLEAR_DATA' });
-        setUploadError(null);
-      } else {
-        setUploadError('当前会话未占用插槽，无需释放');
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '释放插槽失败';
-      setUploadError(message);
-    }
-  }, [state.sessionId, dispatch]);
+  // 额度进度条
+  const quota = quotaBytes || QUOTA_DEFAULT;
+  const pct = quota > 0 ? Math.min(100, (usedBytes / quota) * 100) : 0;
+  const full = usedBytes >= quota;
+  const warn = pct > 80;
+  const barColor = full ? '#fb7185' : warn ? '#fbbf24' : '#8b5cf6';
 
-  const hasData = state.rows > 0;
-  const memoryUsage = state.dataInfo?.memory_usage || '';
+  const badge = (st?: DatasetProcessStatus) => {
+    if (!st) return null;
+    const mergedTag = st.kind === 'merged' ? '合并宽表 · ' : '';
+    if (st.status === 'running') return <span className="text-[#8b5cf6] text-xs flex items-center gap-1"><Loader2 size={12} className="animate-spin" />处理中…</span>;
+    if (st.status === 'done') return <span className="text-[#34d399] text-xs flex items-center gap-1"><CheckCircle2 size={12} />{mergedTag}已完成 {st.pkg_count} 图</span>;
+    if (st.status === 'error') return <span className="text-[#fb7185] text-xs flex items-center gap-1" title={st.error}><AlertTriangle size={12} />{mergedTag}失败</span>;
+    return <span className="text-[#94a3b8] text-xs">待处理</span>;
+  };
 
   return (
-    <ErrorBoundary>
-      <div className="page-enter space-y-6">
-        <div>
-          <h1 className="text-4xl font-extrabold text-[#f8fafc] tracking-wide"
-            style={{ textShadow: '0 0 18px rgba(167,139,250,0.45), 0 0 36px rgba(196,181,253,0.25)' }}
-          >
-            数据上传
-          </h1>
-          <p
-            className="mt-2 text-sm font-medium"
-            style={{ color: '#c4b5fd', textShadow: '0 0 10px rgba(196,181,253,0.4)' }}
-          >
-            支持 CSV、Excel、JSON、SQLite 格式
-          </p>
-        </div>
-
-        {/* 宇宙传送门上传 */}
-        <FileUploader onUpload={handleUpload} disabled={state.loading} />
-
-        {uploadError && (
-          <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-            {uploadError}
-          </div>
-        )}
-
-        <QueueModal
-          open={queue.open}
-          position={queue.position}
-          maxSessions={MAX_SESSIONS}
-          onCancel={handleCancelQueue}
-        />
-
-        {state.loading && (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-8 h-8 rounded-full border-2 border-[#a78bfa] border-t-transparent animate-spin" />
-            <span className="ml-3 text-[#94a3b8]">正在加载数据...</span>
-          </div>
-        )}
-
-        {hasData && !state.loading && (
-          <>
-            {/* 数据概览 */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard title="总行数" value={String(state.rows)} icon="database" />
-              <MetricCard title="总列数" value={state.columns} icon="columns" />
-              <MetricCard title="内存占用" value={memoryUsage || '-'} icon="database" color="#c4b5fd" />
-              <MetricCard title="文件名" value={state.fileName || '-'} icon="target" color="#8b5cf6" />
+    <div className="min-h-screen bg-[#020617] text-[#f8fafc]">
+      <TopNav />
+      <div className="flex">
+        <Sidebar />
+        <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+          {/* 额度进度条 */}
+          <div className="glass-card p-4 mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm text-[#94a3b8]">上传额度</span>
+              <span className="text-sm font-medium" style={{ color: full ? '#fb7185' : warn ? '#fbbf24' : '#8b5cf6' }}>
+                已用 {formatBytes(usedBytes)} / {formatBytes(quota)}
+              </span>
             </div>
+            <div className="h-2 rounded-full bg-[#1e293b] overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: barColor, boxShadow: `0 0 12px ${barColor}` }} />
+            </div>
+            {full && <p className="text-xs text-[#fb7185] mt-2">额度已用尽，请删除部分报表或释放插槽。</p>}
+          </div>
 
-            {/* 结束会话 / 释放插槽：给排队用户腾出空位 */}
-            <div className="flex justify-end">
+          {/* 上传区 */}
+          <FileUploader onUpload={doUpload} disabled={full} />
+          {uploadError && (
+            <div className="mt-3 glass-card p-3 text-sm text-[#fb7185] flex items-center gap-2">
+              <AlertTriangle size={14} />{uploadError}
+            </div>
+          )}
+
+          {/* 已上传报表列表 */}
+          <div className="glass-card p-5 mt-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold flex items-center gap-2"><Database size={18} className="text-[#8b5cf6]" />已上传报表
+                <span className="text-xs text-[#94a3b8]">（{datasets.length}）</span>
+              </h2>
               <button
-                onClick={handleReleaseSlot}
-                className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors hover:bg-[#8b5cf6]/[0.25]"
-                style={{
-                  background: 'rgba(139,92,246,0.15)',
-                  border: '1px solid rgba(139,92,246,0.4)',
-                  color: '#c4b5fd',
-                }}
+                onClick={() => startProcess()}
+                disabled={processing || datasets.length === 0}
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: 'linear-gradient(135deg,#8b5cf6,#a78bfa)', color: '#fff', boxShadow: '0 0 16px rgba(139,92,246,0.4)' }}
               >
-                结束会话 / 释放插槽
+                {processing ? <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" />处理中…</span> : '一键处理全部报表'}
               </button>
             </div>
 
-            {/* 数据预览 */}
-            {state.preview.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold text-[#f8fafc] mb-3">数据预览</h2>
-                <DataTable data={state.preview} />
-              </div>
-            )}
-
-            {/* 字段信息 */}
-            {state.columnInfo.length > 0 && (
-              <div>
-                <h2 className="text-lg font-semibold text-[#f8fafc] mb-3">字段信息</h2>
-                <div className="glass-card overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr style={{ background: 'rgba(196,181,253,0.25)' }}>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase">列名</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase">类型</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase">缺失值</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase">缺失率</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase">唯一值</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase">示例值</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {state.columnInfo.map((col) => (
-                        <tr key={col.name} className="border-t border-white/[0.04] hover:bg-[#8b5cf6]/[0.06]">
-                          <td className="px-4 py-2.5 text-slate-200 font-medium">{col.name}</td>
-                          <td className="px-4 py-2.5">
-                            <span className="px-2 py-0.5 text-xs rounded bg-[#a78bfa]/20 text-[#c4b5fd]">
-                              {col.dtype}
+            {datasets.length === 0 ? (
+              <p className="text-sm text-[#94a3b8] py-6 text-center">暂无报表，请拖拽文件上传。</p>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {datasets.map((ds) => {
+                  const isActive = ds.dataset_id === activeDatasetId;
+                  const st = processStatus[ds.dataset_id];
+                  return (
+                    <div
+                      key={ds.dataset_id}
+                      onClick={() => handleSelect(ds.dataset_id)}
+                      className={`relative flex items-center justify-between p-4 rounded-xl cursor-pointer transition-all duration-300 border ${isActive ? 'border-[#8b5cf6] bg-[#8b5cf6]/10' : 'border-white/10 bg-white/5 hover:border-[#8b5cf6]/50'}`}
+                      style={isActive ? { boxShadow: '0 0 20px rgba(139,92,246,0.35)' } : undefined}
+                    >
+                      {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-[#8b5cf6]" />}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FileText size={20} className="text-[#8b5cf6] shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-medium text-[#f8fafc] truncate">{ds.file_name}</p>
+                          {ds.is_merged && (
+                            <span className="mt-1 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[#8b5cf6]/15 text-[#a78bfa] border border-[#8b5cf6]/30">
+                              <GitMerge size={11} />合并宽表
+                              {ds.merge_keys && ds.merge_keys.length > 0 ? ` · 按 ${ds.merge_keys.join('/')} 关联` : ''}
+                              {ds.sources && ds.sources.length > 0 ? ` · 来源${ds.sources.length}表` : ''}
                             </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-slate-400">{col.missing ?? '-'}</td>
-                          <td className="px-4 py-2.5 text-slate-400">{((col.missing_rate ?? 0) * 100).toFixed(1)}%</td>
-                          <td className="px-4 py-2.5 text-slate-400">{col.unique ?? '-'}</td>
-                          <td className="px-4 py-2.5 text-slate-400 max-w-[200px] truncate">{String(col.sample ?? '-')}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                          )}
+                          <p className="text-xs text-[#94a3b8]">{formatBytes(ds.file_size_bytes)} · {ds.rows} 行 × {ds.columns.length} 列</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {badge(st)}
+                        <button
+                          onClick={() => startProcess([ds.dataset_id])}
+                          disabled={processing}
+                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#8b5cf6]/20 text-[#a78bfa] hover:bg-[#8b5cf6]/35 transition-colors disabled:opacity-40"
+                        >处理此表</button>
+                        <button
+                          onClick={() => handleRemove(ds.dataset_id)}
+                          className="p-1.5 rounded-lg text-[#94a3b8] hover:text-[#fb7185] hover:bg-[#fb7185]/10 transition-colors"
+                          title="删除该报表"
+                        ><Trash2 size={16} /></button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
-          </>
-        )}
+          </div>
+
+          {/* 当前数据集概览与预览（active 数据集）*/}
+          {fileName ? (
+            <div className="mt-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <MetricCard label="当前报表" value={fileName} hint="文件名" />
+                <MetricCard label="总行数" value={rows.toString()} hint="数据规模" />
+                <MetricCard label="总列数" value={columns.toString()} hint="字段数量" />
+              </div>
+              {columnInfo && columnInfo.length > 0 && (
+                <div className="glass-card p-5 mb-6">
+                  <h3 className="text-base font-medium mb-4">字段信息</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-[#94a3b8] border-b border-white/10">
+                          <th className="py-2 pr-4">字段名</th><th className="py-2 pr-4">类型</th>
+                          <th className="py-2 pr-4">缺失值</th><th className="py-2 pr-4">唯一值</th><th className="py-2">示例</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {columnInfo.map((c, i) => (
+                          <tr key={i} className="border-b border-white/5">
+                            <td className="py-2 pr-4 text-[#f8fafc]">{c.name}</td>
+                            <td className="py-2 pr-4 text-[#94a3b8]">{c.dtype}</td>
+                            <td className="py-2 pr-4 text-[#94a3b8]">{c.missing}（{c.missing_rate}%）</td>
+                            <td className="py-2 pr-4 text-[#94a3b8]">{c.unique}</td>
+                            <td className="py-2 text-[#94a3b8] truncate max-w-xs">{c.sample}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <div className="glass-card p-5">
+                <h3 className="text-base font-medium mb-4">数据预览（前 100 行）</h3>
+                <DataTable data={preview} maxRows={100} />
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-[#94a3b8] mt-6 text-center py-6">请选择一张报表以查看预览。</p>
+          )}
+
+          {/* 底部操作栏 */}
+          <div className="mt-6 flex justify-end">
+            <button
+              onClick={handleRelease}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-[#fb7185]/15 text-[#fb7185] hover:bg-[#fb7185]/25 transition-colors"
+            >结束会话 / 释放插槽</button>
+          </div>
+        </main>
       </div>
-    </ErrorBoundary>
+    </div>
   );
 }
