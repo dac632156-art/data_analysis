@@ -40,3 +40,16 @@ CodeBuddy协作计划清单.md
 PRD_DataMind_AI.md
 UI_DESIGN_GUIDE.md
 UI_USAGE_GUIDE.md
+
+# Junk / local-only artifacts (kept on disk, removed from repo)
+.codebuddy/plans/
+.workbuddy/memory/
+数据测试集/
+文件素材/
+backend/-w
+backend/_diag_c.txt
+backend_up.log
+frontend_dev.log
+logs_e2e*.txt
+**/*_out.txt
+**/*.bak
