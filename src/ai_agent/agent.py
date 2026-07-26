@@ -110,8 +110,8 @@ class DataAnalysisAgent:
             if is_analysis_request:
                 # 分析请求：直接调用 generate_insights 返回结构化 JSON
                 result = self.generate_insights(df, user_query)
-                # 确定性补入 LLM 可能否决的关键词意图（如词云），保证前端可生成对应图表
-                return _inject_matched_intents(result, user_query)
+                # V3 意图补强已移除（analysis_library 删除，新流程由列名匹配引擎决定分析）
+                return result
             
             # 通用对话：直接回答
             _chart_hint = (
@@ -451,113 +451,6 @@ class DataAnalysisAgent:
                 }
 
 
-
-# ============================================================
-# V3：AI 对话意图补强（关键词确定性补回被 LLM 否决的分析意图）
-# ============================================================
-
-_LIB_INSTANCE = None
-
-def _get_library():
-    """懒加载 AnalysisLibrary 单例（避免 import 期加载全部 YAML / 循环导入）"""
-    global _LIB_INSTANCE
-    if _LIB_INSTANCE is None:
-        from src.analysis_library.registry import AnalysisLibrary
-        _LIB_INSTANCE = AnalysisLibrary()
-    return _LIB_INSTANCE
-
-
-def _extract_first_json(text: str):
-    """括号平衡提取文本中首个平衡 JSON 对象，返回 dict；失败返回 None。
-
-    使用括号深度计数法（同 insights.py:_extract_json_by_brace_balance 思路），
-    避免 insights 字段内部花括号导致提取到错误闭合位置。
-    """
-    if not text:
-        return None
-    start = text.find('{')
-    if start == -1:
-        return None
-    depth = 0
-    for i in range(start, len(text)):
-        ch = text[i]
-        if ch == '{':
-            depth += 1
-        elif ch == '}':
-            depth -= 1
-        if depth == 0:
-            try:
-                return json.loads(text[start:i + 1])
-            except Exception:
-                return None
-    return None
-
-
-def _inject_matched_intents(ai_text: str, user_query: str) -> str:
-    """在 AI 返回的洞察 JSON 中，确定性补入被 LLM 遗漏的关键词匹配意图。
-
-    场景：用户说"词云图"，LLM 可能自行否决"结构化数据不适合词云"，
-    导致返回的 intents 里没有词云项，前端无法生成该图。
-    此处用 AnalysisLibrary 关键词把 query 匹配到对应 AnalysisIntent，
-    强制追加一条意图（analysis_goal 含该关键词 → Planner 必路由到对应模板）。
-
-    仅当 AI 文本可解析为 JSON 且确有新增意图时才重新序列化；
-    否则原样返回（含 LLM 纯文本洞察的情况）。
-    """
-    if not user_query:
-        return ai_text
-
-    try:
-        data = _extract_first_json(ai_text)
-    except Exception:
-        return ai_text
-    if not isinstance(data, dict):
-        return ai_text
-
-    intents = data.get("intents")
-    if not isinstance(intents, list):
-        intents = []
-        data["intents"] = intents
-
-    lib = _get_library()
-    matched = lib.lookup_all(user_query)
-    if not matched:
-        return ai_text
-
-    query_lower = user_query.lower()
-    # 已存在意图文本（用于去重，避免重复注入）
-    existing_text = " ".join(
-        f"{i.get('analysis_goal', '')} {i.get('business_question', '')}"
-        for i in intents
-    ).lower()
-
-    added = 0
-    for intent in matched:
-        # 找到命中的关键词
-        hit_kw = next((kw for kw in intent.keywords if kw.lower() in query_lower), None)
-        if not hit_kw:
-            continue
-        # 去重：已有意图已含该关键词则跳过
-        if hit_kw.lower() in existing_text:
-            continue
-        biz_q = intent.business_questions[0] if intent.business_questions else f"查看{intent.display_name}"
-        intents.append({
-            "business_question": f"{intent.display_name}：{biz_q}",
-            "analysis_goal": intent.display_name,  # 含关键词（如"词云"）→ Planner 必路由
-            "priority": "high",
-            "reason": f"识别到关键词「{hit_kw}」，已自动加入分析计划",
-        })
-        existing_text += " " + intent.display_name.lower()
-        added += 1
-
-    if added == 0:
-        return ai_text
-
-    # 重新序列化为 JSON 文本（保留原有 insights，供 insights.py 解析）
-    try:
-        return json.dumps(data, ensure_ascii=False)
-    except Exception:
-        return ai_text
 
 
 # ============================================================

@@ -344,6 +344,38 @@ export default function DashboardPage() {
     downloadEChartsHTML(html, filename);
   };
 
+  // ===== 分析包 JSON 下载 =====
+  const handleDownloadPackages = async () => {
+    if (!ds.sessionId) {
+      alert('请先上传数据，再导出分析包。');
+      return;
+    }
+    try {
+      const res = await api.getSavedPackages(ds.sessionId);
+      const packages = (res && (res as any).packages) || [];
+      if (packages.length === 0) {
+        alert('当前没有可导出的分析包，请先在「分析」页生成并收藏分析。');
+        return;
+      }
+      const payload = {
+        exported_at: new Date().toISOString(),
+        total: (res as any).total ?? packages.length,
+        packages,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `分析包_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('导出分析包 JSON 失败：' + (e instanceof Error ? e.message : '未知错误'));
+    }
+  };
+
   // ===== AI 分析报告生成（五阶段流水线） =====
   const [reportGenerating, setReportGenerating] = useState(false);
   const [reportText, setReportText] = useState('');
@@ -563,6 +595,11 @@ export default function DashboardPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-r-lg bg-[#A78BFA]/20 border border-l-0 border-[#A78BFA]/20 text-[#A78BFA] hover:bg-[#A78BFA]/30 transition-colors"
             title="导出为可交互 HTML 文件">
             📄 HTML
+          </button>
+          <button onClick={handleDownloadPackages}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[#A78BFA]/20 border border-[#A78BFA]/20 text-[#A78BFA] hover:bg-[#A78BFA]/30 transition-colors"
+            title="下载分析包 JSON 文件">
+            📦 分析包JSON
           </button>
         </div>
       </div>

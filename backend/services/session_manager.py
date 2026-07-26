@@ -32,6 +32,9 @@ class Dataset:
     is_merged: bool = False                    # 是否为合并生成的宽表
     sources: List[str] = dataclasses.field(default_factory=list)   # 来源 dataset_id 列表
     merge_keys: List[str] = dataclasses.field(default_factory=list) # 实际使用的关联键列名
+    # 标记：该数据集已被「AI 智能清洗」流水线做过「合表 + 映射 + LLM 清洗」。
+    # 分析阶段 _process_one 检测到则跳过重复映射，省一次调用。
+    cleaned_mapped: bool = False
 
 
 def _parse_missing_rate(row) -> float:
@@ -325,9 +328,50 @@ class SessionManager:
             session.last_access = time.time()
             return did
 
+    def _compute_meta(self, df: "pd.DataFrame"):
+        """从 df 计算 (rows, columns, column_info, preview)，供 add_merged_dataset / update_dataset_df 复用。"""
+        import numpy as np
+        from src.data_loader import get_column_info, get_data_info
+        if df.columns.duplicated().any():
+            df = df.loc[:, ~df.columns.duplicated()]
+        preview = df.head(100).replace({np.nan: None}).to_dict(orient="records")
+        column_info_df = get_column_info(df)
+        columns_list = []
+        for _, row in column_info_df.iterrows():
+            columns_list.append({
+                "name": str(row.get("列名", row.get("column", ""))),
+                "dtype": str(row.get("数据类型", row.get("dtype", ""))),
+                "missing": int(row.get("缺失值", row.get("missing", 0)) or 0),
+                "missing_rate": _parse_missing_rate(row),
+                "unique": int(row.get("唯一值数", row.get("unique", 0)) or 0),
+                "sample": str(row.get("示例值", row.get("sample", ""))),
+            })
+        data_info = get_data_info(df)
+        rows = int(data_info.get("行数", len(df)))
+        return rows, list(df.columns), columns_list, preview
+
+    def update_dataset_df(self, session_id: str, dataset_id: str, df: "pd.DataFrame"):
+        """按数据集 ID 写回清洗后的 df，并重算元信息（rows/columns/column_info/preview）。
+        锁内仅替换 ds.df 副本，不动 original_path / df_original（保留「恢复原始数据」能力）。
+        """
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                return
+            ds = session.datasets.get(dataset_id)
+            if ds is None:
+                return
+            rows, columns, column_info, preview = self._compute_meta(df)
+            ds.df = df.copy()
+            ds.rows = rows
+            ds.columns = columns
+            ds.column_info = column_info
+            ds.preview = preview
+            session.last_access = time.time()
+
     def add_merged_dataset(self, session_id: str, df: pd.DataFrame,
-                            sources: List[str], keys: List[str],
-                            file_name: str = "合并宽表") -> str:
+                           sources: List[str], keys: List[str],
+                           file_name: str = "合并宽表") -> str:
         """合并宽表入库：构造与上传一致的元信息，在锁内注册新数据集
         （set_active=False，不抢占当前视图），并补写 is_merged/sources/merge_keys，
         返回新 dataset_id。
@@ -711,14 +755,25 @@ class SessionManager:
 
     # ===== V2 分析包操作 =====
     def save_packages(self, session_id: str, package_ids: List[str]):
-        """从 analysis_packages 复制到 saved_packages"""
+        """聚合所有 dataset 分桶的包 + 兜底 analysis_packages，按 package_ids 复制进 saved_packages"""
         with self._lock:
             session = self._sessions.get(session_id)
             if not session:
                 return
+            # 聚合全部分桶的分析包（覆盖合表/多表 process-datasets 场景）
+            all_pkgs: Dict[str, Any] = {}
+            for bucket in session.dataset_packages.values():
+                if isinstance(bucket, dict):
+                    for pid, pkg in bucket.items():
+                        all_pkgs[pid] = pkg
+            # 兜底：同步并入 analysis_packages（老 /analysis/run 路径）
+            if isinstance(getattr(session, 'analysis_packages', None), dict):
+                for pid, pkg in session.analysis_packages.items():
+                    all_pkgs.setdefault(pid, pkg)
             for pkg_id in package_ids:
-                if pkg_id in session.analysis_packages:
-                    pkg = dataclasses.asdict(session.analysis_packages[pkg_id])
+                if pkg_id in all_pkgs:
+                    src = all_pkgs[pkg_id]
+                    pkg = dataclasses.asdict(src) if dataclasses.is_dataclass(src) else dict(src)
                     pkg["saved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
                     # 去重：同一 ID 不重复保存
                     if not any(p.get("id") == pkg_id for p in session.saved_packages):
@@ -735,67 +790,15 @@ class SessionManager:
 
         使用 Renderer 层将 AnalysisPackage 的原始数据渲染为前端可消费格式。
         """
-        from src.kpi_renderer import KPIRenderer
-        from src.table_renderer import TableRenderer
-        from src.insight_renderer import InsightRenderer
-        from src.conclusion_renderer import ConclusionRenderer
-        import dataclasses
+        from src.analysis_engine.package_render import render_package
 
         session = self.get_session(session_id)
         if not session:
             return []
 
-        kpi_renderer = KPIRenderer()
-        table_renderer = TableRenderer()
-        insight_renderer = InsightRenderer()
-        conclusion_renderer = ConclusionRenderer()
-
         full_packages = []
         for pkg in session.saved_packages:
-            # 渲染各部分
-            kpis_raw = pkg.get("kpis", [])
-            tables_raw = pkg.get("tables", [])
-            charts_raw = pkg.get("charts", [])
-            insights_raw = pkg.get("insights", [])
-            conclusions_raw = pkg.get("conclusions", [])
-            chart_data_raw = pkg.get("chart_data", [])
-
-            # KPI 渲染
-            rendered_kpis = []
-            for k in kpis_raw:
-                if isinstance(k, dict):
-                    from src.analysis_templates.base import KPIItem
-                    item = KPIItem(**k) if "label" in k else None
-                    if item:
-                        rendered_kpis.append(dataclasses.asdict(kpi_renderer.render(item)))
-
-            # Table 渲染
-            rendered_tables = []
-            for t in tables_raw:
-                if isinstance(t, dict) and "title" in t:
-                    from src.analysis_templates.base import TableData
-                    table_data = TableData(**{k: t[k] for k in ("title","table_type","columns","rows") if k in t})
-                    rendered_tables.append(dataclasses.asdict(table_renderer.render(table_data)))
-
-            # Insight 渲染
-            rendered_insights = []
-            if isinstance(insights_raw, list):
-                rendered_insights = [
-                    dataclasses.asdict(r) for r in insight_renderer.render_all(insights_raw)
-                ]
-
-            # Conclusion 渲染
-            rendered_conclusion = dataclasses.asdict(
-                conclusion_renderer.render(conclusions_raw if isinstance(conclusions_raw, list) else [])
-            )
-
-            full_pkg = dict(pkg)
-            full_pkg["rendered_kpis"] = rendered_kpis
-            full_pkg["rendered_tables"] = rendered_tables
-            full_pkg["rendered_charts"] = charts_raw
-            full_pkg["rendered_insights"] = rendered_insights
-            full_pkg["rendered_conclusion"] = rendered_conclusion
-            full_packages.append(full_pkg)
+            full_packages.append(render_package(pkg))
 
         return full_packages
 

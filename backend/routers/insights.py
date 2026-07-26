@@ -12,14 +12,10 @@ from concurrent.futures import ThreadPoolExecutor
 from backend.services.session_manager import manager
 from backend.utils.ai_error import enhance_ai_error
 from src.ai_agent.agent import DataAnalysisAgent
-from src.planner import Planner
 import logging
 _log = logging.getLogger("insights")
 
 router = APIRouter()
-
-# Planner 实例（用于 fallback intents 生成）
-_PLANNER = Planner()
 
 
 class InsightsRequest(BaseModel):
@@ -171,7 +167,7 @@ def _parse_ai_result_to_intents(result: str, df=None) -> dict:
             _log.info(f"Step 2 失败: 直接解析 JSON 错误，继续 Step 3")
 
     # ---- Step 3: Planner 纯规则兜底 ----
-    default_intents = _PLANNER.generate_default_intents(df) if df is not None else []
+    default_intents = []  # 旧 Planner 兜底已移除，新流程由列名匹配引擎决定分析
     _log.info(f"Step 3 兜底: Planner 生成 {len(default_intents)} 个 default intents")
     # insights 文本尽力抽取（JSON 解析失败可能是 key 漂移/超长截断），
     # 抽取不到时再回退原始内容，避免向前端返回裸 JSON 字符串。
@@ -183,9 +179,12 @@ def _parse_ai_result_to_intents(result: str, df=None) -> dict:
     }
 
 
-@router.post("/insights/generate")
+@router.post("/insights/generate", deprecated=True)
 async def api_generate_insights(req: InsightsRequest):
-    """生成 AI 数据洞察报告 + 分析意图列表（三层防御：AI JSON → AI 文本解析 → Planner 兜底）"""
+    """【已废弃】旧版 AI 洞察 + intents 接口。前端「生成数据洞察」已改为统一异步流水线
+    （/analysis/process-datasets），由列名匹配引擎确定性产出分析包，不再依赖此接口的 intents。
+    保留仅供兼容历史调用。"""
+    _log.warning("[deprecated] /insights/generate 已被 /analysis/process-datasets 取代")
     df = manager.get_data(req.session_id)
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
@@ -210,13 +209,13 @@ async def api_generate_insights(req: InsightsRequest):
             return _parse_ai_result_to_intents(result, df)
         
         # 非 string 结果（极端情况）
-        default_intents = _PLANNER.generate_default_intents(df)
+        default_intents = []  # 旧 Planner 兜底已移除，新流程由列名匹配引擎决定分析
         return {"success": True, "insights": str(result), "intents": default_intents, "is_fallback": True}
     except Exception as e:
         # AI 完全失败 → Planner 兜底生成 intents，不让用户看到空白
         # 但如果是 model_not_found 等明确错误，先增强提示再兜底
         enhanced_msg = enhance_ai_error(e, model=req.model or "", base_url=req.base_url or "")
-        default_intents = _PLANNER.generate_default_intents(df)
+        default_intents = []  # 旧 Planner 兜底已移除，新流程由列名匹配引擎决定分析
         return {
             "success": True,
             "insights": f"⚠️ AI 调用失败：{enhanced_msg}，已自动生成推荐分析计划",
@@ -225,18 +224,16 @@ async def api_generate_insights(req: InsightsRequest):
         }
 
 
-@router.post("/intents/default")
+@router.post("/intents/default", deprecated=True)
 async def api_get_default_intents(req: InsightsRequest):
-    """纯规则兜底接口：不调用 LLM，直接用 Planner 根据数据列特征生成默认分析意图。
-
-    用作"应用"按钮的兜底：当 LLM 失败/超时/网络错误时，前端可调此接口保证用户
-    至少拿到一组可执行的分析计划，不会因 AI 不可用而完全无法继续。
-    """
+    """【已废弃】旧版纯规则兜底 intents 接口。新流程由列名匹配引擎决定分析，
+    前端不再展示 intents 勾选，故不再调用。保留仅供兼容。"""
+    logger.warning("[deprecated] /intents/default 已不再被前端调用")
     df = manager.get_data(req.session_id)
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据，请先上传")
     try:
-        intents = _PLANNER.generate_default_intents(df)
+        intents = []  # 旧 Planner 兜底已移除，新流程由列名匹配引擎决定分析
         return {
             "success": True,
             "intents": intents,

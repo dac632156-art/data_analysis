@@ -304,13 +304,6 @@ class AnalysisTemplate(ABC):
         m = self._cache.get("metrics")
         if m is None:
             return {}
-        from src.calculators.base import BusinessMetrics as BM
-        if isinstance(m, BM):
-            return {
-                "method": m.algorithm or m.calculator,
-                "labels": m.labels[:20] if hasattr(m, 'labels') else [],
-                "values": m.values[:20] if hasattr(m, 'values') else [],
-            }
         if isinstance(m, dict):
             return m
         return {}
@@ -319,9 +312,6 @@ class AnalysisTemplate(ABC):
         m = self._cache.get("metrics")
         if m is None:
             return {}
-        from src.calculators.base import BusinessMetrics as BM
-        if isinstance(m, BM):
-            return m.to_dict()
         if isinstance(m, dict):
             return m
         return {}

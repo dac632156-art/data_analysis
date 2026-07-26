@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, Response
 
 # 导入路由
-from backend.routers import upload, data, clean, stats, chart, dashboard, insights, report, analysis, reasoning
+from backend.routers import upload, data, clean, chart, dashboard, insights, report, analysis
 from backend.services.session_manager import manager
 
 # ===== 强制 UTF-8 编码，避免 Windows 环境下 print() 中文报错 =====
@@ -51,13 +51,11 @@ app.add_middleware(
 app.include_router(upload.router, prefix="/api", tags=["数据上传"])
 app.include_router(data.router, prefix="/api", tags=["数据操作"])
 app.include_router(clean.router, prefix="/api", tags=["数据清洗"])
-app.include_router(stats.router, prefix="/api", tags=["统计分析"])
 app.include_router(chart.router, prefix="/api", tags=["图表生成"])
 app.include_router(dashboard.router, prefix="/api", tags=["仪表盘"])
 app.include_router(insights.router, prefix="/api", tags=["AI 洞察"])
 app.include_router(report.router, prefix="/api", tags=["报告生成"])
 app.include_router(analysis.router, prefix="/api", tags=["分析执行"])
-app.include_router(reasoning.router, prefix="/api", tags=["业务推理"])
 
 
 # 全局异常处理器：捕获所有未处理的异常，返回详细错误信息

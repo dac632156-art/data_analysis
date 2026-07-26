@@ -11,7 +11,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 
 from backend.services.session_manager import manager
-from src.dashboard_builder import calculate_kpis
+
 from src.echart_generator import create_chart as create_echart
 from src.echart_generator import _to_geo_name, _PROVINCE_CENTROIDS, _GEO_PROVINCE_NAMES
 from src.utils.json_serializer import sanitize_json
@@ -150,9 +150,11 @@ def _extract_chart_configs_from_packages(packages: list) -> list:
                 "option": option,
                 "table_data": chart.get("table_data") or None,
             }
-            # 去重：同类型同 X 同 Y 的只保留一个
-            key = (ct, x, y)
-            if not any((c.get("chart_type"), c.get("x"), c.get("y")) == key for c in configs):
+            # 去重：同类型同 X 同 Y 的同名图只保留一个。
+            # ★ 修复：必须带上 title（或 slot）——同期群三张热力图 x/y 均为空，
+            #   若仅按 (chart_type, x, y) 去重会把留存率/ARPU/净毛利三张图误并成一张。
+            key = (ct, x, y, title)
+            if not any((c.get("chart_type"), c.get("x"), c.get("y"), c.get("title")) == key for c in configs):
                 configs.append(cfg)
     return configs
 
@@ -184,11 +186,13 @@ class DeleteSavedChartRequest(DashboardRequest):
 
 @router.post("/dashboard/kpis")
 async def api_kpis(req: DashboardRequest):
-    """获取 KPI 指标"""
-    df = manager.get_data(req.session_id)
-    if df is None:
-        raise HTTPException(status_code=404, detail="未找到数据")
-    kpis = calculate_kpis(df)
+    """获取 KPI 指标（统一取自已保存分析包，数据源为 AnalysisPackage）。"""
+    packages = manager.get_saved_packages_full(req.session_id) or []
+    kpis = []
+    for pkg in packages:
+        for k in (pkg.get("rendered_kpis") or []):
+            if isinstance(k, dict) and k.get("label"):
+                kpis.append(k)
     return sanitize_json({"success": True, "kpis": kpis})
 
 
@@ -205,16 +209,16 @@ async def api_dashboard_echarts(req: DashboardChartRequest):
     if df is None:
         raise HTTPException(status_code=404, detail="未找到数据")
 
-    from src.dashboard_builder import get_default_echart_configs
+
     if req.charts and len(req.charts) > 0:
         configs = req.charts
     else:
         # ★ 优先使用已保存的分析结果中的图表数据
         packages = manager.get_saved_packages_full(req.session_id) or []
         configs = _extract_chart_configs_from_packages(packages)
-        # 没有分析结果时，才使用默认图表（但只生成核心的几种，而非 12 种）
+        # 没有分析结果时，返回空配置（新流程：先运行分析再取图表）
         if not configs:
-            configs = get_default_echart_configs(df)
+            configs = []
 
     # ★ 地图配置预处理：自动修正 X 轴 + 去重
     configs = _normalize_map_configs(df, configs)
@@ -226,15 +230,19 @@ async def api_dashboard_echarts(req: DashboardChartRequest):
         y = cfg.get("y")
         title_str = cfg.get("title", f"{chart_type} 图表")
 
-        # 雷达图/热力图/箱线图（仅数值列时 x 可为空）
-        no_x_ok = chart_type in ('heatmap', 'radar', 'box')
-        if not x and not no_x_ok:
-            continue
-
         try:
             # ★ 优先复用已保存分析包中渲染好的 option（帕累托线/数值降序已固化），
             #   不再拿原始 df 重新聚合（否则丢图、排序错）。仅 option 缺失时回退重算。
             existing_option = cfg.get("option")
+
+            # 雷达图/热力图/箱线图、以及同期群系列图（option 自带完整坐标，x 可为空）
+            no_x_ok = chart_type in ('heatmap', 'radar', 'box',
+                                     'cohort_heatmap', 'cohort_stacked',
+                                     'cohort_trend', 'dual_axis')
+            # ★ 修复：仅在「无 option 且缺 x」时才跳过；已渲染好的 option 直接下发，
+            #   不再因 x 为空而误杀同期群图（旧逻辑在取 existing_option 之前就 continue）。
+            if not existing_option and not x and not no_x_ok:
+                continue
 
             # ★ 词云专项（2026-07-13 修复「看板词云全黑」）：已保存包里的词云 option
             #   可能由旧版代码生成，携带损坏/失效的 textStyle.color ——

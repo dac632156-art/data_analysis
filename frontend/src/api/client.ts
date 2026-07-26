@@ -7,6 +7,7 @@ import type {
   AIReportResponse, KPIResponse, EChartResponse, EChartItem,
   DatasetInfo, DatasetListResponse,
   ProcessSubmitResponse, ProcessStatusResponse,
+  AICleanSubmitResponse, AICleanStatusResponse,
 } from '../types/api';
 import type { ChartConfig } from '../types';
 
@@ -212,26 +213,24 @@ export const undoLastAction = async (sessionId: string) => {
   return data;
 };
 
-/* ===== AI 智能清洗 ===== */
+/* ===== AI 智能清洗（异步：提交 + 轮询）===== */
 export const aiClean = async (
   sessionId: string,
   request: string,
   apiKey: string,
   baseUrl?: string,
   model?: string,
-): Promise<{
-  success: boolean;
-  explanation: string;
-  steps_applied: Array<{ step: string; reason: string; success: boolean }>;
-  preview: Record<string, unknown>[];
-  rows: number;
-  rows_change: number;
-  columns: string[];
-  note?: string;
-}> => {
-  const { data } = await api.post('/clean/ai-clean', {
-    session_id: sessionId, request, api_key: apiKey, base_url: baseUrl, model,
+  datasetIds?: string[],
+): Promise<AICleanSubmitResponse> => {
+  const { data } = await api.post<AICleanSubmitResponse>('/clean/ai-clean', {
+    session_id: sessionId, request, api_key: apiKey, base_url: baseUrl, model, dataset_ids: datasetIds,
   });
+  return data;
+};
+
+/** 轮询 AI 清洗进度（每 1.5 秒一次，直到 done/error） */
+export const getAiCleanStatus = async (taskId: string): Promise<AICleanStatusResponse> => {
+  const { data } = await api.get<AICleanStatusResponse>(`/clean/ai-clean/status/${taskId}`);
   return data;
 };
 
@@ -259,32 +258,6 @@ export async function downloadCSV(sessionId: string, original = false) {
 
 export const getCleanCompare = async (sessionId: string) => {
   const { data } = await api.post('/clean/compare', { session_id: sessionId });
-  return data;
-};
-
-/* ===== 统计分析 ===== */
-export const getDescriptiveStats = async (sessionId: string) => {
-  const { data } = await api.post('/stats/descriptive', { session_id: sessionId });
-  return data;
-};
-
-export const getGroupStats = async (sessionId: string, groupCol: string, aggCols?: string[]) => {
-  const { data } = await api.post('/stats/group', { session_id: sessionId, group_col: groupCol, agg_cols: aggCols });
-  return data;
-};
-
-export const getCorrelation = async (sessionId: string, method = 'pearson') => {
-  const { data } = await api.post('/stats/correlation', { session_id: sessionId, method });
-  return data;
-};
-
-export const getQuickInsights = async (sessionId: string) => {
-  const { data } = await api.post('/stats/quick-insights', { session_id: sessionId });
-  return data;
-};
-
-export const getNumericColumns = async (sessionId: string) => {
-  const { data } = await api.post('/stats/numeric-columns', { session_id: sessionId });
   return data;
 };
 
@@ -428,22 +401,7 @@ export const saveDashboardTitle = async (
   return data;
 };
 
-/* ===== AI ===== */
-export const generateInsights = async (sessionId: string, apiKey: string, baseUrl?: string, model?: string) => {
-  const { data } = await api.post<InsightsResponse>('/insights/generate', {
-    session_id: sessionId, api_key: apiKey, base_url: baseUrl, model,
-  });
-  return data;
-};
-
-/* ===== 分析执行（V2）===== */
-export const runAnalysis = async (sessionId: string, intents: Array<{
-  business_question: string; analysis_goal: string; priority: string; reason: string;
-}>) => {
-  const { data } = await api.post('/analysis/run', { session_id: sessionId, intents });
-  return data;
-};
-
+/* ===== 分析保存 ===== */
 export const saveAnalysis = async (sessionId: string, packageIds: string[]) => {
   const { data } = await api.post('/analysis/save', { session_id: sessionId, package_ids: packageIds });
   return data;
@@ -465,19 +423,6 @@ export const chatAnalyze = async (sessionId: string, question: string, apiKey: s
   const { data } = await api.post<ChatResponse>('/chat/analyze', {
     session_id: sessionId, question, api_key: apiKey, base_url: baseUrl, model,
   });
-  return data;
-};
-
-/** 纯规则兜底：基于数据列特征直接生成默认 intents，不调用 LLM。
- *  用于"应用"按钮在 LLM 不可用（API key 失效/网络错误）时的最终兜底，
- *  保证用户至少能拿到一组可执行的分析计划。 */
-export const getDefaultIntents = async (sessionId: string): Promise<{
-  success: boolean;
-  intents: Array<Record<string, string>>;
-  is_fallback?: boolean;
-  source?: string;
-}> => {
-  const { data } = await api.post('/intents/default', { session_id: sessionId });
   return data;
 };
 
@@ -506,10 +451,10 @@ export const processDatasets = async (
   sessionId: string,
   datasetIds?: string[],
 ): Promise<ProcessSubmitResponse> => {
-  const { data } = await api.post<ProcessSubmitResponse>('/analysis/process-datasets', {
-    session_id: sessionId,
-    dataset_ids: datasetIds || null,
-  });
+  const { data } = await api.post<ProcessSubmitResponse>(
+    `/analysis/process-datasets/${sessionId}`,
+    { dataset_ids: datasetIds || null },
+  );
   return data;
 };
 

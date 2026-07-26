@@ -1209,6 +1209,7 @@ def create_gl_map(df: pd.DataFrame, x: Optional[str] = None, y: Optional[str] = 
         },
         "visualMap": {
             "show": True,
+            "text": ["高", "低"],
             "min": min_val,
             "max": max_val,
             "calculable": False,
@@ -1429,6 +1430,259 @@ def _cap_option_data(option: dict) -> dict:
     return option
 
 
+# ==================== 同期群专用图表（自包含，不委托他函数） ====================
+# 未观测格哨兵值（须与 src/analysis_engine/models/cohort.py 的 SENTINEL 一致）
+COHORT_SENTINEL = -1.0
+
+
+def create_cohort_heatmap(df, x, y, title="同期群热力图", **ignored):
+    """下三角热力图（留存率 / 客单价 / 净毛利）。
+
+    数据行键：Index_j(x 轴=月偏移), 首单月(y 轴=cohort), value, ci_lower/ci_upper(可选)。
+    未观测格用 COHORT_SENTINEL(-1) + visualMap 分段灰显(#334155)。
+    """
+    try:
+        if df is None or df.empty or x not in df.columns or y not in df.columns:
+            return {}
+        xvals = sorted(df[x].dropna().unique().tolist())
+        yvals = sorted(df[y].dropna().unique().tolist())
+        xidx = {v: i for i, v in enumerate(xvals)}
+        yidx = {v: i for i, v in enumerate(yvals)}
+        data = []
+        for _, r in df.iterrows():
+            xi = xidx.get(r[x])
+            yi = yidx.get(r[y])
+            if xi is None or yi is None:
+                continue
+            try:
+                v = float(r.get("value", COHORT_SENTINEL))
+            except (TypeError, ValueError):
+                v = COHORT_SENTINEL
+            data.append([xi, yi, v])
+
+        obs = [d[2] for d in data if d[2] != COHORT_SENTINEL]
+        vmin = min(obs) if obs else 0.0
+        vmax = max(obs) if obs else 1.0
+        if vmax - vmin < 1e-9:
+            vmax = vmin + 1.0
+
+        pieces = [{"value": COHORT_SENTINEL, "label": "未观测", "color": "#334155"}]
+        n = 5
+        step = (vmax - vmin) / n
+        for k in range(n):
+            lo = vmin + k * step
+            if k < n - 1:
+                hi = vmin + (k + 1) * step
+                pieces.append({"gte": lo, "lt": hi, "color": BLUE_PALETTE[k % len(BLUE_PALETTE)]})
+            else:
+                pieces.append({"gte": lo, "lte": vmax, "color": BLUE_PALETTE[k % len(BLUE_PALETTE)]})
+
+        x_axis = {
+            "type": "category",
+            "data": [str(v) for v in xvals],
+            "name": "月偏移 j",
+            "nameLocation": "middle",
+            "nameGap": 30,
+            "axisLine": {"color": "rgba(255,255,255,0.08)"},
+        }
+        y_axis = {
+            "type": "category",
+            "data": [str(v) for v in yvals],
+            "inverse": True,
+            "axisLine": {"color": "rgba(255,255,255,0.08)"},
+        }
+        visual_map = {
+            "type": "piecewise",
+            "text": ["高", "低"],
+            "pieces": pieces,
+            "orient": "horizontal",
+            "left": "center",
+            "bottom": 0,
+            "textStyle": {"color": GALAXY["text_secondary"]},
+        }
+        series = [{
+            "type": "heatmap",
+            "data": data,
+            "label": {"show": False},
+            "emphasis": {"itemStyle": {"borderColor": "#FFFFFF", "borderWidth": 1}},
+        }]
+        option = dict(_get_default_title(title))
+        option["tooltip"] = DARK_THEME["tooltip"]
+        option["grid"] = {"top": 60, "left": 120, "right": 30, "bottom": 70}
+        option["xAxis"] = x_axis
+        option["yAxis"] = y_axis
+        option["visualMap"] = visual_map
+        option["series"] = series
+        return option
+    except Exception:
+        return {}
+
+
+def create_cohort_stacked(df, x, y, title="分组堆叠条形图", **ignored):
+    """渠道/类目分组堆叠条形图（自包含，跳过 _auto_groupby 避免加总破坏）。
+
+    数据行键：x(首单月), group(维度值), value(指标)。
+    """
+    try:
+        if df is None or df.empty or x not in df.columns or y not in df.columns:
+            return {}
+        group_col = "group"
+        if group_col not in df.columns:
+            return {}
+        xcats = sorted(df[x].dropna().unique().tolist())
+        groups = list(df[group_col].dropna().unique().tolist())
+        xidx = {v: i for i, v in enumerate(xcats)}
+        series = []
+        for gi, g in enumerate(groups):
+            sub = df[df[group_col] == g]
+            ymap = {}
+            for _, r in sub.iterrows():
+                xi = xidx.get(r[x])
+                if xi is None:
+                    continue
+                ymap[xi] = r.get(y, 0)
+            data = [ymap.get(i, 0) for i in range(len(xcats))]
+            series.append({
+                "name": str(g),
+                "type": "bar",
+                "stack": "total",
+                "data": data,
+                "itemStyle": {"color": BLUE_PALETTE[gi % len(BLUE_PALETTE)]},
+            })
+        option = dict(_get_default_title(title))
+        option["tooltip"] = {**DARK_THEME["tooltip"], "trigger": "axis", "axisPointer": {"type": "shadow"}}
+        option["legend"] = DARK_THEME["legend"]
+        option["toolbox"] = DARK_THEME["toolbox"]
+        option["grid"] = {"top": 60, "left": 60, "right": 30, "bottom": 60}
+        option["xAxis"] = {
+            "type": "category",
+            "data": [str(v) for v in xcats],
+            "axisLabel": {"rotate": 30 if len(xcats) > 8 else 0},
+            "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}},
+        }
+        option["yAxis"] = {"type": "value",
+                             "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
+        option["series"] = series
+        return option
+    except Exception:
+        return {}
+
+
+def create_cohort_trend(df, x, y, title="同期群质量趋势", **ignored):
+    """偏移 j 留存趋势折线（每 j 一条线，显著性 '*' 以 markPoint 标注）。
+
+    数据行键：x(首单月), Index_j(序列分组), 留存率, mark(可选 '*')。
+    """
+    try:
+        if df is None or df.empty or x not in df.columns or y not in df.columns:
+            return {}
+        jcol = "Index_j"
+        if jcol not in df.columns:
+            return {}
+        xcats = sorted(df[x].dropna().unique().tolist())
+        xidx = {v: i for i, v in enumerate(xcats)}
+        js = sorted(df[jcol].dropna().unique().tolist())
+        series = []
+        for j in js:
+            sub = df[df[jcol] == j]
+            ymap = {}
+            marks = {}
+            for _, r in sub.iterrows():
+                xi = xidx.get(r[x])
+                if xi is None:
+                    continue
+                ymap[xi] = r.get(y, 0)
+                mk = r.get("mark", "")
+                if mk:
+                    marks[xi] = mk
+            data = [ymap.get(i, None) for i in range(len(xcats))]
+            s = {
+                "name": "j=%s" % j,
+                "type": "line",
+                "data": data,
+                "connectNulls": True,
+                "itemStyle": {"color": BLUE_PALETTE[(int(j) - 1) % len(BLUE_PALETTE)]},
+                "lineStyle": {"width": 2},
+            }
+            if marks:
+                s["markPoint"] = {
+                    "symbol": "pin",
+                    "symbolSize": 38,
+                    "data": [{"coord": [xi, ymap[xi]], "value": "*"} for xi in marks if xi in ymap],
+                    "itemStyle": {"color": GALAXY["danger"]},
+                    "label": {"color": "#FFFFFF", "fontSize": 12},
+                }
+            series.append(s)
+        option = dict(_get_default_title(title))
+        option["tooltip"] = {**DARK_THEME["tooltip"], "trigger": "axis"}
+        option["legend"] = DARK_THEME["legend"]
+        option["toolbox"] = DARK_THEME["toolbox"]
+        option["grid"] = {"top": 60, "left": 60, "right": 30, "bottom": 50}
+        option["xAxis"] = {
+            "type": "category",
+            "data": [str(v) for v in xcats],
+            "axisLabel": {"rotate": 30 if len(xcats) > 8 else 0},
+            "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}},
+        }
+        option["yAxis"] = {"type": "value",
+                             "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
+        option["series"] = series
+        return option
+    except Exception:
+        return {}
+
+
+def create_dual_axis(df, x, y, title="净GMV vs 净毛利", **ignored):
+    """双轴图：左轴 净GMV（折线），右轴 净毛利（柱）。
+
+    数据行键：x(首单月), 净GMV(y), 净毛利(右轴固定列)。
+    """
+    try:
+        if df is None or df.empty or x not in df.columns or y not in df.columns:
+            return {}
+        right_col = "净毛利"
+        if right_col not in df.columns:
+            return {}
+        xcats = sorted(df[x].dropna().unique().tolist())
+        xidx = {v: i for i, v in enumerate(xcats)}
+        ymap = {}
+        rmap = {}
+        for _, r in df.iterrows():
+            xi = xidx.get(r[x])
+            if xi is None:
+                continue
+            ymap[xi] = r.get(y, 0)
+            rmap[xi] = r.get(right_col, 0)
+        left = [ymap.get(i, 0) for i in range(len(xcats))]
+        right = [rmap.get(i, 0) for i in range(len(xcats))]
+        option = dict(_get_default_title(title))
+        option["tooltip"] = {**DARK_THEME["tooltip"], "trigger": "axis"}
+        option["legend"] = DARK_THEME["legend"]
+        option["toolbox"] = DARK_THEME["toolbox"]
+        option["grid"] = {"top": 60, "left": 80, "right": 80, "bottom": 50}
+        option["xAxis"] = {
+            "type": "category",
+            "data": [str(v) for v in xcats],
+            "axisLabel": {"rotate": 30 if len(xcats) > 8 else 0},
+            "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}},
+        }
+        option["yAxis"] = [
+            {"type": "value", "name": "净GMV",
+             "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
+            {"type": "value", "name": "净毛利",
+             "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}},
+        ]
+        option["series"] = [
+            {"name": "净GMV", "type": "line", "yAxisIndex": 0, "data": left,
+             "itemStyle": {"color": BLUE_PALETTE[0]}, "lineStyle": {"width": 2}},
+            {"name": "净毛利", "type": "bar", "yAxisIndex": 1, "data": right,
+             "itemStyle": {"color": BLUE_PALETTE[2]}},
+        ]
+        return option
+    except Exception:
+        return {}
+
+
 # ==================== 统一入口 ====================
 
 CHART_FUNCTIONS = {
@@ -1448,6 +1702,10 @@ CHART_FUNCTIONS = {
     "wordcloud": create_wordcloud,
     "gl_map": create_gl_map,
     "map_3d": create_gl_map,  # 别名：数据洞察规则中"地区分布→3D地图"使用的类型名
+    "cohort_heatmap": create_cohort_heatmap,
+    "cohort_stacked": create_cohort_stacked,
+    "cohort_trend": create_cohort_trend,
+    "dual_axis": create_dual_axis,
 }
 
 

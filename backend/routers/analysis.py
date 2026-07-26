@@ -8,21 +8,23 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any, Set
 import uuid
+import asyncio
 import threading
 import time as _time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from backend.services.session_manager import manager
-from src.planner import Planner
 from src.utils.json_serializer import sanitize_json
-from backend.routers._analysis_pipeline import run_intents_to_packages
+from backend.routers._analysis_pipeline import run_df_to_packages
 from src.mapping.column_mapper import map_dataset_columns
 from src.merge.dataset_merger import build_analysis_units, AnalysisUnit
+from src.analysis_engine.registry import get_models
+from src.analysis_engine.llm_decision import llm_decision_path
+
+import logging
+logger = logging.getLogger("analysis")
 
 router = APIRouter()
-
-# 规则意图生成器（v1 不调 LLM，修复二）
-_PLANNER = Planner()
 
 # ===== 请求模型 =====
 
@@ -63,9 +65,8 @@ async def api_analysis_run(req: AnalysisRunRequest):
     }
     df = map_dataset_columns(req.session_id, None, df, llm_cfg)
 
-    packages, package_map = run_intents_to_packages(
-        df, [intent.model_dump() for intent in req.intents]
-    )
+    # 新引擎（列名匹配）自动运行全部命中模型，忽略旧 intents 选择
+    packages, package_map = run_df_to_packages(df)
     manager.set_analysis_packages(req.session_id, package_map)
     return {"packages": sanitize_json(packages)}
 
@@ -91,7 +92,7 @@ _PROCESS_TASKS_LOCK = threading.Lock()
 _PROCESS_TTL = 900  # 任务内存表 TTL（秒），防泄漏
 # 修复七：只留线程池控"同时 2 个"，不再另设信号量 / LLM 信号量
 class ProcessDatasetsRequest(BaseModel):
-    session_id: str
+    session_id: Optional[str] = None  # session_id 走路径，body 内不再必需
     dataset_ids: Optional[List[str]] = None  # 省略=处理全部
     # v1 不要求 api_key（规则意图）；保留字段供后续 LLM 增强
     api_key: Optional[str] = ""
@@ -108,21 +109,42 @@ def _cleanup_process_tasks():
         _PROCESS_TASKS.pop(tid, None)
 
 
-def _process_one(session_id: str, dataset_id: str, llm_cfg: dict = None) -> int:
-    """处理单个数据集：列名映射 → 规则意图 → 流水线 → 分桶存储。返回生成的包数量。"""
+def _process_one(session_id: str, dataset_id: str, llm_cfg: dict = None) -> tuple:
+    """处理单个数据集（双路）：
+    规则引擎路径（确定性全跑命中模型）+ LLM 决策路径（一期预留，返回空包）。
+    返回 (生成的包数量, 已渲染的包 dict 列表)。
+    """
     df = manager.get_dataset_df(session_id, dataset_id)
     if df is None:
         raise RuntimeError("数据集为空或读取失败")
+    # 短路优化：若「AI 智能清洗」流水线已对该单元做过「合表+映射+LLM 清洗」
+    # （cleaned_mapped 标记为真），则跳过重复映射，省一次 LLM 调用。
+    # 仅跳过映射；合表仍由 _resolve_process_items 幂等处理。未走清洗路径时缺省 False 照常映射。
+    _sess = manager.get_session(session_id)
+    _ds = _sess.datasets.get(dataset_id) if _sess else None
+    _skip_map = bool(_ds and getattr(_ds, "cleaned_mapped", False))
     # 列名映射：统一为规范标准名，供下游图表生成使用一致语义列名
-    df = map_dataset_columns(session_id, dataset_id, df, llm_cfg)
-    # 修复二：v1 纯规则意图，不调 LLM
-    intents = _PLANNER.generate_default_intents(df)
-    packages, package_map = run_intents_to_packages(df, intents)
+    if not _skip_map:
+        _file_name = _ds.file_name if _ds else None
+        df = map_dataset_columns(session_id, dataset_id, df, llm_cfg,
+                                file_name=_file_name)
+    # 规则引擎路径：新引擎（列名匹配）自动运行全部命中模型
+    packages, package_map = run_df_to_packages(df)
     manager.set_dataset_packages(session_id, dataset_id, package_map)
-    return len(package_map)
+    # LLM 决策路径（一期预留）：async stub，返回空包，仅记录决策日志
+    try:
+        registered = [m.name for m in get_models()]
+        llm_pkgs = asyncio.run(llm_decision_path(df, registered, llm_cfg or {}))
+    except Exception as e:
+        logger.warning("LLM 决策路径异常(已忽略): %s", e)
+        llm_pkgs = []
+    # 合并两路（llm 本期恒为空）
+    merged = list(packages) + list(llm_pkgs)
+    return len(package_map), merged
 
 
-def _resolve_process_items(session_id: str, dataset_ids: List[str]) -> List[dict]:
+def _resolve_process_items(session_id: str, dataset_ids: List[str],
+                          llm_cfg: Optional[dict] = None) -> List[dict]:
     """载入各表 df → 研判合并 → 注册宽表 → 产出处理项列表。
 
     返回 [{"kind":"single"/"merged","dataset_id":str,
@@ -165,7 +187,7 @@ def _resolve_process_items(session_id: str, dataset_ids: List[str]) -> List[dict
         fresh = [(d, df) for d, df in loaded if d not in merged_sources]
         if fresh:
             try:
-                fresh_units = build_analysis_units(fresh, file_names)
+                fresh_units = build_analysis_units(fresh, file_names, llm_cfg)
             except Exception:
                 fresh_units = [AnalysisUnit(kind="single", dataset_id=d,
                                             file_name=file_names.get(d, d)) for d, _ in fresh]
@@ -186,7 +208,7 @@ def _resolve_process_items(session_id: str, dataset_ids: List[str]) -> List[dict
                             items.append({"kind": "single", "dataset_id": sd})
         return items
     try:
-        units = build_analysis_units(loaded, file_names)
+        units = build_analysis_units(loaded, file_names, llm_cfg)
     except Exception:
         # 合并研判异常 → 降级为原多表单表
         units = [AnalysisUnit(kind="single", dataset_id=d,
@@ -238,9 +260,10 @@ def _run_process_task(task_id: str, session_id: str,
             for fut in as_completed(futures):
                 did = futures[fut]
                 try:
-                    pkg_count = fut.result()
+                    pkg_count, merged = fut.result()
                     datasets_status[did] = {**datasets_status[did],
-                                             "status": "done", "pkg_count": pkg_count}
+                                             "status": "done", "pkg_count": pkg_count,
+                                             "packages": merged}
                 except Exception as e:
                     datasets_status[did] = {**datasets_status[did],
                                              "status": "error", "error": str(e)}
@@ -263,27 +286,30 @@ def _run_process_task(task_id: str, session_id: str,
             })
 
 
-@router.post("/analysis/process-datasets")
-async def api_process_datasets(req: ProcessDatasetsRequest):
-    """提交后台并行处理任务，立即返回 task_id；前端轮询 status 获取进度。"""
-    session = manager.get_session(req.session_id)
+@router.post("/analysis/process-datasets/{session_id}")
+async def api_process_datasets(session_id: str, req: Optional[ProcessDatasetsRequest] = None):
+    """提交后台并行处理任务，立即返回 task_id；前端轮询 status 获取进度。
+
+    session_id 走路径（与前端轮询链路一致）；dataset_ids / LLM 映射配置走可选 body。
+    """
+    session = manager.get_session(session_id)
     if session is None or not session.datasets:
         raise HTTPException(status_code=404, detail="会话无数据集，请先上传")
-    target = req.dataset_ids if req.dataset_ids else list(session.datasets.keys())
+    target = (req.dataset_ids if req and req.dataset_ids else list(session.datasets.keys()))
     target = [d for d in target if d in session.datasets]
     if not target:
         raise HTTPException(status_code=400, detail="指定的数据集不存在")
 
-    # 组装 LLM 兜底映射所需配置
+    # 组装 LLM 兜底映射所需配置（前端未传则留空，降级为已有映射）
     llm_cfg = {
-        "api_key": req.api_key,
-        "base_url": req.base_url,
-        "model": req.model,
+        "api_key": req.api_key if req else "",
+        "base_url": req.base_url if req else None,
+        "model": req.model if req else None,
     }
 
     # 合并研判：数据清洗之后、列名映射之前。生成宽表并注册，产出处理项。
     # 无关联键 / 合并失败 → 自动降级为原多表分别处理（端到端不阻断）。
-    process_items = _resolve_process_items(req.session_id, target)
+    process_items = _resolve_process_items(session_id, target, llm_cfg)
     if not process_items:
         raise HTTPException(status_code=400, detail="指定的数据集读取失败")
 
@@ -304,7 +330,7 @@ async def api_process_datasets(req: ProcessDatasetsRequest):
             "ts": _time.time(),
         }
     threading.Thread(
-        target=_run_process_task, args=(task_id, req.session_id, process_items, llm_cfg),
+        target=_run_process_task, args=(task_id, session_id, process_items, llm_cfg),
         daemon=True,
     ).start()
     return {"task_id": task_id, "total": len(process_items)}

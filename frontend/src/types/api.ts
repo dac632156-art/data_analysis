@@ -328,6 +328,8 @@ export interface DatasetProcessStatus {
   status: 'pending' | 'running' | 'done' | 'error';
   pkg_count?: number;
   error?: string;
+  // 该数据集产出的分析包（含 charts/option），供前端直接渲染
+  packages?: AnalysisPackage[];
   // 合并宽表处理项携带的元信息
   kind?: 'single' | 'merged';
   sources?: string[];
@@ -340,4 +342,34 @@ export interface ProcessStatusResponse {
   total: number;
   completed: number;
   datasets: Record<string, DatasetProcessStatus>;
+  // 整个任务失败时的顶层错误（如所有数据集处理异常）
+  error?: string;
+}
+
+/** /clean/ai-clean 提交响应（异步：立即返回任务号） */
+export interface AICleanSubmitResponse {
+  task_id: string;
+  total: number;
+}
+
+/** 单个数据集的 AI 清洗状态 */
+export interface DatasetAICleanStatus {
+  status: 'pending' | 'running' | 'done' | 'error';
+  kind?: 'single' | 'merged';
+  sources?: string[];
+  merge_keys?: string[];
+  explanation?: string;
+  steps_applied?: Array<{ step: string; reason: string; success: boolean }>;
+  rows_change?: number;
+  note?: string;
+  error?: string;
+}
+
+/** /clean/ai-clean/status/{task_id} 轮询响应 */
+export interface AICleanStatusResponse {
+  status: 'running' | 'done' | 'error' | 'partial';
+  total: number;
+  completed: number;
+  datasets: Record<string, DatasetAICleanStatus>;
+  error?: string;
 }

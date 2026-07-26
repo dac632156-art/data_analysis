@@ -1,7 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { FileText, Loader2, Trash2, Play, CheckCircle2, AlertTriangle, Database, GitMerge } from 'lucide-react';
-import TopNav from '../components/TopNav';
-import Sidebar from '../components/Sidebar';
+import { useEffect, useState, useCallback } from 'react';
+import { FileText, Trash2, AlertTriangle, Database, GitMerge } from 'lucide-react';
 import MetricCard from '../components/MetricCard';
 import DataTable from '../components/DataTable';
 import FileUploader from '../components/FileUploader';
@@ -9,9 +7,9 @@ import { useData } from '../contexts/DataContext';
 import { formatBytes } from '../utils/format';
 import {
   uploadFile, listDatasets, removeDataset, selectDataset,
-  processDatasets, getProcessStatus, releaseUploadSlot,
+  releaseUploadSlot,
 } from '../api/client';
-import type { DatasetInfo, DatasetProcessStatus } from '../types/api';
+import type { DatasetInfo } from '../types/api';
 
 const QUOTA_DEFAULT = 30 * 1024 * 1024;
 
@@ -19,12 +17,7 @@ export default function UploadPage() {
   const { state, dispatch } = useData();
   const { sessionId, datasets, activeDatasetId, usedBytes, quotaBytes, fileName, rows, columns, loading, error, preview, columnInfo } = state;
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [processing, setProcessing] = useState(false);
-  const [processStatus, setProcessStatus] = useState<Record<string, DatasetProcessStatus>>({});
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // sessionId 可能在组件生命周期内变化，pollStatus 用 [] 闭包需经 ref 读取最新值
-  const sessionIdRef = useRef(sessionId);
-  sessionIdRef.current = sessionId;
+  const [deleting, setDeleting] = useState(false);
 
   // 修复九：挂载拉回列表 + 额度（刷新后内存清空，从后端恢复）
   useEffect(() => {
@@ -41,7 +34,6 @@ export default function UploadPage() {
     })();
     return () => {
       alive = false;
-      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [sessionId]);
 
@@ -52,7 +44,7 @@ export default function UploadPage() {
     }
     setUploadError(null);
     try {
-      const res = await uploadFile(sessionId, file);
+      const res = await uploadFile(file, sessionId);
       // 多 sheet Excel 会返回 datasets 列表，单表时为长度为 1 的列表；统一走列表
       const items = (res.datasets && res.datasets.length)
         ? res.datasets
@@ -105,51 +97,28 @@ export default function UploadPage() {
     } catch { /* ignore */ }
   }, [sessionId]);
 
-  const pollStatus = useCallback((taskId: string) => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(async () => {
-      try {
-        const st = await getProcessStatus(taskId);
-        setProcessStatus(st.datasets);
-        if (st.status === 'done' || st.status === 'error') {
-          if (timerRef.current) clearInterval(timerRef.current);
-          setProcessing(false);
-          // 处理期间后端可能注册了「合并宽表」(新 dataset_id)，必须重新拉取列表
-          // 否则合并出的宽表不会出现在 UI 上，用户无法选中它。
-          try {
-            const res = await listDatasets(sessionIdRef.current);
-            dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
-            dispatch({ type: 'SET_QUOTA', usedBytes: res.used_bytes, quotaBytes: res.quota_bytes });
-          } catch { /* 刷新列表失败不阻断主流程 */ }
-        }
-      } catch {
-        if (timerRef.current) clearInterval(timerRef.current);
-        setProcessing(false);
-        setUploadError('处理任务已过期，请重新点击处理');
-      }
-    }, 2000);
-  }, []);
-
-  const startProcess = useCallback(async (ids?: string[]) => {
-    setProcessing(true);
-    setProcessStatus({});
-    try {
-      const res = await processDatasets(sessionId, ids);
-      pollStatus(res.task_id);
-    } catch (e: any) {
-      setProcessing(false);
-      const msg = e?.response?.data?.detail || e?.message || '提交处理失败';
-      setUploadError(msg);
-    }
-  }, [sessionId, pollStatus]);
-
   const handleRelease = async () => {
     if (!confirm('确定释放插槽？所有已上传报表与额度将被清空。')) return;
     await releaseUploadSlot(sessionId);
     dispatch({ type: 'CLEAR_DATA' });
     dispatch({ type: 'SET_QUOTA', usedBytes: 0, quotaBytes: 0 });
-    setProcessStatus({});
   };
+
+  const handleDeleteAll = useCallback(async () => {
+    if (!confirm('确定删除全部已上传报表？此操作不可撤销。')) return;
+    setDeleting(true);
+    try {
+      for (const ds of datasets) {
+        await removeDataset(sessionId, ds.dataset_id);
+      }
+      const res = await listDatasets(sessionId);
+      dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
+      dispatch({ type: 'SET_QUOTA', usedBytes: res.used_bytes, quotaBytes: res.quota_bytes });
+      const active = res.datasets.find(d => d.is_active);
+      if (active) dispatch({ type: 'SELECT_DATASET', datasetId: active.dataset_id });
+    } catch { /* ignore */ }
+    finally { setDeleting(false); }
+  }, [sessionId, datasets]);
 
   // 额度进度条
   const quota = quotaBytes || QUOTA_DEFAULT;
@@ -158,21 +127,9 @@ export default function UploadPage() {
   const warn = pct > 80;
   const barColor = full ? '#fb7185' : warn ? '#fbbf24' : '#8b5cf6';
 
-  const badge = (st?: DatasetProcessStatus) => {
-    if (!st) return null;
-    const mergedTag = st.kind === 'merged' ? '合并宽表 · ' : '';
-    if (st.status === 'running') return <span className="text-[#8b5cf6] text-xs flex items-center gap-1"><Loader2 size={12} className="animate-spin" />处理中…</span>;
-    if (st.status === 'done') return <span className="text-[#34d399] text-xs flex items-center gap-1"><CheckCircle2 size={12} />{mergedTag}已完成 {st.pkg_count} 图</span>;
-    if (st.status === 'error') return <span className="text-[#fb7185] text-xs flex items-center gap-1" title={st.error}><AlertTriangle size={12} />{mergedTag}失败</span>;
-    return <span className="text-[#94a3b8] text-xs">待处理</span>;
-  };
 
   return (
-    <div className="min-h-screen bg-[#020617] text-[#f8fafc]">
-      <TopNav />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+    <div className="text-[#f8fafc]">
           {/* 额度进度条 */}
           <div className="glass-card p-4 mb-4">
             <div className="flex justify-between items-center mb-2">
@@ -202,12 +159,12 @@ export default function UploadPage() {
                 <span className="text-xs text-[#94a3b8]">（{datasets.length}）</span>
               </h2>
               <button
-                onClick={() => startProcess()}
-                disabled={processing || datasets.length === 0}
+                onClick={handleDeleteAll}
+                disabled={deleting || datasets.length === 0}
                 className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: 'linear-gradient(135deg,#8b5cf6,#a78bfa)', color: '#fff', boxShadow: '0 0 16px rgba(139,92,246,0.4)' }}
               >
-                {processing ? <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" />处理中…</span> : '一键处理全部报表'}
+                {deleting ? '删除中…' : '一键删除'}
               </button>
             </div>
 
@@ -217,7 +174,6 @@ export default function UploadPage() {
               <div className="flex flex-col gap-3">
                 {datasets.map((ds) => {
                   const isActive = ds.dataset_id === activeDatasetId;
-                  const st = processStatus[ds.dataset_id];
                   return (
                     <div
                       key={ds.dataset_id}
@@ -241,12 +197,6 @@ export default function UploadPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        {badge(st)}
-                        <button
-                          onClick={() => startProcess([ds.dataset_id])}
-                          disabled={processing}
-                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#8b5cf6]/20 text-[#a78bfa] hover:bg-[#8b5cf6]/35 transition-colors disabled:opacity-40"
-                        >处理此表</button>
                         <button
                           onClick={() => handleRemove(ds.dataset_id)}
                           className="p-1.5 rounded-lg text-[#94a3b8] hover:text-[#fb7185] hover:bg-[#fb7185]/10 transition-colors"
@@ -310,8 +260,6 @@ export default function UploadPage() {
               className="px-4 py-2 rounded-lg text-sm font-medium bg-[#fb7185]/15 text-[#fb7185] hover:bg-[#fb7185]/25 transition-colors"
             >结束会话 / 释放插槽</button>
           </div>
-        </main>
-      </div>
     </div>
   );
 }

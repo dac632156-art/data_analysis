@@ -2,11 +2,17 @@
 # 格式：标准字段名 -> 该字段可能的所有原始列名变体（中英文均可）
 # 标准字段名是下游分析使用的「规范列名」（中文语义名）。
 #
-# 重要：有歧义的列名（如 name，在客户表/订单表含义不同）不要写进本词典，
-#       这类列会由系统按整表指纹 / 包含度 / 相似度 / LLM 自动解析归属。
-# 写入本词典的变体必须无歧义（每个变体只对应唯一标准字段）。
+# 重要：有歧义的列名（如 name，在客户表/订单表含义不同；又如裸「金额」既可指
+#       付款/退款/订单总额）不要写进本词典，这类列会由系统按整表指纹 / 包含度 /
+#       相似度 / LLM 自动解析归属。写入本词典的变体必须无歧义（每个变体只对应
+#       唯一标准字段）。
+#
+# 本文件内容以 src/mapping/映射词典.md 为准，请勿手工乱改，改 md 后重建。
 mappings:
+
+  # --- 用户基础与画像 ---
   用户ID:
+    - 用户ID
     - user_id
     - uid
     - customer_id
@@ -17,93 +23,757 @@ mappings:
     - 用户编码
     - 会员编号
   年龄:
+    - 年龄
     - age
     - 岁数
   性别:
+    - 性别
     - gender
     - sex
     - 用户性别
   教育水平:
+    - 教育水平
     - education
-    - 学历
-  成交金额:
-    - 金额
-    - 成交额
-    - 销售金额
-  出生年份:
-    - year_birth
-    - 出生年
-    - 生日年份
-  婚姻状况:
-    - marital_status
-    - 婚否
-    - 婚姻
   收入:
+    - 收入
     - income
-    - 月收入
+    - salary
+    - AnnualIncome
     - 年收入
-    - 薪资
-  家中儿童数:
-    - kidhome
-    - 儿童数
-    - 小孩数
-  家中青少年数:
-    - teenhome
-    - 青少年数
-    - 少年数
+    - 收入水平
+  婚姻情况:
+    - 婚姻情况
+    - Marital_Status
+    - marital_status
+    - 婚姻状态
+  生日:
+    - 生日
+    - birthday
+    - birth_date
+    - date_of_birth
+    - dob
+    - 出生日期
+    - 诞辰
+    - Year_Birth
+  手机号:
+    - 手机号
+    - phone
+    - mobile
+    - phone_number
+    - tel
+    - 手机号码
+    - 联系电话
+  邮箱地址:
+    - 邮箱地址
+    - email
+    - 电子邮箱
+    - 邮件地址
+  住址:
+    - 住址
+    - address
+    - address_detail
+    - full_address
+    - street_address
+    - 收货地址
+    - 街道地址
+    - 详细地址
+    - Location
+  城市:
+    - 城市
+    - city
+    - city_name
+    - 城市名
+  省份:
+    - 省份
+    - province
+    - state
+    - region
+    - state_name
+    - 省
+    - 州
+  国家:
+    - 国家
+    - country
+    - country_name
+    - nation
+    - 国别
+    - 国家名
+  邮编:
+    - 邮编
+    - zip_code
+    - postal_code
+    - zip
+    - 邮政编码
+    - 邮递区号
+
+  # --- 账号与会员系统 ---
+  客户唯一ID:
+    - 客户唯一ID
+    - customer_unique_id
+    - 客户唯一编号
+  昵称:
+    - 昵称
+    - nickname
+    - nick_name
+    - alias
+    - 网名
+    - 花名
   注册日期:
-    - dt_customer
     - 注册日期
-    - 客户注册日期
+    - signup_date
+    - register_date
+    - join_date
     - 注册时间
-  最近消费天数:
-    - recency
-    - 最近消费
-    - 未消费天数
-  葡萄酒消费金额:
-    - mntwines
-    - 红酒消费金额
-    - 葡萄酒金额
-  水果消费金额:
-    - mntfruits
-    - 水果金额
-  肉类消费金额:
-    - mntmeatproducts
-    - 肉类金额
-  鱼类消费金额:
-    - mntfishproducts
-    - 鱼类金额
-  甜食消费金额:
-    - mntsweetproducts
-    - 甜食金额
-  黄金产品消费金额:
-    - mntgoldprods
-    - 贵金属消费金额
-    - 黄金金额
-  优惠购买次数:
-    - numdealspurchases
-    - 优惠次数
-    - 促销购买次数
-  网购次数:
-    - numwebpurchases
-    - 网购下单次数
-    - 线上购买次数
-  目录购买次数:
-    - numcatalogpurchases
-    - 目录下单次数
-  门店购买次数:
-    - numstorepurchases
-    - 实体店购买次数
-    - 门店下单次数
-  月网页访问次数:
-    - numwebvisitsmonth
-    - 月访问次数
-    - 网页访问次数
-  投诉标记:
+    - 加入日期
+  会员等级:
+    - 会员等级
+    - member_level
+    - membership_level
+    - vip_level
+    - VIP等级
+    - 会员级别
+  用户状态:
+    - 用户状态
+    - user_status
+    - account_status
+    - customer_status
+    - 账号状态
+    - 客户状态
+  客户年限:
+    - 客户年限
+    - CustomerTenureYears
+    - 客户年限年数
+    - 在网年限
+  忠诚度计划:
+    - 忠诚度计划
+    - LoyaltyProgram
+    - 会员忠诚计划
+    - 积分计划
+  订阅状态:
+    - 订阅状态
+    - newsletter_subscription
+    - is_subscribed
+    - subscribed
+    - marketing_opt_in
+    - 是否订阅
+    - 营销订阅
+    - 订阅通知
+    - Subscription Status
+
+  # --- 商品与类目 ---
+  商品ID:
+    - 商品ID
+    - product_id
+    - 产品编号
+    - 货品ID
+  SKU编号:
+    - SKU编号
+    - sku_id
+    - sku
+    - stock_keeping_unit
+    - 商品SKU
+  商品类目:
+    - 商品类目
+    - category
+    - product_category
+    - 商品分类
+    - 产品类目
+  类目ID:
+    - 类目ID
+    - category_id
+    - 分类ID
+    - 品类编号
+  类目编码:
+    - 类目编码
+    - category_code
+    - 分类编码
+    - 品类代码
+  品牌:
+    - 品牌
+    - brand
+    - 商品品牌
+    - 品牌名
+  商品规格:
+    - 商品规格
+    - spec
+    - specification
+    - variant
+    - 规格型号
+    - 款式
+
+  # --- 定价与成本 ---
+  商品单价:
+    - 商品单价
+    - unit_price_usd
+    - price_usd
+    - price
+    - 单价
+    - 商品售价
+    - 定价
+    - List Price
+  原价:
+    - 原价
+    - original_price
+    - list_price
+    - retail_price
+    - 标价
+    - 吊牌价
+  商品成本:
+    - 商品成本
+    - cost_usd
+    - 进货成本
+    - 成本价
+    - cost price
+  商品毛利:
+    - 商品毛利
+    - margin_usd
+    - 毛利额
+    - 商品利润
+  库存:
+    - 库存
+    - stock
+    - inventory
+    - stock_qty
+    - 存货
+    - 现货数量
+
+  # --- 交易与订单 ---
+  订单ID:
+    - 订单ID
+    - order_id
+    - 订单编号
+    - 单据ID
+  交易流水号:
+    - 交易流水号
+    - transaction_id
+    - trx_id
+    - trans_id
+    - 支付流水号
+  订单时间:
+    - 订单时间
+    - order_time
+    - order_purchase_timestamp
+    - 下单时间
+    - 购买时间
+    - 订单日期
+  订单状态:
+    - 订单状态
+    - order_status
+    - 订单进度
+    - 交易状态
+  购买数量:
+    - 购买数量
+    - qty
+    - quantity
+    - 购买件数
+    - 下单件数
+    - 操作数量
+  明细行总价:
+    - 明细行总价
+    - line_total_usd
+    - 行小计
+    - 订单明细金额
+  订单总额:
+    - 订单总额
+    - order_total
+    - order_amount
+    - grand_total
+    - 订单总金额
+    - 整单金额
+  订单实付金额:
+    - 订单实付金额
+    - total_usd
+    - total_payment
+    - 订单实付
+    - 订单应付
+  购买金额:
+    - 购买金额
+    - payment_value
+    - 实付金额
+    - 付款金额
+    - 支付金额
+    - purchase
+  运费:
+    - 运费
+    - shipping_fee
+    - freight
+    - delivery_fee
+    - shipping_cost
+    - 邮费
+    - 配送费
+  税额:
+    - 税额
+    - tax_amount
+    - tax
+    - 税费
+  日订单量:
+    - 日订单量
+    - order_count
+    - 每日订单数
+    - 当天订单量
+  订单年月:
+    - 订单年月
+    - year_month
+    - 订单月份
+    - 年月
+
+  # --- 支付、折扣与退款 ---
+  支付方式:
+    - 支付方式
+    - payment
+    - payment_method
+    - 付款方式
+    - 支付渠道
+  支付时间:
+    - 支付时间
+    - payment_time
+    - paid_at
+    - pay_time
+    - 付款时间
+    - pay_success_time
+    - paid_time
+    - 付款成功时间
+  折扣比例:
+    - 折扣比例
+    - discount_pct
+    - discount
+    - 折扣率
+    - 优惠比例
+    - Discount Percent
+  折扣金额:
+    - 折扣金额
+    - discount_amount
+    - discount_value
+    - 优惠金额
+    - 抵扣金额
+  使用折扣次数:
+    - 使用折扣次数
+    - DiscountsAvailed
+    - 用券次数
+    - 折扣使用次数
+  优惠券:
+    - 优惠券
+    - coupon
+    - coupon_code
+    - voucher
+    - 优惠码
+    - 代金券
+  退款金额:
+    - 退款金额
+    - refund_amount
+    - refunded_amount
+    - 退款额
+    - 退费金额
+  退款状态:
+    - 退款状态
+    - refund_status
+    - refund_state
+    - 退货状态
+    - 退款进度
+
+  # --- 履约与售后 ---
+  物流单号:
+    - 物流单号
+    - tracking_no
+    - tracking_number
+    - logistics_no
+    - 快递单号
+    - 运单号
+  承运商:
+    - 承运商
+    - carrier
+    - shipping_carrier
+    - logistics_provider
+    - 物流商
+    - 快递公司
+  发货时间:
+    - 发货时间
+    - ship_time
+    - shipped_at
+    - dispatch_time
+    - 出库时间
+    - 发货日期
+  送达时间:
+    - 送达时间
+    - delivery_time
+    - delivered_at
+    - arrival_time
+    - 签收时间
+    - 到货时间
+  订单送达率:
+    - 订单送达率
+    - delivery_rate
+    - 妥投率
+    - 配送成功率
+  客诉次数:
+    - 客诉次数
     - complain
-    - 是否投诉
-    - 投诉
-  营销响应:
-    - response
-    - 活动响应
-    - 营销反馈
+    - complaint_count
+    - 投诉次数
+    - 客诉量
+
+  # --- 行为与流量 ---
+  事件ID:
+    - 事件ID
+    - event_id
+    - 行为事件ID
+    - 埋点事件ID
+  会话ID:
+    - 会话ID
+    - session_id
+    - 会话编号
+    - 访问会话ID
+  事件时间:
+    - 事件时间
+    - timestamp
+    - event_time
+    - 行为时间
+    - 事件发生时间
+  行为类型:
+    - 行为类型
+    - event_type
+    - action_type
+    - 事件类型
+    - 用户行为
+  事件金额:
+    - 事件金额
+    - amount_usd
+    - 行为金额
+  在站时长:
+    - 在站时长
+    - time_spent_on_site_minutes
+    - session_duration
+    - stay_minutes
+    - TimeSpentOnWebsite
+    - 网站停留时长
+    - 在线时长
+  浏览页面数:
+    - 浏览页面数
+    - pages_viewed
+    - page_views
+    - view_count
+    - 浏览页数
+    - 访问页面数
+  访问次数:
+    - 访问次数
+    - SessionCount
+    - 访问数
+    - 会话次数
+  会话开始时间:
+    - 会话开始时间
+    - start_time
+    - 会话起始时间
+    - 访问开始时间
+  设备类型:
+    - 设备类型
+    - device
+    - PreferredDevice
+    - 终端类型
+    - 访问设备
+  平台:
+    - 平台
+    - platform
+    - 渠道平台
+    - 终端平台
+  流量来源:
+    - 流量来源
+    - source
+    - channel
+    - ReferralSource
+    - 来源渠道
+    - 访问来源
+  广告来源:
+    - 广告来源
+    - utm_source
+    - ad_source
+    - source_medium
+    - 广告媒介
+  营销计划:
+    - 营销计划
+    - utm_campaign
+    - campaign
+    - campaign_name
+    - 广告计划
+    - 活动名称
+  URL:
+    - URL
+    - url
+    - link
+    - web_url
+    - 链接
+    - 网址
+
+  # --- 评价与反馈 ---
+  评分星级:
+    - 评分星级
+    - rating
+    - review_score
+    - 评分
+    - 评价星级
+  评价文本:
+    - 评价文本
+    - review_text
+    - 评论内容
+    - 评价正文
+  评价时间:
+    - 评价时间
+    - review_time
+    - 评论时间
+    - 评价日期
+  评价ID:
+    - 评价ID
+    - review_id
+    - 评论ID
+    - 评价编号
+  评分有用数:
+    - 评分有用数
+    - review_helpful
+    - helpful_count
+    - useful_count
+    - 评价有用计数
+    - 有助次数
+  客户满意度:
+    - 客户满意度
+    - CustomerSatisfaction
+    - 满意度
+    - CSAT
+
+  # --- 模型分析指标 ---
+  距上次登录天数:
+    - 距上次登录天数
+    - last_login_days_ago
+    - days_since_login
+    - recency
+    - 未登录天数
+    - 登录间隔天
+  最近购买间隔天数:
+    - 最近购买间隔天数
+    - R
+    - LastPurchaseDaysAgo
+    - 最近购买天
+    - 未购天数
+    - Previous Purchases
+  购买频率:
+    - 购买频率
+    - purchase_frequency
+    - freq
+    - frequency
+    - F
+    - NumberOfPurchases
+    - 购买次数
+    - 年购买频次
+  平均客单价:
+    - 平均客单价
+    - average_order_value
+    - aov
+    - avg_order
+    - 平均订单价值
+  总消费金额:
+    - 总消费金额
+    - total_spending
+    - total_amount
+    - ltv
+    - gmv_user
+    - 累计消费
+    - 用户GMV
+    - 用户终身价值
+  R评分:
+    - R评分
+    - R_score
+    - R分值
+  F评分:
+    - F评分
+    - F_score
+    - F_Score
+    - F分值
+    - 频次评分
+  M评分:
+    - M评分
+    - M_score
+    - M分值
+  用户分层:
+    - 用户分层
+    - user_tier
+    - 用户层级
+    - 客户分层
+  价值等级:
+    - 价值等级
+    - value_tier
+    - 价值层级
+    - 价值分层
+  流失风险等级:
+    - 流失风险等级
+    - risk_level
+    - 流失等级
+    - 风险层级
+  客户细分:
+    - 客户细分
+    - CustomerSegment
+    - 客户分群
+    - 客群细分
+  聚类标签:
+    - 聚类标签
+    - labels
+    - cluster
+    - kmeans_label
+    - 分群标签
+    - 簇标签
+  复购标记:
+    - 复购标记
+    - repurchase_flag
+    - is_repurchase
+    - repeat_purchase
+    - 是否复购
+    - 回头客标记
+  新客标记:
+    - 新客标记
+    - new_customer_flag
+    - is_new_customer
+    - new_user
+    - 是否新客
+    - 首购标记
+  购买状态:
+    - 购买状态
+    - PurchaseStatus
+    - 是否购买
+    - 购置状态
+
+  # --- 购物车与关联推荐（商品关联规则模型） ---
+  购物车编号:
+    - 购物车编号
+    - cart_id
+    - basket_id
+    - 购物车ID
+  加购时间:
+    - 加购时间
+    - add_to_cart_time
+    - cart_time
+    - 加购时间戳
+  套餐编号:
+    - 套餐编号
+    - combo_id
+    - bundle_id
+    - item_set
+    - 套餐ID
+    - 组合包编号
+  主商品ID:
+    - 主商品ID
+    - main_product_id
+    - primary_sku
+    - 主件SKU
+  附属商品ID:
+    - 附属商品ID
+    - cross_sell_product_id
+    - accessory_sku
+    - 配件SKU
+    - 搭售SKU
+  加购状态:
+    - 加购状态
+    - cart_status
+    - is_in_cart
+    - 是否移出购物车
+
+  # --- 流量漏斗与订单状态（GMV 拆解驱动模型） ---
+  访客ID:
+    - 访客ID
+    - visitor_id
+    - vid
+    - 设备指纹
+    - 访客编号
+  订单取消时间:
+    - 订单取消时间
+    - cancel_time
+    - canceled_at
+    - 取消时间
+  分摊优惠金额:
+    - 分摊优惠金额
+    - apportioned_discount
+    - share_discount
+    - 分摊优惠
+    - 子订单折扣
+  平台服务费:
+    - 平台服务费
+    - platform_fee
+    - commission_fee
+    - 平台扣款
+    - 佣金
+
+  # --- 定价与活动策略（商品价格弹性分析） ---
+  基准价格:
+    - 基准价格
+    - base_price
+    - regular_price
+    - msrp
+    - 日常均价
+    - 底价
+    - 建议零售价
+  活动直降金额:
+    - 活动直降金额
+    - price_reduction
+    - direct_discount
+    - 直降金额
+    - 立减金额
+  平台补贴金额:
+    - 平台补贴金额
+    - subsidy_amount
+    - platform_subsidy
+    - 平台补贴
+    - 厂商补贴
+  竞品标价:
+    - 竞品标价
+    - competitor_price
+    - comp_price
+    - 竞品价格
+
+  # --- 用户生命周期与负向行为（用户流失预警模型） ---
+  最后活跃时间:
+    - 最后活跃时间
+    - last_active_time
+    - last_login_time
+    - 最后访问时间
+  注销时间:
+    - 注销时间
+    - deregister_time
+    - cancel_account_time
+    - 注销时间
+    - 销号时间
+  退订状态:
+    - 退订状态
+    - unfollow_status
+    - is_unsubscribed
+    - 取关状态
+    - 是否退订邮件
+  拒收时间:
+    - 拒收时间
+    - reject_time
+    - rejected_at
+    - 拒收时间
+    - 退回时间
+  账号封禁状态:
+    - 账号封禁状态
+    - is_banned
+    - account_suspended
+    - 是否封号
+    - 黑名单标记
+
+  # --- 其他系统字段 ---
+  更新时间:
+    - 更新时间
+    - update_time
+    - updated_at
+    - last_modified
+    - 修改时间
+    - 最后更新
+  币种:
+    - 币种
+    - currency
+    - currency_code
+    - 货币
+    - 结算币种
+  AB分组:
+    - AB分组
+    - ab_group
+    - ab_test_group
+    - experiment_group
+    - 实验分组
+    - AB实验组

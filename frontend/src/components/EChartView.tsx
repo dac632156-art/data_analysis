@@ -12,7 +12,6 @@ import {
   GeoComponent,  // ★ 2D 地图组件
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
-import 'echarts-wordcloud';
 // ★ Theme Engine（Single Source of Truth for colors）
 import { theme as GALAXY_THEME } from '../theme';
 // ★ echarts-gl 3D 扩展
@@ -167,7 +166,7 @@ function enhanceOptionForInteraction(option: EChartsOption): EChartsOption {
   if (!result.tooltip) {
     const series = (result.series as Array<Record<string, unknown>>) || [];
     const useItem = series.some(s =>
-      ['pie', 'map', 'scatter', 'bubble', 'radar', 'treemap', 'wordCloud'].includes(String(s.type || ''))
+      ['pie', 'map', 'scatter', 'bubble', 'radar', 'treemap'].includes(String(s.type || ''))
     );
     result.tooltip = { trigger: useItem ? 'item' : 'axis', confine: true };
   }
@@ -244,75 +243,6 @@ function enhanceOptionForInteraction(option: EChartsOption): EChartsOption {
   return result as EChartsOption;
 }
 
-/**
- * ★ 词云颜色函数水合（2026-07-13 修复「词云全黑」）
- *
- * 背景：echarts-wordcloud 2.1.0 不支持数组形式的 textStyle.color，只能用 function
- * （function 内部从色板取色）。后端 create_wordcloud 把该 function 序列化为一段
- * 「JS 源码字符串」随 option JSON 下发。若前端直接把这段字符串传给 ECharts，
- * ECharts 会把它当成无效颜色值 → 所有词回退成默认黑色。
- *
- * 解决：渲染前把 wordCloud series 的 textStyle.color（若仍是字符串且形似函数）
- * 水合为真正的 JS function，ECharts 才能按色板逐词取色。
- */
-// ★ 词云兜底色板（与后端 BLUE_PALETTE / VDS 暖色前置 10 色板一致）。
-//   仅在水合失败时兜底使用，保证即使 function 水合失败每个词也有合法颜色。
-const WORDCLOUD_PALETTE = [
-  "#38BDF8", "#818CF8", "#22D3EE", "#FBBF24", "#F472B6",
-  "#FB923C", "#84CC16", "#C084FC", "#60A5FA", "#2DD4BF",
-];
-
-function hydrateWordCloudColor(option: EChartsOption): EChartsOption {
-  const series = (option.series as Array<Record<string, unknown>>) || [];
-  let changed = false;
-
-  // ★ 兜底 color 函数：输入可能是 echarts 以 function(params) 调用的 params 对象，
-  //   也可能是第一参直接是词字符串；兼容两种签名，从色板逐词取色。
-  const makeFallbackColorFn = (): ((wordOrParams: unknown) => string) => {
-    return (wordOrParams: unknown) => {
-      const w =
-        typeof wordOrParams === 'string'
-          ? wordOrParams
-          : (wordOrParams as { name?: string } | null)?.name || '';
-      return WORDCLOUD_PALETTE[
-        Math.abs((w ? w.charCodeAt(0) + (w.length || 0) : 0)) % WORDCLOUD_PALETTE.length
-      ];
-    };
-  };
-
-  const newSeries = series.map((s) => {
-    if (String(s.type || '') !== 'wordCloud') return s;
-    const ts = s.textStyle as Record<string, unknown> | undefined;
-
-    // 情况 A：color 是合法 function 源码字符串（后端下发）→ 水合为真实 function
-    if (ts && typeof ts.color === 'string') {
-      const c = (ts.color as string).trim();
-      if (c.startsWith('function') || c.startsWith('(') || c.startsWith('=>')) {
-        try {
-          // eslint-disable-next-line no-new-func
-          const color = (new Function('return (' + c + ');'))();
-          changed = true;
-          return { ...s, textStyle: { ...ts, color } };
-        } catch (e) {
-          console.warn('[EChartView] 词云 color 函数水合失败，使用内置色板兜底', e);
-          changed = true;
-          return { ...s, textStyle: { ...ts, color: makeFallbackColorFn() } };
-        }
-      }
-      // 情况 B：color 已是普通合法颜色字符串（如 "#38BDF8"）→ 保持原样，不误伤
-      return s;
-    }
-
-    // 情况 C：color 缺失 / 非字符串（如 null/undefined/number）→ 注入兜底 function，
-    //   避免 echarts-wordcloud 因无 color 而把所有词渲染成默认黑色。
-    changed = true;
-    const newTs = { ...(ts || {}), color: makeFallbackColorFn() };
-    return { ...s, textStyle: newTs };
-  });
-
-  if (!changed) return option;
-  return { ...option, series: newSeries };
-}
 
 // ===================================================================
 // ★ 核心：在 option 中查找匹配 highlightLabel 的数据项索引
@@ -334,8 +264,8 @@ function findMatchingIndices(
 
   const matching: number[] = [];
 
-  // 2) 饼图/树状图/词云: data[i].name 匹配
-  if (sType === 'pie' || sType === 'treemap' || sType === 'wordCloud') {
+  // 2) 饼图/树状图: data[i].name 匹配
+  if (sType === 'pie' || sType === 'treemap') {
     data.forEach((d, i) => {
       if (typeof d === 'object' && d !== null && !Array.isArray(d)) {
         const name = String((d as Record<string, unknown>).name || '');
@@ -457,8 +387,8 @@ function applyDataPointHighlight(
     };
   }
 
-  // ★ 饼图/环形图/树状图/词云：数据点级别
-  if (sType === 'pie' || sType === 'treemap' || sType === 'wordCloud') {
+  // ★ 饼图/环形图/树状图：数据点级别
+  if (sType === 'pie' || sType === 'treemap') {
     const data = (series.data as unknown[]) || [];
     return {
       ...series,
@@ -573,8 +503,8 @@ function dimEntireSeries(series: Record<string, unknown>, sType: string): Record
     };
   }
 
-  // 饼图/树状图/词云：逐数据项淡化
-  if (sType === 'pie' || sType === 'treemap' || sType === 'wordCloud') {
+  // 饼图/树状图：逐数据项淡化
+  if (sType === 'pie' || sType === 'treemap') {
     const data = (series.data as unknown[]) || [];
     return {
       ...series,
@@ -657,13 +587,22 @@ export default function EChartView({
   // ★ 计算增强后的 option（联动样式 + 高亮/淡化）
   const enhancedOption = useMemo(() => {
     if (!option) return null;
+    // 词云已从后端分析能力移除：任何来源的词云 option 均不渲染
+    const seriesArr = (option.series as Array<Record<string, unknown>>) || [];
+    if (seriesArr.some((s) => String(s.type) === 'wordCloud')) return null;
     const base = enhanceOptionForInteraction(option);
-    // 词云 color 是后端下发的 function 字符串，渲染前必须水合为真实 function
-    const hydrated = hydrateWordCloudColor(base);
+    // 防御：规整 visualMap.text 为 2 元素数组，规避 ECharts endsText.slice(...).reverse 报错
+    // （覆盖任何来源：后端生成 / 旧看板包 / 缺 text 或 text 为字符串的情况）
+    const vm = (base as Record<string, unknown>).visualMap;
+    (Array.isArray(vm) ? vm : vm ? [vm] : []).forEach((item) => {
+      const o = item as Record<string, unknown>;
+      const t = o?.text;
+      if (!Array.isArray(t) || t.length !== 2) o.text = ['高', '低'];
+    });
     if (highlightLabel) {
-      return applyHighlightBlur(hydrated, highlightLabel);
+      return applyHighlightBlur(base, highlightLabel);
     }
-    return hydrated;
+    return base;
   }, [option, highlightLabel]);
 
   // ★ 记录当前是否为 3D 图表，用于检测 2D/3D 切换时需要重新初始化

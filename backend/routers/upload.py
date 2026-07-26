@@ -231,6 +231,11 @@ async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
         }
 
     except ValueError as e:
+        import traceback as _tb
+        import logging as _lg
+        _lg.getLogger("uvicorn.error").error(
+            f"Upload ValueError: {e}\n{_tb.format_exc()}"
+        )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         import traceback as _traceback

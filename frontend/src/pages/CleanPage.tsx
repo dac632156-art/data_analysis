@@ -1,9 +1,10 @@
 /* CleanPage - 数据清洗 */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { FiAlertTriangle, FiCheck, FiTrash2, FiRefreshCw, FiRotateCcw, FiZap, FiLoader, FiDownload } from 'react-icons/fi';
 import DataTable from '../components/DataTable';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
 import * as api from '../api/client';
+import type { AICleanStatusResponse } from '../types/api';
 
 export default function CleanPage() {
   const { state: ds, dispatch: dd } = useData();
@@ -16,11 +17,8 @@ export default function CleanPage() {
   const [outlierAction, setOutlierAction] = useState('remove');
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiResponse, setAiResponse] = useState<{
-    explanation: string;
-    steps: Array<{ step: string; reason: string; success: boolean }>;
-    rows_change: number;
-  } | null>(null);
+  const [aiTask, setAiTask] = useState<AICleanStatusResponse | null>(null);
+  const pollRef = useRef<number | null>(null);
 
   // 用 columnInfo/fileName 判断是否有数据，而不是 rows（清洗删行时 rows 会变导致 hasData 翻转、DOM 树整体卸载重挂）
   const hasData = ds.columnInfo.length > 0 || !!ds.fileName;
@@ -70,69 +68,47 @@ export default function CleanPage() {
     }
   };
 
+  const pollAiClean = useCallback(async (taskId: string) => {
+    try {
+      const status = await api.getAiCleanStatus(taskId);
+      setAiTask(status);
+      if (status.status === 'running') {
+        pollRef.current = window.setTimeout(() => pollAiClean(taskId), 1500);
+      } else {
+        // 任务结束（完成/出错）→ 刷新当前激活表预览与列信息
+        setAiLoading(false);
+        pollRef.current = null;
+        await refreshAllData();
+      }
+    } catch {
+      setAiLoading(false);
+      pollRef.current = null;
+    }
+  }, [refreshAllData]);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearTimeout(pollRef.current);
+    };
+  }, []);
+
   const handleAiClean = async () => {
     if (!aiInput.trim()) return;
     if (!ds.apiKey) { addMessage('error', '请先在左上角配置 AI API Key'); return; }
     const provider = AI_PROVIDERS.find(p => p.id === ds.aiProvider);
     if (!provider) { addMessage('error', '请先在左上角选择 AI 模型提供商'); return; }
     setAiLoading(true);
-    setAiResponse(null);
+    setAiTask(null);
+    if (pollRef.current) { clearTimeout(pollRef.current); pollRef.current = null; }
     try {
-      const res = await api.aiClean(ds.sessionId, aiInput, ds.apiKey, ds.customBaseUrl || provider.baseUrl, ds.customModel || provider.model);
-
-      const hasSuccess = res.steps_applied?.some((s) => s.success);
-
-      // ── 先获取所有需要的数据，不触发任何状态更新 ──
-      let previewData = res.preview ?? ds.preview;
-      let newColumnInfo = ds.columnInfo;
-      const newRows = res.rows ?? ds.rows;
-
-      if (hasSuccess) {
-        // 并行获取预览和列信息
-        const [previewRes, colRes] = await Promise.allSettled([
-          api.getDataPreview(ds.sessionId),
-          api.getColumnInfo(ds.sessionId),
-        ]);
-        if (previewRes.status === 'fulfilled') {
-          previewData = previewRes.value.preview;
-        }
-        if (colRes.status === 'fulfilled' && colRes.value.columns) {
-          newColumnInfo = colRes.value.columns.map((c: Record<string, unknown>) => ({
-            name: String(c.name ?? ''),
-            dtype: String(c.dtype ?? ''),
-            missing: Number(c.missing ?? 0),
-            missing_rate: Number(c.missing_rate ?? 0),
-            unique: Number(c.unique ?? 0),
-            sample: String(c.sample ?? ''),
-          }));
-        }
-      }
-
-      // ── 一次性更新所有状态（同一同步块 → React 18 批处理只渲染一次）──
-      if (res.explanation) {
-        setAiResponse({
-          explanation: res.explanation,
-          steps: res.steps_applied || [],
-          rows_change: res.rows_change || 0,
-        });
-      }
-      if (hasSuccess) {
-        addMessage('success', `AI 清洗完成：${res.steps_applied.filter(s => s.success).length} 步，数据行数变化 ${res.rows_change > 0 ? '+' : ''}${res.rows_change}`);
-        setPreview(previewData);
-        dd({ type: 'SET_DATA', payload: {
-          rows: newRows,
-          columns: newColumnInfo.length,
-          columnInfo: newColumnInfo,
-          preview: previewData,
-        } });
-        window.dispatchEvent(new Event('columns-updated'));
-      }
-      if (res.note) {
-        addMessage('error', res.note);
-      }
+      const res = await api.aiClean(
+        ds.sessionId, aiInput, ds.apiKey,
+        ds.customBaseUrl || provider.baseUrl, ds.customModel || provider.model,
+      );
+      addMessage('success', `已提交 AI 清洗任务，共 ${res.total} 个处理单元`);
+      pollAiClean(res.task_id);
     } catch (err) {
-      addMessage('error', err instanceof Error ? err.message : 'AI清洗失败');
-    } finally {
+      addMessage('error', err instanceof Error ? err.message : 'AI清洗提交失败');
       setAiLoading(false);
     }
   };
@@ -253,29 +229,79 @@ export default function CleanPage() {
               </button>
             </div>
 
-            {/* AI 响应结果 */}
-            {aiResponse && (
-              <div className="p-3 rounded-lg" style={{ background: 'rgba(167,139,250,0.059)', border: '1px solid rgba(167,139,250,0.15)' }}>
-                <p className="text-sm text-slate-300 mb-2">{aiResponse.explanation}</p>
-                {aiResponse.steps.length > 0 && (
-                  <div className="space-y-1.5">
-                    {aiResponse.steps.map((s, i) => (
-                      <div key={i} className="flex items-start gap-2 text-xs">
-                        <span className={s.success ? 'text-green-400 mt-0.5' : 'text-red-400 mt-0.5'}>
-                          {s.success ? '✅' : '❌'}
+            {/* AI 清洗进度（异步多单元）*/}
+            {aiTask && (
+              <div className="p-3 rounded-lg space-y-3" style={{ background: 'rgba(167,139,250,0.059)', border: '1px solid rgba(167,139,250,0.15)' }}>
+                {/* 总览条 */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-400">
+                    已完成 {aiTask.completed} / 共 {aiTask.total} 个处理单元
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    aiTask.status === 'done' ? 'bg-emerald-500/15 text-emerald-400'
+                    : aiTask.status === 'error' ? 'bg-red-500/15 text-red-400'
+                    : 'bg-[#A78BFA]/15 text-[#A78BFA]'
+                  }`}>
+                    {aiTask.status === 'running' ? '清洗中…' : aiTask.status === 'done' ? '清洗完成' : '清洗出错'}
+                  </span>
+                </div>
+
+                {/* 整体说明（取首个有说明的单元）*/}
+                {(() => {
+                  const ex = Object.values(aiTask.datasets).map(d => d.explanation).find(Boolean);
+                  return ex ? <p className="text-sm text-slate-300">{ex}</p> : null;
+                })()}
+
+                {/* 逐单元卡片 */}
+                <div className="space-y-2">
+                  {Object.entries(aiTask.datasets).map(([did, st]) => (
+                    <div key={did} className="p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className={`w-2 h-2 rounded-full ${
+                          st.status === 'done' ? 'bg-emerald-400'
+                          : st.status === 'error' ? 'bg-red-400'
+                          : 'bg-[#A78BFA] animate-pulse'
+                        }`} />
+                        <span className="text-xs font-medium text-slate-200">
+                          {st.kind === 'merged' ? '宽表（已合并多表）' : '独立单表'}
                         </span>
-                        <div>
-                          <span className="text-slate-300">{s.step}</span>
-                          {s.reason && <span className="text-slate-500 ml-2">— {s.reason}</span>}
-                        </div>
+                        {st.kind === 'merged' && st.sources && (
+                          <span className="text-[10px] text-slate-500">来源：{st.sources.length} 张</span>
+                        )}
+                        <span className="text-[10px] text-slate-500 ml-auto font-mono">{did.slice(0, 8)}</span>
                       </div>
-                    ))}
-                  </div>
+                      {st.steps_applied && st.steps_applied.length > 0 && (
+                        <div className="space-y-1">
+                          {st.steps_applied.map((s, i) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              <span className={s.success ? 'text-green-400 mt-0.5' : 'text-red-400 mt-0.5'}>
+                                {s.success ? '✅' : '❌'}
+                              </span>
+                              <div>
+                                <span className="text-slate-300">{s.step}</span>
+                                {s.reason && <span className="text-slate-500 ml-2">— {s.reason}</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {typeof st.rows_change === 'number' && st.rows_change !== 0 && (
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          数据行数：<span className={st.rows_change < 0 ? 'text-red-400' : 'text-green-400'}>{st.rows_change > 0 ? '+' : ''}{st.rows_change}</span>
+                        </p>
+                      )}
+                      {st.status === 'error' && st.error && (
+                        <p className="text-xs text-red-400 mt-1">⚠ {st.error}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {aiTask.error && aiTask.status === 'error' && (
+                  <p className="text-xs text-red-400">⚠ {aiTask.error}</p>
                 )}
-                {aiResponse.rows_change !== 0 && (
-                  <p className="text-xs text-slate-400 mt-2">
-                    数据行数：<span className={aiResponse.rows_change < 0 ? 'text-red-400' : 'text-green-400'}>{aiResponse.rows_change > 0 ? '+' : ''}{aiResponse.rows_change}</span>
-                  </p>
+                {aiTask.status === 'done' && (
+                  <p className="text-[11px] text-slate-500">已删除被合并的原始表，仅保留清洗后的结果。如需回溯请用「恢复原始数据」。</p>
                 )}
               </div>
             )}

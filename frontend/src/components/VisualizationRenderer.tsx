@@ -81,6 +81,29 @@ function TableBlock({ table }: { table: PackageTableData }) {
   );
 }
 
+function _heatmapRowCount(option: any): number {
+  const yAxis = option?.yAxis;
+  if (!yAxis) return 0;
+  const ys = Array.isArray(yAxis) ? yAxis : [yAxis];
+  for (const y of ys) {
+    if (y && Array.isArray(y.data) && y.data.length > 0) return y.data.length;
+  }
+  return 0;
+}
+
+// 同期群下三角热力图按 cohort 行数展开高度，避免 360px 被纵向挤扁、y 轴标签重叠。
+function getChartHeight(chart: PackageChartItem): number {
+  const type = chart.chart_type;
+  const opt = chart.option as any;
+  if (type === 'cohort_heatmap' || type === 'heatmap') {
+    const rows = _heatmapRowCount(opt);
+    if (rows > 0) return Math.max(360, 80 + rows * 38);
+    return 420;
+  }
+  if (type === 'dual_axis' || type === 'cohort_trend') return 420;
+  return 360;
+}
+
 function ChartBlock({ chart }: { chart: PackageChartItem }) {
   if (!chart || !chart.option) return null;
   return (
@@ -88,7 +111,7 @@ function ChartBlock({ chart }: { chart: PackageChartItem }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
         <span style={{ fontSize: 12, color: P.textPrimary }}>{chart.title}</span>
       </div>
-      <EChartView option={chart.option as EChartsOption} height={360} />
+      <EChartView option={chart.option as EChartsOption} height={getChartHeight(chart)} />
     </div>
   );
 }
@@ -126,7 +149,7 @@ function UnsupportedBlock({ pkg }: { pkg: AnalysisPackage }) {
   // 优先使用后端按分析类型动态生成的建议；缺失时给一个通用的兜底提示
   const suggestion = (pkg.suggestion && pkg.suggestion.trim())
     ? pkg.suggestion
-    : '请检查数据是否包含该分析所需的字段（如词云需要文本/分类列，趋势需要日期+数值列），或更换分析表述后重试。';
+    : '请检查数据是否包含该分析所需的字段（如趋势分析需要日期+数值列，结构分析需要分类列），或更换分析表述后重试。';
 
   return (
     <div style={{

@@ -23,10 +23,15 @@ N≥2 张表：建图取连通分量，分量内从行数最多的表出发贪�
 from __future__ import annotations
 
 import re
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
+
+from src.mapping.column_mapper import coordinate_map_component
+
+_logger = logging.getLogger("dataset_merger")
 
 # 主键名识别：含这些 token 的列名优先当关联键（加分）
 _KEY_TOKENS = ["id", "key", "编号", "编码", "码", "uuid", "userid", "user_id", "no", "num", "号", "order"]
@@ -155,6 +160,24 @@ def _candidate_keys(dfa: pd.DataFrame, dfb: pd.DataFrame) -> List[Tuple[str, str
     return results
 
 
+def _component_join_cols(edges: List[Tuple[int, int, str, str, float]],
+                        idxs: List[int], n: int) -> List[str]:
+    """取某连通分量内所有关联键列名（用于排除协同重命名）。"""
+    idx_set = set(idxs)
+    cols: List[str] = []
+    for (i, j, a_col, b_col, _score) in edges:
+        if i in idx_set and j in idx_set:
+            cols.append(a_col)
+            cols.append(b_col)
+    seen: Set[str] = set()
+    out: List[str] = []
+    for c in cols:
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
+
+
 def _merge_two(dfa: pd.DataFrame, dfb: pd.DataFrame,
                 a_col: str, b_col: str) -> Optional[pd.DataFrame]:
     """按 (a_col, b_col) inner join 两表。非键同名列由 pandas 自动加 _x/_y 区分。
@@ -236,6 +259,7 @@ def _greedy_merge_component(tables: List[Tuple[str, pd.DataFrame]]) -> Tuple[Opt
 def build_analysis_units(
     datasets: List[Tuple[str, pd.DataFrame]],
     file_names: Optional[Dict[str, str]] = None,
+    llm_cfg: Optional[dict] = None,
 ) -> List[AnalysisUnit]:
     """载入各表 df，识别关联键建图取连通分量，分量内链式 inner 合并。
 
@@ -293,6 +317,23 @@ def build_analysis_units(
             units.append(AnalysisUnit(kind="single", dataset_id=did, file_name=file_names.get(did, did)))
             continue
         tables = [valid[k] for k in idxs]
+        # ---- 合表前跨表协同映射（A+B）：对分量内非关联键列做全局消歧重命名 ----
+        if llm_cfg and llm_cfg.get("api_key"):
+            try:
+                join_cols = _component_join_cols(edges, idxs, n)
+                remap = coordinate_map_component(tables, join_cols, file_names, llm_cfg)
+                if remap:
+                    renamed = []
+                    for did, df in tables:
+                        mp = remap.get(did)
+                        if mp:
+                            df = df.rename(columns={
+                                r: s for r, s in mp.items() if r in df.columns
+                            })
+                        renamed.append((did, df))
+                    tables = renamed
+            except Exception as e:
+                _logger.warning("跨表协同映射失败，降级为 pandas _x/_y：%s", e)
         merged_df, sources, keys = _greedy_merge_component(tables)
         if merged_df is None:
             # 连通分量内一张都没合进来（边都被 0 行过滤）→ 各自单表

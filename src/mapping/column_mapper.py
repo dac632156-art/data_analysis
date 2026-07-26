@@ -122,13 +122,30 @@ def load_global_dict() -> Tuple[Dict[str, str], List[str]]:
 # ===== 相似度 =====
 
 def similarity_match(col: str, variant: str) -> float:
-    """列名与词典变体的相似度：子串包含 = 1.0；否则 SequenceMatcher.ratio。"""
+    """列名与词典变体的相似度（供 STEP1.5 阈值判定）。
+
+    命中策略（宁漏勿误，避免误映射）：
+      - 列名与变体精确相等 → 1.0（高置信）；
+      - 变体⊂列名 且 去掉变体后剩余部分不含中文字符（变体占主体，仅带符号/
+        英文/数字后缀，如「城市_1」）→ 1.0（高置信）；
+      - 变体被更长中文词内嵌（如「退款金额」∈「退款金额备注」的剩余「备注」
+        含中文）→ 低置信，返回 0.0，避免把修饰列误判为原字段；
+      - 其余走 difflib.SequenceMatcher 计算相似度（低置信，交给阈值/LLM 兜底）。
+    不再使用「列名⊂变体」的反向包含——否则短列名会被长变体吞掉
+    （如「金额」被「退款金额」误映射）。
+    """
     col_n = _norm(col)
     var_n = _norm(variant)
     if not col_n or not var_n:
         return 0.0
-    if var_n in col_n or col_n in var_n:
+    if var_n == col_n:
         return 1.0
+    if var_n in col_n:
+        rest = col_n.replace(var_n, "", 1)
+        if not _CJK_RE.search(rest):
+            return 1.0
+        # 变体被更长中文词内嵌：低置信，不命中该变体
+        return 0.0
     return difflib.SequenceMatcher(None, col_n, var_n).ratio()
 
 
@@ -246,10 +263,12 @@ def _extract_json(text: str) -> str:
 
 
 def llm_fallback(unmapped: List[str], sample: object,
-                 llm_cfg: Dict, standard_fields: List[str]) -> Dict[str, str]:
+                 llm_cfg: Dict, standard_fields: List[str],
+                 file_name: Optional[str] = None) -> Dict[str, str]:
     """LLM 对齐兜底：优先复用现有标准字段，否则才自定义新标准名。
 
     返回 {原始列: 标准字段}。异常上抛由调用方捕获降级。
+    file_name：可选，喂给 LLM 帮助推断业务语义（方案 B）。
     """
     import openai
 
@@ -263,8 +282,14 @@ def llm_fallback(unmapped: List[str], sample: object,
     sample_str = json.dumps(sample, ensure_ascii=False)[:1500]
     fields_str = "、".join(standard_fields) if standard_fields else "（暂无已有标准字段）"
 
+    fname_line = (
+        f"当前数据表文件名为：{file_name}，请结合表名推断业务语义。\n"
+        if file_name else ""
+    )
     prompt = (
-        f"你是一个数据列名语义映射助手。现有数据表有以下无法自动识别的列：{unmapped}。\n"
+        "你是一个数据列名语义映射助手。\n"
+        f"{fname_line}"
+        f"现有数据表有以下无法自动识别的列：{unmapped}。\n"
         f"可选样本数据（前几行）：{sample_str}\n"
         f"系统中已有的标准字段清单（请优先判断这些待映射列是否能归入其中某一类；"
         f"若语义一致请直接复用，不要新造）：\n{fields_str}\n\n"
@@ -290,10 +315,100 @@ def llm_fallback(unmapped: List[str], sample: object,
     return {str(k): str(v) for k, v in parsed.items() if str(k) in unmapped}
 
 
+def coordinate_map_component(
+    tables: List[Tuple[str, pd.DataFrame]],
+    join_cols: List[str],
+    file_names: Dict[str, str],
+    llm_cfg: dict,
+) -> Dict[str, Dict[str, str]]:
+    """跨表协同映射（方案 A+B）：把同一待合表组的全部列一次性送 LLM 全局消歧。
+
+    入参 tables: [(dataset_id, df), ...]（同一连通分量内的表）。
+    join_cols: 该分量内的关联键列名（已归一化判定为键），不参与重命名。
+    file_names: {did: 文件名}，喂给 LLM 推断业务语义（方案 B）。
+
+    返回 {did: {原始列名: 标准名}}，仅含非关联键列的跨表消歧重命名。
+    异常上抛由调用方捕获降级（退化回 pandas _x/_y）。
+    """
+    import openai
+
+    api_key = llm_cfg.get("api_key")
+    base_url = llm_cfg.get("base_url") or "https://api.deepseek.com"
+    model = llm_cfg.get("model") or "deepseek-chat"
+
+    variant_map, standard_fields = load_global_dict()
+    join_norms = {_norm(c) for c in (join_cols or [])}
+
+    # 构造每表描述（跳过关联键列，避免 LLM 重命名它们）
+    blocks = []
+    for i, (did, df) in enumerate(tables):
+        cols = [str(c) for c in df.columns if _norm(c) not in join_norms]
+        sample_cols: Dict[str, object] = {}
+        for c in cols[:8]:
+            try:
+                sample_cols[str(c)] = df[c].head(3).tolist()
+            except Exception:
+                pass
+        fname = (file_names or {}).get(did, did)
+        blocks.append(
+            f"表{i} [文件名: {fname}]:\n"
+            f"  列: {'、'.join(cols)}\n"
+            f"  样本(部分): {json.dumps(sample_cols, ensure_ascii=False)[:800]}"
+        )
+    tables_desc = "\n".join(blocks)
+    fields_str = "、".join(standard_fields) if standard_fields else "（暂无已有标准字段）"
+
+    prompt = (
+        "你是一个数据列名语义映射助手。下面有多张待合并的数据表，每张标注了序号、"
+        "文件名、列名与样本。\n"
+        f"{tables_desc}\n\n"
+        "要求：\n"
+        "1. 关联键列（用于合并的键，如订单号、编号等）不要重命名，保持原名。\n"
+        "2. 同一原始列名若出现在多张表中（跨表同名）：为避免合并时列名冲突"
+        "（pandas 会自动加 _x/_y 脏后缀），请一律区分为不同标准名——"
+        "结合各自表名/业务含义命名（如 销售金额 / 退款金额）；"
+        "即使语义确为同义但来自不同表，也请用表来源区分"
+        "（如 A表金额 / B表金额），切勿保持完全相同。\n"
+        "3. 仅当标准字段清单中没有合适名称时才自定义新的中文语义字段名，"
+        "避免与已有字段同义重复（如已有「成交金额」就不要造「成交额」）。\n"
+        "4. 只输出 JSON，格式：{\"0\": {\"原始列名\": \"标准字段名\", ...}, "
+        "\"1\": {...}, ...}，键为纯数字序号（与上方“表0/表1”的序号对应，"
+        "即 0、1、...），不要输出任何解释文字。\n"
+        f"标准字段清单（可优先复用）：\n{fields_str}\n"
+    )
+    client = openai.OpenAI(api_key=api_key, base_url=base_url,
+                           timeout=120.0, max_retries=0)
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "你是列名映射助手，只输出 JSON。"},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0,
+        max_tokens=2048,
+        timeout=120,
+    )
+    content = resp.choices[0].message.content.strip()
+    parsed = json.loads(_extract_json(content))
+    result: Dict[str, Dict[str, str]] = {}
+    for i, (did, _df) in enumerate(tables):
+        mp = parsed.get(str(i))
+        if not isinstance(mp, dict):
+            continue
+        cleaned = {
+            str(k): str(v) for k, v in mp.items()
+            if _norm(str(k)) not in join_norms
+        }
+        if cleaned:
+            result[did] = cleaned
+    return result
+
+
 # ===== 主入口 =====
 
 def map_dataset_columns(session_id, dataset_id, df: pd.DataFrame,
-                        llm_cfg: Optional[Dict] = None) -> pd.DataFrame:
+                        llm_cfg: Optional[Dict] = None,
+                        file_name: Optional[str] = None) -> pd.DataFrame:
     """对单张表运行列名映射流水线，返回重命名后的 df。
 
     dataset_id 仅用于日志/后续扩展，指纹计算只基于 columns，故次路径（analysis/run）
@@ -378,6 +493,7 @@ def map_dataset_columns(session_id, dataset_id, df: pd.DataFrame,
                     still_unmapped,
                     df[still_unmapped].head(5).to_dict("records"),
                     llm_cfg, standard_fields,
+                    file_name=file_name,
                 )
                 for c, s in llm_map.items():
                     if c in columns:
