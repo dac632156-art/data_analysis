@@ -92,6 +92,8 @@ export interface EChartItem {
   chart_type?: string;
   /** 同环比表格数据 */
   table_data?: Record<string, unknown>;
+  /** 原始扁平 rows（ChartData.data），同期群等吃扁平清单的组件使用 */
+  raw_data?: Record<string, unknown>[];
 }
 
 export interface InsightsResponse {
@@ -206,12 +208,28 @@ export interface PackageKPIItem {
   kpi_type: 'sum' | 'avg' | 'count' | 'rate' | 'change';
 }
 
+/** 画像总览表的单元格结构（后端 RenderedCell） */
+export interface TableCellData {
+  value?: unknown;
+  rank?: number;
+  direction?: string;   // good(绿)/equal(黄)/bad(红)/neutral(不染色)
+  cell_type?: string;   // number/percentage/category/neutral/text
+  highlight?: boolean;
+  count?: number;
+}
+
 /** 表格数据（V2） */
 export interface PackageTableData {
   title: string;
-  table_type: 'summary' | 'ranking' | 'cross' | 'growth' | 'correlation' | 'detail' | 'exception';
+  table_type: 'summary' | 'ranking' | 'cross' | 'growth' | 'correlation' | 'detail' | 'exception' | 'profile_overview';
   columns: string[];
   rows: unknown[][];
+  /** 画像总览表的区块/模块元数据（仅 profile_overview 表使用） */
+  chart_config?: {
+    blocks?: { title: string; keys: string[] }[];
+    module?: string;
+    feature_cols?: string[];
+  };
 }
 
 /** 图表项（V2） */
@@ -221,6 +239,8 @@ export interface PackageChartItem {
   title: string;
   role: 'primary' | 'secondary' | 'detail';
   option: Record<string, unknown>;
+  /** 原始扁平 rows（ChartData.data），供前端模板库组件使用（同期群/气泡/表格等吃扁平清单的组件） */
+  raw_data?: Record<string, unknown>[];
 }
 
 /** 分析包（全系统统一数据对象） */

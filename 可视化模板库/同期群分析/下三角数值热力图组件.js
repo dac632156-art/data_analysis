@@ -1,0 +1,171 @@
+/**
+ * 仙气同期群数值热力图 (带独立 HTML 图例与高级卡片幕布)
+ * 与「下三角热力图组件.js」的唯一区别：本组件展示【原始数值】(客单价/净毛利等)，
+ * 不乘以 100、不加百分号。适用于各同期群客单价、各同期群净毛利等数值型指标。
+ * 源码特性：W0 列独立颜色，内置 HTML 渐变图例，右侧工具箱
+ * 
+ * @param {string} domId - 绑定的空容器 ID
+ * @param {Array} rawData - 解析后的扁平数组数据 [{ '首单月': '...', 'Index_j': 0, 'value': 256.3 }, ...]
+ * @param {string} bgUrl - 卡片背景图路径
+ * @param {string} titleText - 图表标题
+ */
+function renderEtherealValueMatrix(domId, rawData, bgUrl, titleText = 'COHORT ANALYSIS: VALUE MATRIX') {
+    const container = document.getElementById(domId);
+    if (!container) return;
+
+    // ==========================================
+    // 1. 动态生成内部 DOM 结构 (接管 HTML 和 CSS)
+    // ==========================================
+    container.style.position = 'relative';
+    container.style.width = '100%';
+    // 设置默认高度，防止容器塌陷
+    container.style.height = container.style.height || '680px'; 
+    container.style.backgroundImage = `url('${bgUrl}')`;
+    container.style.backgroundSize = 'cover';
+    container.style.backgroundPosition = 'center center';
+    container.style.backgroundRepeat = 'no-repeat';
+    container.style.borderRadius = '24px';
+    container.style.boxShadow = '0 20px 40px -10px rgba(99, 102, 241, 0.1), 0 10px 20px -5px rgba(56, 189, 248, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.8)';
+    container.style.padding = '24px 30px 10px 30px';
+    container.style.boxSizing = 'border-box';
+    container.style.overflow = 'hidden';
+
+    // 注入内部元素 (图例和图表容器)
+    container.innerHTML = `
+        <div id="${domId}-legend-top" style="position: absolute; top: 315px; right: 83px; font-size: 10px; color: #64748B; font-weight: 600; z-index: 20; transform: rotate(-90deg); transform-origin: right center;">Max</div>
+        <div style="position: absolute; top: 320px; right: 68px; width: 8px; height: 160px; background: linear-gradient(to bottom, #FFAECC 0%, #FCB8D7 20%, #F6C3E2 40%, #EDCEEC 60%, #E2DAF4 80%, #D6E5FA 100%); border-radius: 6px; z-index: 20; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);"></div>
+        <div id="${domId}-legend-bottom" style="position: absolute; top: 485px; right: 83px; font-size: 10px; color: #64748B; font-weight: 600; z-index: 20; transform: rotate(-90deg); transform-origin: right center;">Min</div>
+        <div id="${domId}-chart-canvas" style="position: relative; z-index: 10; width: 100%; height: 100%;"></div>
+    `;
+
+    // ==========================================
+    // 2. 数据处理与清洗
+    // ==========================================
+    const allMonths = [...new Set(rawData.map(item => item['首单月']))].sort();
+    const yAxisData = allMonths.slice(-12);
+    const MAX_COLUMNS = 12; 
+    const xAxisData = Array.from({length: MAX_COLUMNS}, (_, i) => 'W' + i);
+
+    const dataValid = [];  
+    const dataW0 = [];     
+    const dataEmpty = [];  
+    let minVal = Infinity, maxVal = -Infinity;
+
+    yAxisData.forEach((yMonth, yIndex) => {
+        for (let xIndex = 0; xIndex < MAX_COLUMNS; xIndex++) {
+            const target = rawData.find(item => item['首单月'] === yMonth && item['Index_j'] === xIndex);
+            if (target && target.value !== -1 && target.value !== null && target.value !== undefined) {
+                const val = target.value;
+                if (xIndex === 0) { 
+                    dataW0.push([xIndex, yIndex, val]); 
+                } else { 
+                    dataValid.push([xIndex, yIndex, val]); 
+                    if (val < minVal) minVal = val; 
+                    if (val > maxVal) maxVal = val; 
+                }
+            } else { 
+                dataEmpty.push([xIndex, yIndex, 0]); 
+            }
+        }
+    });
+
+    if (minVal === Infinity) minVal = 0;
+    if (maxVal === -Infinity) maxVal = 0.1;
+
+    // 更新 DOM 图例文字：显示原始数值（千分位 + 2 位小数），不加百分号
+    const fmtNum = (v) => Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    document.getElementById(`${domId}-legend-top`).innerText = fmtNum(maxVal);
+    document.getElementById(`${domId}-legend-bottom`).innerText = fmtNum(minVal);
+
+    // ==========================================
+    // 3. ECharts 渲染配置
+    // ==========================================
+    const chartDom = document.getElementById(`${domId}-chart-canvas`);
+    const myChart = echarts.init(chartDom);
+
+    const option = {
+        backgroundColor: 'transparent',
+        toolbox: {
+            right: 40, top: 10,
+            feature: {
+                saveAsImage: { title: '下载图片', show: true },
+                myExport: {
+                    show: true, title: '导出数据',
+                    icon: 'path://M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+                    onclick: function() {
+                        const exportData = [...dataValid, ...dataW0];
+                        const blob = new Blob([JSON.stringify(exportData)], {type: 'application/json'});
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url; a.download = 'value_data.json'; a.click();
+                    }
+                }
+            }
+        },
+        title: { 
+            text: titleText, 
+            left: 'center', 
+            top: '11%', 
+            textStyle: { color: '#1E293B', fontSize: 22, fontWeight: 'bold', fontFamily: "'Microsoft YaHei', sans-serif" } 
+        },
+        tooltip: { 
+            position: 'top', 
+            backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+            borderColor: '#E2E8F0', 
+            borderWidth: 1, 
+            extraCssText: 'box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-radius: 8px;', 
+            textStyle: { color: '#475569', fontWeight: 'bold' }, 
+            formatter: function (p) { 
+                if (p.seriesName === '无数据') return ''; 
+                const yMonth = yAxisData[p.value[1]]; 
+                // 数值格式（不带百分号）
+                return `${yMonth} <br/> W${p.value[0]} 数值: <span style="color:#FCB8D7">${fmtNum(p.value[2])}</span>`; 
+            } 
+        },
+        grid: { top: '20%', bottom: '5%', left: '13%', right: '7%', containLabel: false },
+        xAxis: { 
+            type: 'category', position: 'bottom', data: xAxisData, 
+            splitArea: { show: false }, 
+            axisLabel: { color: '#64748B', fontWeight: 'bold', fontSize: 14, margin: 12 }, 
+            axisLine: { show: false }, axisTick: { show: false } 
+        },
+        yAxis: { 
+            type: 'category', data: yAxisData, inverse: true, 
+            splitArea: { show: false }, 
+            axisLabel: { 
+                color: '#475569', fontWeight: 'bold', fontSize: 14, margin: 16, 
+                formatter: function (value) { 
+                    const date = new Date(value + '-01'); 
+                    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; 
+                    return monthNames[date.getMonth()] + " '" + value.substring(2,4); 
+                } 
+            }, 
+            axisLine: { show: false }, axisTick: { show: false } 
+        },
+        visualMap: { 
+            type: 'continuous', seriesIndex: 0, min: minVal, max: maxVal, show: false, 
+            inRange: { color: ['#D6E5FA', '#E2DAF4', '#EDCEEC', '#F6C3E2', '#FCB8D7', '#FFAECC'] } 
+        },
+        series: [
+            { 
+                name: '有效数值', type: 'heatmap', data: dataValid, 
+                itemStyle: { borderColor: '#FFFFFF', borderWidth: 4, borderRadius: 6 }, 
+                // 格子标签显示原始数值（不带百分号）
+                label: { show: true, color: '#475569', fontWeight: 'bold', fontSize: 11, formatter: function (p) { return p.value[2] === 0 ? '0.00' : fmtNum(p.value[2]); } } 
+            },
+            { 
+                name: 'W0初始数值', type: 'heatmap', data: dataW0, 
+                itemStyle: { color: '#FF9EA6', borderColor: '#FFFFFF', borderWidth: 4, borderRadius: 6 }, 
+                label: { show: true, color: '#881337', fontWeight: 'bold', fontSize: 11, formatter: function (p) { return fmtNum(p.value[2]); } } 
+            },
+            { 
+                name: '无数据', type: 'heatmap', data: dataEmpty, 
+                itemStyle: { color: 'rgba(248, 250, 252, 0.7)', borderColor: '#FFFFFF', borderWidth: 4, borderRadius: 6 }, 
+                label: { show: false }, tooltip: { show: false } 
+            }
+        ]
+    };
+
+    myChart.setOption(option);
+    window.addEventListener('resize', () => myChart.resize());
+}

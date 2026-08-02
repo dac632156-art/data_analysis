@@ -53,3 +53,5 @@ frontend_dev.log
 logs_e2e*.txt
 **/*_out.txt
 **/*.bak
+/-w
+backend/-w

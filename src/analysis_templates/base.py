@@ -58,10 +58,12 @@ class KPIItem:
 
 @dataclass
 class TableData:
-    title: str
-    table_type: str
+    slot: str = ""  # 与图表一致的定位标识，如 "rfm_segment_summary_table"（排第一，与 ChartData 同构，保证 JSON 中 slot 在 title 之前）
+    title: str = ""
+    table_type: str = ""
     columns: list = field(default_factory=list)
     rows: list = field(default_factory=list)
+    chart_config: dict = field(default_factory=dict)  # 高级表格元数据（如群画像总览表的区块/颜色编码）
 
 
 @dataclass
@@ -72,6 +74,9 @@ class ChartData:
     x: str
     y: str
     data: list = field(default_factory=list)
+    color: str = ""   # 分系列着色列名（散点/折线/柱状的簇标签/系列拆分用；留空=单色）
+    right_col: str = ""  # 双轴图右轴列名（留空默认"净毛利"，兼容 RFM/COHORT 老场景）
+    chart_config: dict = field(default_factory=dict)  # 高级图表元数据（前端按 kind 分支渲染）
 
 
 @dataclass
@@ -81,6 +86,7 @@ class ChartItem:
     title: str
     role: str = ""
     option: dict = field(default_factory=dict)
+    raw_data: list = field(default_factory=list)  # 原始扁平 rows（ChartData.data），供前端模板库组件使用
 
 
 # ===== V3 向后兼容别名 =====
@@ -136,6 +142,9 @@ class AnalysisPackage:
     insights: List[str] = field(default_factory=list)
     conclusions: List[str] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
+
+    # ========== Summary Cards（前端/第三方消费：聚合卡片，供直接渲染） ==========
+    summary_cards: dict = field(default_factory=dict)
 
     # ========== Metadata ==========
     metadata: dict = field(default_factory=dict)

@@ -1,9 +1,8 @@
-/* Layout - 全局布局 */
+/* Layout - 全局布局（浅色玻璃拟态） */
 import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { FiMenu } from 'react-icons/fi';
 import Sidebar from './Sidebar';
-import StarBackground from './StarBackground';
 import ErrorBoundary from '../ErrorBoundary';
 
 export default function Layout() {
@@ -30,8 +29,8 @@ export default function Layout() {
   };
 
   return (
-    <div className="min-h-screen relative bg-[#020617]">
-      <StarBackground />
+    <div className="min-h-screen relative">
+      <div className="bg-layer" />
       <Sidebar
         collapsed={collapsed}
         onToggle={toggleCollapsed}
@@ -48,7 +47,7 @@ export default function Layout() {
           type="button"
           onClick={() => setMobileOpen(true)}
           aria-label="打开菜单"
-          className="md:hidden self-start mb-3 p-2 rounded-lg text-[#94a3b8] hover:text-[#f8fafc] hover:bg-[#8B5CF6]/10 transition-colors -ml-1"
+          className="md:hidden self-start mb-3 p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 transition-colors -ml-1 glass-panel"
         >
           <FiMenu className="w-5 h-5" />
         </button>

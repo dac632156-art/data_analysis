@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>气泡矩阵图测试 - 挽回优先级</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #e0e7ff 0%, #f3e8ff 50%, #dbeafe 100%);
+            min-height: 100vh;
+        }
+        #bubble-chart {
+            width: 860px;
+            height: 640px;
+            margin: 0 auto;
+        }
+    </style>
+    
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    
+    <script src="./utils.js"></script>
+    <script src="./小卡片组件.js"></script>
+    <script src="./柱状图.js"></script>
+    <script src="./下三角热力图组件.js"></script>
+    <script src="./折线图组件.js"></script>
+    <script src="./环形图组件.js"></script>
+    <script src="./双轴图组件.js"></script>
+    <script src="./表格组件.js"></script>
+    <script src="./雷达图组件.js"></script>
+    <script src="./维度偏移图组件.js"></script>
+    <script src="./气泡图组件.js"></script>
+</head>
+<body>
+
+    <div id="bubble-chart"></div>
+
+    <script>
+        // 测试气泡矩阵图：挽回优先级（价值层 × 流失状态，气泡大小=人数）
+        renderChartBySlot('bubble-chart', 'mock9.json', 'bubble_matrix__retention_priority', {
+            bgUrl: './背景.png'
+        });
+    </script>
+</body>
+</html>

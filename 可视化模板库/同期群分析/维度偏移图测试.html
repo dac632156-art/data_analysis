@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>维度偏移图测试 - 城市维度</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #e0e7ff 0%, #f3e8ff 50%, #dbeafe 100%);
+            min-height: 100vh;
+        }
+        #dim-offset-city {
+            width: 900px;
+            height: 720px;
+            margin: 0 auto;
+        }
+    </style>
+    
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    
+    <script src="./utils.js"></script>
+    <script src="./小卡片组件.js"></script>
+    <script src="./柱状图.js"></script>
+    <script src="./下三角热力图组件.js"></script>
+    <script src="./折线图组件.js"></script>
+    <script src="./环形图组件.js"></script>
+    <script src="./双轴图组件.js"></script>
+    <script src="./表格组件.js"></script>
+    <script src="./雷达图组件.js"></script>
+    <script src="./维度偏移图组件.js"></script>
+</head>
+<body>
+
+    <div id="dim-offset-city"></div>
+
+    <script>
+        // 只测试城市维度的偏移数据
+        renderChartBySlot('dim-offset-city', 'mock9.json', 'hbar__attr_dim_offset', {
+            bgUrl: './背景.png',
+            filter: { '维度': '城市' }
+        });
+    </script>
+</body>
+</html>

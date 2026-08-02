@@ -39,15 +39,16 @@ function buildGalaxyDashboardTheme(): DashboardTheme {
     kpiGradient: 'from-[var(--db-accent)] to-[var(--db-accent-light)]',
     shadow: t.shadow.card,
     cssVars: {
-      '--db-bg': t.surface.pageBg,
-      '--db-card-bg': t.surface.card,
-      '--db-card-border': t.border.default,
-      '--db-text': t.palette.textPrimary,
-      '--db-text-secondary': t.palette.textSecondary,
+      // ★ 浅色玻璃主题：背景透明让白鹤透出，卡片/边框白色玻璃，文字深色可读
+      '--db-bg': 'transparent',
+      '--db-card-bg': 'rgba(255,255,255,0.45)',
+      '--db-card-border': 'rgba(255,255,255,0.55)',
+      '--db-text': '#0f172a',
+      '--db-text-secondary': '#475569',
       '--db-accent': Palette.ai,
       '--db-accent-light': withAlpha(Palette.ai, 0.20),
-      '--db-shadow': t.shadow.card,
-      '--db-glow': t.shadow.glow,
+      '--db-shadow': '0 8px 32px rgba(99,102,241,0.10)',
+      '--db-glow': '0 0 24px rgba(139,92,246,0.18)',
     },
     fontFamily: t.typography.fontFamily,
     borderRadius: t.border.radius.md,
@@ -110,6 +111,8 @@ export const DashboardThemeProvider: React.FC<{
           fontFamily: active.fontFamily,
           backgroundColor: 'var(--db-bg)',
           color: 'var(--db-text)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
           '--db-animation-duration': `${active.animationDuration}ms`,
         } as React.CSSProperties}
       >

@@ -1,0 +1,260 @@
+diff --git a/frontend/src/components/BigScreen/EGridLayout.tsx b/frontend/src/components/BigScreen/EGridLayout.tsx
+index 1c24191..fcfc427 100644
+--- a/frontend/src/components/BigScreen/EGridLayout.tsx
++++ b/frontend/src/components/BigScreen/EGridLayout.tsx
+@@ -1,14 +1,16 @@
+-/* EGridLayout - ECharts 网格大屏（DataV 发光边框 + AnimatedNumber + 图表 + 表格） */
++/* EGridLayout - ECharts 网格大屏（DataV 发光边框 + 图表 + 表格） */
+ import React, { useState, useMemo } from 'react';
+ import { BorderBox1 } from '@jiaminghi/data-view-react';
+-import EChartView, { EChartsOption } from '../EChartView';
++import { EChartsOption } from '../EChartView';
++import EtherealChart from '../EtherealCharts/EtherealChart';
++import EtherealMetricCard from '../EtherealCharts/EtherealMetricCard';
+ import GLMapView from '../GLMapView';
+-import AnimatedNumber from '../AnimatedNumber';
+ import TbHbTable, { type TbHbRow } from '../TbHbTable';
+ import VisualizationRenderer from '../VisualizationRenderer';
+ import type { EChartItem, AnalysisPackage } from '../../types/api';
+ 
+-interface KPI { title: string; value: string | number; icon?: string; color?: string; change?: number | null; trend?: 'up' | 'down' | 'flat'; }
++// KPI 来自后端 analysis package JSON（rendered_kpis / kpis），字段为 label/value/change（均为字符串）
++interface KPI { label?: string; title?: string; value: string | number; change?: string | number | null; kpi_type?: string; }
+ interface Props {
+   kpis: KPI[];
+   echarts: EChartItem[];
+@@ -64,20 +66,20 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
+ 
+   return (
+     <div className="big-screen w-full h-full flex flex-col overflow-auto"
+-      style={{ background: 'linear-gradient(135deg, #020518 0%, #060d2a 50%, #0a0a1e 100%)' }}
++      style={{ background: 'transparent' }}
+       onClick={(e) => { if (e.target === e.currentTarget) setHighlightLabel(null); }}
+     >
+       {/* ★ 顶部标题栏 - 带 DataV Decoration 装饰 */}
+-      <div className="relative flex items-center justify-between px-8 py-4 border-b border-[#1a1f3a]/50">
++      <div className="relative flex items-center justify-between px-8 py-5 border-b border-white/40">
+         {/* 顶部装饰线 */}
+         <div className="absolute top-0 left-1/2 -translate-x-1/2" style={{ width: '60%' }}>
+           <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-[#7DD3FC]/40 to-transparent" />
+         </div>
+         <div className="flex items-center gap-4 pt-2">
+           <div className="w-2 h-8 bg-gradient-to-b from-[#7DD3FC] to-[#38BDF8] rounded-full" />
+-          <h1 className="text-2xl font-bold text-white tracking-wider"
+-            style={{ textShadow: '0 0 30px rgba(125,211,252,0.5)' }}>
+-            {title}
++            <h1 className="text-2xl font-bold text-[#0f172a] tracking-wider"
++              style={{}}>
++              {title}
+           </h1>
+         </div>
+         <div className="flex items-center gap-6 text-sm text-slate-400 pt-2">
+@@ -85,8 +87,8 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
+             <button onClick={() => setShowTable(!showTable)}
+               className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                 showTable
+-                  ? 'bg-[#7DD3FC]/15 text-[#7DD3FC] border border-[#7DD3FC]/20'
+-                  : 'bg-transparent text-slate-500 hover:text-slate-300 border border-[#1a1f3a]'
++                  ? 'bg-[#7DD3FC]/10 text-[#7DD3FC] border border-[#7DD3FC]/20'
++                  : 'bg-transparent text-slate-500 hover:text-slate-600 border border-white/30'
+               }`}>
+               📋 数据表格 {showTable ? '▲' : '▼'}
+             </button>
+@@ -105,9 +107,9 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
+       {/* ★ 联动高亮状态提示 */}
+       {highlightLabel && (
+         <div className="flex items-center justify-center gap-3 px-4 py-2"
+-          style={{ background: 'rgba(125,211,252,0.12)', borderBottom: '1px solid rgba(125,211,252,0.15)' }}>
++          style={{ background: 'rgba(255,255,255,0.35)', borderBottom: '1px solid rgba(255,255,255,0.50)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}>
+           <span className="text-xs text-[#7DD3FC]">
+-            🔗 联动高亮：<strong className="text-white">{highlightLabel}</strong>
++            🔗 联动高亮：<strong className="text-[#0f172a]">{highlightLabel}</strong>
+           </span>
+           <button onClick={() => setHighlightLabel(null)}
+             className="px-2 py-0.5 text-xs rounded bg-[#7DD3FC]/30 text-[#7DD3FC] hover:bg-[#7DD3FC]/50 transition-colors border border-[#7DD3FC]/30">
+@@ -116,41 +118,23 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
+         </div>
+       )}
+ 
+-      {/* ★ KPI 指标卡 - DataV 装饰 + AnimatedNumber */}
++      {/* ★ KPI 指标卡 - 走模板库 EtherealMetricCard 仙气小卡片（数据来自后端 analysis package JSON 的 rendered_kpis/kpis） */}
+       {kpis.length > 0 && (
+-        <div className="relative px-6 py-4 border-b border-[#1a1f3a]/30">
+-          <div className="grid grid-cols-5 gap-4">
+-            {kpis.slice(0, 5).map((kpi, i) => {
+-              const color = kpi.color || '#7DD3FC';
+-              const numVal = typeof kpi.value === 'number' ? kpi.value : parseFloat(String(kpi.value));
+-              const isNum = !isNaN(numVal);
++        <div className="relative px-6 py-4 border-b border-white/30">
++          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
++            {kpis.map((kpi, i) => {
++              // 后端 value 已是格式化字符串（如 "1,234" / "12.3%"），直接透传给组件展示
++              const rawChange = kpi.change != null ? String(kpi.change) : '';
++              const changeClean = rawChange.replace('%', ''); // 去掉 %，组件会自行补回，避免 %%
+               return (
+-                <div key={i} className="relative p-4 rounded-lg"
+-                  style={{
+-                    background: 'rgba(125,211,252,0.04)',
+-                    border: '1px solid rgba(125,211,252,0.08)',
+-                  }}>
+-                  {/* 角落装饰 */}
+-                  <div className="absolute top-0 left-0 w-3 h-3 border-t border-l" style={{ borderColor: color }} />
+-                  <div className="absolute top-0 right-0 w-3 h-3 border-t border-r" style={{ borderColor: color }} />
+-                  <div className="absolute bottom-0 left-0 w-3 h-3 border-b border-l" style={{ borderColor: color }} />
+-                  <div className="absolute bottom-0 right-0 w-3 h-3 border-b border-r" style={{ borderColor: color }} />
+-
+-                  <div className="flex items-center gap-3">
+-                    <div className="text-2xl">{kpi.icon || '📊'}</div>
+-                    <div className="flex-1 min-w-0">
+-                      <p className="text-[10px] text-slate-500 uppercase tracking-wider">{kpi.title}</p>
+-                      <p className="text-xl font-bold font-mono" style={{ color, textShadow: `0 0 15px ${color}40` }}>
+-                        {isNum ? <AnimatedNumber value={numVal} duration={1.2} decimals={numVal % 1 !== 0 ? 2 : 0} /> : String(kpi.value)}
+-                      </p>
+-                      {kpi.trend && kpi.trend !== 'flat' && kpi.change != null && kpi.change !== 0 && (
+-                        <p className="text-[10px] font-semibold mt-0.5" style={{ color: kpi.trend === 'up' ? '#34D399' : '#FB7185' }}>
+-                          {kpi.trend === 'up' ? '↑' : '↓'} {Math.abs(kpi.change) >= 100 ? Math.abs(kpi.change).toFixed(0) : Math.abs(kpi.change).toFixed(1)}%
+-                        </p>
+-                      )}
+-                    </div>
+-                  </div>
+-                </div>
++                <EtherealMetricCard
++                  key={i}
++                  metricData={{
++                    title: kpi.label || kpi.title || '核心指标',
++                    value: kpi.value,
++                    change: changeClean,
++                  }}
++                />
+               );
+             })}
+           </div>
+@@ -159,58 +143,54 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
+ 
+       {/* ★ V2 分析包区域 */}
+       {packages && packages.length > 0 && (
+-        <div className="px-6 py-4 border-b border-[#1a1f3a]/30" style={{ animation: 'fadeIn 0.4s ease' }}>
++        <div className="px-6 py-4 border-b border-white/30" style={{ animation: 'fadeIn 0.4s ease' }}>
+           <h2 className="text-sm font-semibold text-[#7DD3FC] mb-3">📊 AI 分析结果</h2>
+           <VisualizationRenderer packages={packages} />
+         </div>
+       )}
+ 
+-      {/* ★ 图表网格 - DataV BorderBox1 发光边框 */}
+-      <div className={`grid grid-cols-3 gap-4 p-6 ${showTable ? '' : 'flex-1'} overflow-auto`}>
+-        {echarts.length > 0 ? (
+-          echarts.map((chart, i) => {
++      {/* ★ 表格网格 - 表格内容型区块单独占整行，不跟图表混排；统一走 EtherealTable（模板库仙气风格） */}
++      <div className="grid gap-4 p-6 pb-0" style={{ gridTemplateColumns: '1fr' }}>
++        {echarts.filter((c) => c.chart_type === 'analysis_table' && c.table_data).map((chart, i) => {
++          const rowCount = (chart.table_data.rows || []).length;
++          // 行数多于 10 时，外层包滚动壳（表内纵向滚动），≤10 行正常铺开
++          const scrollStyle = rowCount > 10 ? { maxHeight: 500, overflow: 'auto' as const } : undefined;
++          return (
++            <div key={i}>
++              <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '6px' }}>
++                <div style={scrollStyle}>
++                  <EtherealChart
++                    chartType="table"
++                    chartNode={{ title: chart.title, columns: chart.table_data.columns, rows: chart.table_data.rows }}
++                  />
++                </div>
++              </BorderBox1>
++            </div>
++          );
++        })}
++      </div>
++
++      {/* ★ 图表网格 - 一行一张图（整行独占），不并排；每个坑位固定宽度 900px 并居中，
++          图组件内部 width:100% 撑满的是这个固定坑位，宽度不被整行拉宽（高度仍由组件自定）。
++          GL 地图 span 逻辑保留。不挂 flex-1/overflow-auto，避免高度被父级压死。 */}
++      <div className="grid gap-4 p-6 justify-items-center" style={{ gridTemplateColumns: '1fr' }}>
++        {echarts.filter((c) => !(c.chart_type === 'analysis_table' && c.table_data)).length > 0 ? (
++          echarts.filter((c) => !(c.chart_type === 'analysis_table' && c.table_data)).map((chart, i) => {
+             const isGL = isGLOption(chart.option);
+-            const isAnalysisTable = chart.chart_type === 'analysis_table' && chart.table_data;
+-            const gridSpan = isGL ? { gridColumn: 'span 3' } : isAnalysisTable ? { gridColumn: 'span 3' } : {};
++            const gridSpan = isGL ? { gridColumn: 'span 3' } : {};
+ 
+             return (
+-              <div key={i} style={gridSpan}>
++              <div key={i} style={{ ...gridSpan, width: 900, maxWidth: '100%' }}>
+                 <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '6px' }}>
+                   {isGL ? (
+                     <GLMapView option={chart.option} height={520} title={hideChartTitle ? undefined : chart.title} />
+-                  ) : isAnalysisTable ? (
+-                    <div style={{ padding: '12px', background: 'rgba(10,14,30,0.95)', borderRadius: '8px', maxHeight: '380px', overflow: 'auto' }}>
+-                      {!hideChartTitle && chart.title && (
+-                        <h3 className="text-sm font-semibold text-[#7DD3FC] mb-4">{chart.title}</h3>
+-                      )}
+-                      <table className="w-full text-xs">
+-                        <thead>
+-                          <tr style={{ background: 'rgba(125,211,252,0.1)' }}>
+-                            {chart.table_data.columns.map((col: string, ci: number) => (
+-                              <th key={ci} className="px-3 py-2 text-left text-slate-400 font-semibold">{col}</th>
+-                            ))}
+-                          </tr>
+-                        </thead>
+-                        <tbody>
+-                          {chart.table_data.rows.map((row: unknown[], ri: number) => (
+-                            <tr key={ri} style={{ borderBottom: '1px solid rgba(125,211,252,0.04)', background: ri % 2 === 0 ? 'rgba(15,23,42,0.5)' : undefined }}>
+-                              {row.map((cell: unknown, ci: number) => (
+-                                <td key={ci} className="px-3 py-2 text-slate-300">{cell !== null && cell !== undefined ? String(cell) : '-'}</td>
+-                              ))}
+-                            </tr>
+-                          ))}
+-                        </tbody>
+-                      </table>
+-                    </div>
+                   ) : (
+-                    <EChartView
+-                      option={chart.option}
++                    <EtherealChart
++                      slot={chart.slot}
++                      chartType={chart.chart_type}
++                      chartNode={chart.option}
++                      data={chart.raw_data}
+                       title={chart.title}
+-                      height={hideChartTitle ? 370 : 330}
+-                      hideTitle={hideChartTitle}
+-                      groupId="dashboard-group"
+-                      highlightLabel={highlightLabel}
+-                      onHighlight={setHighlightLabel}
+                     />
+                   )}
+                 </BorderBox1>
+@@ -228,10 +208,10 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
+       {showTable && displayRows.length > 0 && (
+         <div className="px-6 pb-6 overflow-auto" style={{ maxHeight: '320px' }}>
+           <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '4px' }}>
+-            <div className="rounded-lg" style={{ background: 'rgba(10,14,30,0.95)' }}>
++            <div className="rounded-lg" style={{ background: 'rgba(255,255,255,0.35)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}>
+               <table className="w-full text-sm">
+                 <thead className="sticky top-0 z-10">
+-                  <tr style={{ background: 'rgba(125,211,252,0.12)' }}>
++                  <tr style={{ background: 'rgba(139,92,246,0.06)' }}>
+                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">#</th>
+                     {columns.map((col) => (
+                       <th key={col} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
+@@ -242,10 +222,10 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
+                 </thead>
+                 <tbody>
+                   {displayRows.map((row, i) => (
+-                    <tr key={i} className="border-t border-white/[0.03] hover:bg-[#7DD3FC]/[0.05] transition-colors">
++                    <tr key={i} className="border-t border-black/[0.05] hover:bg-black/[0.03] transition-colors">
+                       <td className="px-4 py-2 text-xs text-slate-500">{i + 1}</td>
+                       {columns.map((col) => (
+-                        <td key={col} className="px-4 py-2 text-xs text-slate-300 whitespace-nowrap">
++                        <td key={col} className="px-4 py-2 text-xs text-slate-700 whitespace-nowrap">
+                           {formatTableValue(row[col])}
+                         </td>
+                       ))}
+@@ -265,7 +245,7 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
+       {tbHbCharts.length > 0 && tbHbCharts.map((tb, idx) => (
+         <div key={idx} className="px-6 pb-6">
+           <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '8px' }}>
+-            <div className="rounded-lg p-4" style={{ background: 'rgba(10,14,30,0.95)' }}>
++            <div className="rounded-lg p-4" style={{ background: 'rgba(255,255,255,0.35)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}>
+               <TbHbTable
+                 data={tb.rows}
+                 valueColumn={tb.value_column}

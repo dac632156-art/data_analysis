@@ -132,6 +132,11 @@ def _extract_chart_configs_from_packages(packages: list) -> list:
             continue
         analysis_type = pkg.get("analysis_type", "")
         pkg_charts = pkg.get("charts", []) or []
+        # ★ 建 slot→chart_data 映射，用于把 data/color/right_col 补入 cfg
+        chart_data_map = {}
+        for cd in (pkg.get("chart_data") or []):
+            if isinstance(cd, dict) and cd.get("slot"):
+                chart_data_map[cd["slot"]] = cd
         for chart in pkg_charts:
             if not isinstance(chart, dict):
                 continue
@@ -141,6 +146,9 @@ def _extract_chart_configs_from_packages(packages: list) -> list:
             title = chart.get("title", f"{analysis_type} 图表")
             # 原样携带已渲染 option（空则留空，由 api_dashboard_echarts 回退 create_echart）
             option = chart.get("option", "") or ""
+            chart_slot = chart.get("slot", "")
+            # ★ 从 chart_data 补齐 data/color/right_col（用于重渲染兜底）
+            cd = chart_data_map.get(chart_slot, {})
             cfg = {
                 "chart_type": ct,
                 "x": x,
@@ -150,6 +158,14 @@ def _extract_chart_configs_from_packages(packages: list) -> list:
                 "option": option,
                 "table_data": chart.get("table_data") or None,
             }
+            if cd.get("data"):
+                cfg["data"] = cd["data"]
+            if cd.get("color"):
+                cfg["color"] = cd["color"]
+            if cd.get("right_col"):
+                cfg["right_col"] = cd["right_col"]
+
+
             # 去重：同类型同 X 同 Y 的同名图只保留一个。
             # ★ 修复：必须带上 title（或 slot）——同期群三张热力图 x/y 均为空，
             #   若仅按 (chart_type, x, y) 去重会把留存率/ARPU/净毛利三张图误并成一张。
@@ -231,13 +247,14 @@ async def api_dashboard_echarts(req: DashboardChartRequest):
         title_str = cfg.get("title", f"{chart_type} 图表")
 
         try:
-            # ★ 优先复用已保存分析包中渲染好的 option（帕累托线/数值降序已固化），
+            # ★ 优先复用已保存分析包中渲染好的 option（排序/聚合已固化），
             #   不再拿原始 df 重新聚合（否则丢图、排序错）。仅 option 缺失时回退重算。
             existing_option = cfg.get("option")
 
             # 雷达图/热力图/箱线图、以及同期群系列图（option 自带完整坐标，x 可为空）
             no_x_ok = chart_type in ('heatmap', 'radar', 'box',
                                      'cohort_heatmap', 'cohort_stacked',
+                                     'cohort_line', 'cohort_active_line',
                                      'cohort_trend', 'dual_axis')
             # ★ 修复：仅在「无 option 且缺 x」时才跳过；已渲染好的 option 直接下发，
             #   不再因 x 为空而误杀同期群图（旧逻辑在取 existing_option 之前就 continue）。
@@ -268,6 +285,9 @@ async def api_dashboard_echarts(req: DashboardChartRequest):
                     "x": x,
                     "y": y or "",
                     "analysis_type": cfg.get("analysis_type", ""),
+                    # ★ 方案B：同期群扁平清单随 option 一并发下，前端仙气矩阵组件直接消费，
+                    #   不再依赖前端从 option.series 反推（更稳，结构不再耦合）。
+                    "raw_data": cfg.get("data") if chart_type == "cohort_heatmap" else None,
                 })
                 continue
 
@@ -276,7 +296,17 @@ async def api_dashboard_echarts(req: DashboardChartRequest):
                 kwargs["y"] = y
             if cfg.get("color"):
                 kwargs["color"] = cfg["color"]
-            option = create_echart(df, chart_type, **kwargs)
+            if cfg.get("right_col"):
+                kwargs["right_col"] = cfg["right_col"]
+            # ★ 若 cfg 携带 ChartData 原始数据（含 CLV 等计算列），用它构造局部 df；
+            #    否则用 session 原始 df（老图/简单图的路）。
+            chart_df = df
+            if cfg.get("data"):
+                try:
+                    chart_df = pd.DataFrame(cfg["data"])
+                except Exception:
+                    chart_df = df
+            option = create_echart(chart_df, chart_type, **kwargs)
             if option:
                 result.append({
                     "title": title_str,

@@ -1,4 +1,4 @@
-/* QueueModal - 上传排队等待弹窗（Galaxy AI Analytics 银河紫玻璃拟态） */
+/* QueueModal - 上传排队等待弹窗（浅色玻璃拟态） */
 import React from 'react';
 
 interface QueueModalProps {
@@ -16,38 +16,24 @@ export default function QueueModal({ open, position, maxSessions, onCancel }: Qu
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#020617]/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="系统繁忙，正在排队"
     >
       <div
-        className="relative w-[90vw] max-w-[380px] rounded-2xl border border-[#8B5CF6]/30 p-7 text-center"
-        style={{
-          background: 'rgba(15,23,42,0.85)',
-          boxShadow: '0 0 40px rgba(139,92,246,0.25)',
-        }}
+        className="relative w-[90vw] max-w-[380px] rounded-2xl border border-white/70 p-7 text-center glass-card"
       >
-        {/* 旋转能量环：表达"系统正在为您排队" */}
-        <div className="mx-auto mb-5 h-14 w-14 rounded-full border-2 border-[#a78bfa] border-t-transparent animate-spin" />
+        <div className="mx-auto mb-5 h-14 w-14 rounded-full border-2 border-violet-400 border-t-transparent animate-spin" />
 
-        <h2
-          className="text-2xl font-bold text-[#F8FAFC]"
-          style={{ textShadow: '0 0 18px rgba(167,139,250,0.45)' }}
-        >
-          系统繁忙，正在排队
-        </h2>
-        <p className="mt-2 text-sm font-medium text-[#C4B5FD]">
+        <h2 className="text-2xl font-bold text-slate-900">系统繁忙，正在排队</h2>
+        <p className="mt-2 text-sm font-medium text-violet-600">
           当前 {maxSessions}/{maxSessions} 位已满，轮到您将自动上传
         </p>
 
-        <p className="mt-5 text-sm text-[#94A3B8]">
+        <p className="mt-5 text-sm text-slate-500">
           您排在第{' '}
-          <span
-            className="text-[#8B5CF6] text-4xl font-extrabold align-middle"
-            style={{ textShadow: '0 0 20px rgba(139,92,246,0.6)' }}
-            aria-live="polite"
-          >
+          <span className="text-violet-600 text-4xl font-extrabold align-middle" aria-live="polite">
             {position}
           </span>{' '}
           位
@@ -56,7 +42,7 @@ export default function QueueModal({ open, position, maxSessions, onCancel }: Qu
         <button
           type="button"
           onClick={onCancel}
-          className="mt-6 w-full cursor-pointer rounded-lg border border-white/15 py-2.5 text-sm text-slate-300 transition hover:bg-[#8B5CF6]/10 focus:outline-none focus:ring-2 focus:ring-[#8B5CF6]/40"
+          className="mt-6 w-full cursor-pointer rounded-lg border border-slate-300 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-white/70 focus:outline-none focus:ring-2 focus:ring-violet-400/40"
         >
           取消排队
         </button>

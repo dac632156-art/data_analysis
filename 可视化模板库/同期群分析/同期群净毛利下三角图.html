@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cohort Analysis: Net Margin Dashboard (Value Matrix)</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <!-- 数值版下三角热力图组件（客单价/净毛利等，不带百分号） -->
+    <script src="下三角数值热力图组件.js"></script>
+    <style>
+        body { 
+            background: linear-gradient(135deg, #F0F4FF 0%, #FFF5F7 100%);
+            margin: 0; padding: 40px; 
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            display: flex; justify-content: center; align-items: flex-start;
+            min-height: 100vh; box-sizing: border-box;
+        }
+
+        .dashboard-layout {
+            width: 1280px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .metric-cards-row {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+        }
+
+        .metric-card {
+            flex: 1;
+            background: #FFFFFF;
+            border-radius: 20px;
+            padding: 24px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.02), 0 0 0 1px rgba(226, 232, 240, 0.6);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            position: relative;
+        }
+
+        .metric-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 2;
+        }
+
+        .metric-title {
+            font-size: 15px;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: 800;
+            color: #0F172A;
+            letter-spacing: -0.5px;
+            margin: 4px 0;
+        }
+
+        .metric-change {
+            font-size: 14px;
+            font-weight: 700;
+        }
+        
+        .change-up { color: #10B981; }   
+        .change-down { color: #EF4444; } 
+
+        .metric-chart {
+            width: 100px;
+            height: 45px;
+            z-index: 1;
+        }
+
+        .sparkle-icon {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 24px;
+            height: 24px;
+        }
+
+        .heatmap-card {
+            background: #FFFFFF;
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.03), 0 0 0 1px rgba(226, 232, 240, 0.6);
+            position: relative;
+        }
+
+        .chart-title {
+            font-family: 'Microsoft YaHei', sans-serif;
+            font-size: 22px; 
+            font-weight: 800;
+            color: #1E293B;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        /* 高度/宽度交由组件内部设定（100% 宽、默认 680px 高），此处不强行覆盖 */
+        #chart-container {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-layout">
+
+        <div class="metric-cards-row">
+            <!-- Average Net Margin -->
+            <div class="metric-card">
+                <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 3 L13.5 9.5 L20 11 L13.5 12.5 L12 19 L10.5 12.5 L4 11 L10.5 9.5 Z" fill="#C7D2FE"/><path d="M19 4 L19.5 6 L21.5 6.5 L19.5 7 L19 9 L18.5 7 L16.5 6.5 L18.5 6 Z" fill="#C7D2FE"/></svg>
+                <div class="metric-info">
+                    <span class="metric-title">Average Net Margin</span>
+                    <span class="metric-value" id="val-margin">--</span>
+                    <span class="metric-change" id="change-margin">--</span>
+                </div>
+                <div class="metric-chart">
+                    <svg width="100%" height="100%" viewBox="0 0 100 40" preserveAspectRatio="none">
+                        <defs><linearGradient id="gradm1" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#F472B6"/><stop offset="100%" stop-color="#818CF8"/></linearGradient></defs>
+                        <path d="M0 35 Q 15 25, 30 30 T 60 20 T 90 10 T 100 5 L 100 40 L 0 40 Z" fill="url(#gradm1)" opacity="0.15"/>
+                        <path d="M0 35 Q 15 25, 30 30 T 60 20 T 90 10 T 100 5" fill="none" stroke="url(#gradm1)" stroke-width="2.5" stroke-linecap="round"/>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Total Net Margin -->
+            <div class="metric-card">
+                <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 3 L13.5 9.5 L20 11 L13.5 12.5 L12 19 L10.5 12.5 L4 11 L10.5 9.5 Z" fill="#C7D2FE"/><path d="M19 4 L19.5 6 L21.5 6.5 L19.5 7 L19 9 L18.5 7 L16.5 6.5 L18.5 6 Z" fill="#C7D2FE"/></svg>
+                <div class="metric-info">
+                    <span class="metric-title">Total Net Margin</span>
+                    <span class="metric-value" id="val-total">--</span>
+                    <span class="metric-change" id="change-total">--</span>
+                </div>
+                <div class="metric-chart">
+                    <svg width="100%" height="100%" viewBox="0 0 100 40" preserveAspectRatio="none">
+                        <defs><linearGradient id="gradm2" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#F472B6"/><stop offset="100%" stop-color="#818CF8"/></linearGradient></defs>
+                        <path d="M0 30 Q 15 35, 30 20 T 60 25 T 90 5 T 100 10 L 100 40 L 0 40 Z" fill="url(#gradm2)" opacity="0.15"/>
+                        <path d="M0 30 Q 15 35, 30 20 T 60 25 T 90 5 T 100 10" fill="none" stroke="url(#gradm2)" stroke-width="2.5" stroke-linecap="round"/>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Overall Retention Rate -->
+            <div class="metric-card">
+                <svg class="sparkle-icon" viewBox="0 0 24 24"><path d="M12 3 L13.5 9.5 L20 11 L13.5 12.5 L12 19 L10.5 12.5 L4 11 L10.5 9.5 Z" fill="#FBCFE8"/><path d="M19 4 L19.5 6 L21.5 6.5 L19.5 7 L19 9 L18.5 7 L16.5 6.5 L18.5 6 Z" fill="#FBCFE8"/></svg>
+                <div class="metric-info">
+                    <span class="metric-title">Overall Retention Rate</span>
+                    <span class="metric-value" id="val-ret">--</span>
+                    <span class="metric-change" id="change-ret">--</span>
+                </div>
+                <div class="metric-chart">
+                    <svg width="100%" height="100%" viewBox="0 0 100 40" preserveAspectRatio="none">
+                        <defs><linearGradient id="gradm3" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#60A5FA"/><stop offset="100%" stop-color="#818CF8"/></linearGradient></defs>
+                        <path d="M0 35 Q 25 15, 45 25 T 85 15 T 100 10 L 100 40 L 0 40 Z" fill="url(#gradm3)" opacity="0.15"/>
+                        <path d="M0 35 Q 25 15, 45 25 T 85 15 T 100 10" fill="none" stroke="url(#gradm3)" stroke-width="2.5" stroke-linecap="round"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="heatmap-card">
+            <div class="chart-title">COHORT ANALYSIS: NET MARGIN MATRIX </div>
+            <div id="chart-container"></div>
+        </div>
+
+    </div>
+
+    <script>
+        function updateKPIs(packageData) {
+            let allKpis = [];
+            if (Array.isArray(packageData.kpis)) allKpis.push(...packageData.kpis);
+            if (Array.isArray(packageData.rendered_kpis)) allKpis.push(...packageData.rendered_kpis);
+            if (packageData.summary_cards && Array.isArray(packageData.summary_cards.cards)) {
+                allKpis.push(...packageData.summary_cards.cards);
+            }
+            ['business_metrics', 'derived_metrics'].forEach(key => {
+                if (packageData[key]) {
+                    Object.values(packageData[key]).forEach(v => {
+                        if (v && typeof v === 'object') allKpis.push(v);
+                    });
+                }
+            });
+
+            const updated = { margin: false, total: false, ret: false };
+            allKpis.forEach(kpi => {
+                let targetId = '';
+                const keyStr = String(kpi.key || kpi.name || '').toLowerCase();
+                const labelStr = String(kpi.label || kpi.title || '').toUpperCase();
+                
+                if (keyStr.includes('net_margin') || keyStr.includes('margin') || labelStr.includes('NET MARGIN') || labelStr.includes('净毛利') || labelStr.includes('人均净毛利')) {
+                    targetId = 'margin';
+                } else if (keyStr.includes('total') || labelStr.includes('TOTAL') || labelStr.includes('总净毛利') || labelStr.includes('TOTAL NET')) {
+                    targetId = 'total';
+                } else if (keyStr.includes('retention') || keyStr.includes('ret') || labelStr.includes('RETENTION') || labelStr.includes('留存') || labelStr.includes('OVERALL')) {
+                    targetId = 'ret';
+                }
+
+                if (targetId && !updated[targetId]) {
+                    const val = kpi.value !== undefined ? kpi.value : kpi.metric_value;
+                    if (val === undefined || val === null) return; 
+
+                    let displayVal = val;
+                    let finalUnit = '';
+
+                    if (!isNaN(val) && val !== '') {
+                        const num = Number(val);
+                        if (targetId === 'ret' || kpi.unit === 'ratio') {
+                            displayVal = (num * 100).toFixed(1) + '%'; 
+                        } else {
+                            displayVal = num.toLocaleString('en-US', { maximumFractionDigits: 2 });
+                            if (kpi.unit) finalUnit = ` ${kpi.unit}`;
+                        }
+                    } else if (kpi.unit) {
+                        finalUnit = ` ${kpi.unit}`;
+                    }
+
+                    document.getElementById(`val-${targetId}`).innerText = displayVal + finalUnit;
+                    
+                    const changeEl = document.getElementById(`change-${targetId}`);
+                    const changeValue = kpi.change !== undefined ? kpi.change : kpi.change_pct; 
+                    
+                    if (changeValue !== undefined && changeValue !== null && String(changeValue).trim() !== '') {
+                        const changeStr = String(changeValue).trim();
+                        const isPositive = !changeStr.includes('-');
+                        
+                        let finalChange = changeStr;
+                        if (isPositive && !finalChange.includes('+')) finalChange = '+' + finalChange;
+                        if (!finalChange.includes('%')) finalChange += '%';
+                        
+                        changeEl.innerText = finalChange;
+                        changeEl.className = 'metric-change ' + (isPositive ? 'change-up' : 'change-down');
+                    } else {
+                        changeEl.innerText = '+0.0%'; 
+                        changeEl.className = 'metric-change change-up';
+                    }
+                    updated[targetId] = true;
+                }
+            });
+        }
+
+        async function fetchAndRender() {
+            try {
+                const response = await fetch('mock6.json'); 
+                const result = await response.json();
+                const cohortPackage = result.packages.find(p => p.id === 'cohort' || p.analysis_type === 'cohort');
+                if (!cohortPackage) return;
+                updateKPIs(cohortPackage);
+                // 净毛利下三角图：调用数值版组件（不带百分号，展示原始净毛利）
+                const chartDataInfo = cohortPackage.chart_data.find(c => c.slot === 'cohort_c_netmargin_heat');
+                if (chartDataInfo && chartDataInfo.data) {
+                    renderEtherealValueMatrix('chart-container', chartDataInfo.data, '背景.png', 'COHORT ANALYSIS: NET MARGIN MATRIX');
+                }
+            } catch (error) { console.error("加载数据失败:", error); }
+        }
+
+        fetchAndRender();
+    </script>
+</body>
+</html>

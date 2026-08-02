@@ -11,6 +11,7 @@ export interface AiProviderConfig {
 }
 
 export const AI_PROVIDERS: AiProviderConfig[] = [
+  { id: 'ppio', name: 'PPIO 派欧云', baseUrl: 'https://api.ppio.ai/v1', model: 'deepseek-chat' },
   { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
   { id: 'qwen', name: '阿里云通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen3.7-plus' },
   { id: 'zhipu', name: '智谱 GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
@@ -116,8 +117,8 @@ const initialState: DataState = {
   columnInfo: [],
   dataInfo: null,
   cleaningHistory: [],
-  apiKey: '',
-  aiProvider: 'deepseek',
+  apiKey: 'sk-SXzLmQOotBHW63Pk6kApIuP2xuw3YBCCqc24nfgLofssxuhE',
+  aiProvider: 'ppio',
   customModel: '',
   customBaseUrl: '',
   loading: false,

@@ -7,18 +7,28 @@ import UploadPage from './pages/UploadPage';
 import CleanPage from './pages/CleanPage';
 import AnalysisPage from './pages/AnalysisPage';
 import DashboardPage from './pages/DashboardPage';
+import EtherealPreview from './EtherealPreview';
+import AIModelsPage from './pages/AIModelsPage';
+import ReportsPage from './pages/ReportsPage';
+import SettingsPage from './pages/SettingsPage';
+import CoverPage from './pages/CoverPage';
 
 export default function App() {
   return (
     <BrowserRouter>
       <DataProvider>
         <Routes>
+          {/* 封面为独立全屏页：自带暗色左侧栏，不套 Layout（避免浅色 Sidebar 拼黑底） */}
+          <Route path="/" element={<CoverPage />} />
           <Route element={<Layout />}>
-            <Route path="/" element={<Navigate to="/upload" replace />} />
             <Route path="/upload" element={<UploadPage />} />
             <Route path="/clean" element={<CleanPage />} />
             <Route path="/analysis" element={<AnalysisPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/ethereal-preview" element={<EtherealPreview />} />
+            <Route path="/models" element={<AIModelsPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>
       </DataProvider>

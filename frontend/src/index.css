@@ -5,19 +5,31 @@
 @tailwind utilities;
 
 :root {
-  /* ====== 核心色板 ====== */
-  --cosmic-deep: #020617;
-  --cosmic-space: #0f172a;
-  --cosmic-starlight: #8B5CF6;
-  --cosmic-galaxy: #8B5CF6;
-  --cosmic-moon: #f8fafc;
-  --cosmic-aurora: #A78BFA;
+  /* ====== 浅色玻璃拟态色板 ====== */
+  --bg-1: #eef2ff;   /* indigo-50 */
+  --bg-2: #faf5ff;   /* purple-50 */
+  --bg-3: #fdf2f8;   /* pink-50 */
 
-  --glass-bg: rgba(15, 23, 42, 0.75);
-  --glass-border: rgba(255, 255, 255, 0.06);
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --accent: #8b5cf6;       /* 主紫 */
+  --accent-soft: #a78bfa;  /* 浅紫 */
+  --accent-blue: #60a5fa;  /* 蓝 */
+  --accent-pink: #f472b6;  /* 粉 */
+
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-strong: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-shadow: 0 8px 32px rgba(31, 41, 55, 0.12);
+  --glass-shadow-hover: 0 14px 44px rgba(31, 41, 55, 0.18);
+
+  --text-primary: #0f172a;     /* slate-900 */
+  --text-secondary: #475569;   /* slate-600 */
+  --text-muted: #94a3b8;       /* slate-400 */
+
+  /* ====== 背景图层位移（白鹤与中央玻璃圈对齐用） ======
+     调大 X / Y：白鹤往右 / 下；调小或取负值：往左 / 上。
+     仅作用于底层背景图层，不影响前景内容。 */
+  --bg-shift-x: 45px;
+  --bg-shift-y: -45px;
 }
 
 /* ============================================================
@@ -26,662 +38,225 @@
 body {
   margin: 0;
   padding: 0;
-  background: var(--cosmic-deep);
   color: var(--text-primary);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   min-height: 100vh;
   overflow-x: hidden;
+  background: linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 45%, var(--bg-3) 100%);
 }
 
-/* ===== 下拉菜单 option 样式修复：深色背景配浅色文字 ===== */
+/* ===== 下拉菜单 option 样式：浅色背景配深色文字 ===== */
 select option {
-  background: #0F172A;
-  color: #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
   padding: 8px 12px;
 }
 
 /* ============================================================
-   2. 三层粒子系统
+   2. 背景图层（真实 bg.png + 白鹤对齐位移，呼应空壳 body::before）
+   - 负边距让图片溢出铺满视口，避免位移后出现白边
+   - transform 位移仅作用于背景图层，不影响前景内容（玻璃圈照常居中）
+   - 图片缺失时回退到极光渐变，保证不会出现空白
    ============================================================ */
-
-/* ---- 远景恒星层：200+ 小星点，缓慢闪烁 ---- */
-.cosmic-stars-far {
+.bg-layer {
   position: fixed;
-  inset: 0;
+  top: -150px;
+  left: -150px;
+  right: -150px;
+  bottom: -150px;
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
-}
-
-.cosmic-stars-far::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    /* 第1组 - 白/暖色小星点 (150个) */
-    radial-gradient(1px 1px at 2% 3%, rgba(255,255,255,0.7) 0%, transparent 100%),
-    radial-gradient(1px 1px at 5% 8%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 8% 15%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 12% 5%, rgba(255,255,255,0.6) 0%, transparent 100%),
-    radial-gradient(1px 1px at 15% 20%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 18% 7%, rgba(200,220,255,0.5) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 22% 12%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(1px 1px at 25% 25%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1.3px 1.3px at 28% 18%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(0.9px 0.9px at 32% 4%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 35% 10%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 38% 22%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 42% 8%, rgba(255,255,255,0.55) 0%, transparent 100%),
-    radial-gradient(1px 1px at 45% 15%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1.4px 1.4px at 48% 28%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(0.7px 0.7px at 52% 6%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 55% 18%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.1px 1.1px at 58% 25%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.9px 0.9px at 62% 12%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 65% 5%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1.3px 1.3px at 68% 20%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 72% 8%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 75% 16%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 78% 24%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.9px 0.9px at 82% 10%, rgba(255,255,255,0.55) 0%, transparent 100%),
-    radial-gradient(1px 1px at 85% 4%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1.1px 1.1px at 88% 18%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 92% 8%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 95% 22%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.4px 1.4px at 98% 14%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    /* 第2组 */
-    radial-gradient(0.8px 0.8px at 3% 35%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(1px 1px at 7% 48%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 10% 55%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(0.7px 0.7px at 14% 42%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 17% 60%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.3px 1.3px at 20% 38%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.9px 0.9px at 23% 52%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1px 1px at 27% 45%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 31% 58%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1.1px 1.1px at 34% 35%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1px 1px at 37% 50%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.9px 0.9px at 41% 42%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 44% 55%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(0.7px 0.7px at 47% 38%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 51% 48%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.3px 1.3px at 54% 35%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 57% 52%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 61% 42%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1.1px 1.1px at 64% 58%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(0.9px 0.9px at 67% 35%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1px 1px at 71% 48%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 74% 55%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 77% 40%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 81% 50%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.3px 1.3px at 84% 36%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.7px 0.7px at 87% 54%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 91% 42%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(0.9px 0.9px at 94% 58%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(1.1px 1.1px at 97% 48%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    /* 第3组 */
-    radial-gradient(1px 1px at 4% 72%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 9% 78%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 13% 65%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(0.9px 0.9px at 16% 82%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(1px 1px at 21% 70%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1.3px 1.3px at 24% 85%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.7px 0.7px at 29% 72%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 33% 78%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.1px 1.1px at 36% 65%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 40% 82%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 43% 70%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 46% 85%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.9px 0.9px at 50% 72%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 53% 78%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.3px 1.3px at 56% 65%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 60% 82%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 63% 70%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1.1px 1.1px at 66% 85%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.7px 0.7px at 70% 72%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 73% 78%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 76% 65%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    radial-gradient(0.9px 0.9px at 80% 82%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 83% 70%, rgba(255,255,255,0.35) 0%, transparent 100%),
-    radial-gradient(1.3px 1.3px at 86% 85%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(0.8px 0.8px at 90% 72%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 93% 78%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1.1px 1.1px at 96% 65%, rgba(255,255,255,0.45) 0%, transparent 100%),
-    /* 第4组 - 彩色恒星 */
-    radial-gradient(1.5px 1.5px at 10% 28%, rgba(139,92,246,0.5) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 45% 18%, rgba(139,92,246,0.4) 0%, transparent 100%),
-    radial-gradient(1.3px 1.3px at 78% 32%, rgba(167,139,250,0.45) 0%, transparent 100%),
-    radial-gradient(1px 1px at 30% 60%, rgba(168,85,247,0.4) 0%, transparent 100%),
-    radial-gradient(1.2px 1.2px at 60% 70%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(1.4px 1.4px at 85% 55%, rgba(167,139,250,0.4) 0%, transparent 100%),
-    radial-gradient(1.1px 1.1px at 15% 80%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(1.3px 1.3px at 50% 82%, rgba(139,92,246,0.4) 0%, transparent 100%);
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  animation: cosmic-stars-twinkle 12s ease-in-out infinite;
-}
-
-/* ---- 中景星云层：50-80 个发光粒子 + 彩色星云 ---- */
-.cosmic-nebula-mid {
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.cosmic-nebula-mid::before {
-  content: '';
-  position: absolute;
-  inset: 0;
   background:
-    /* 大星云团 */
-    radial-gradient(ellipse 60% 40% at 25% 30%, rgba(139,92,246,0.059) 0%, transparent 70%),
-    radial-gradient(ellipse 50% 35% at 75% 25%, rgba(139,92,246,0.05) 0%, transparent 65%),
-    radial-gradient(ellipse 55% 45% at 50% 50%, rgba(167,139,250,0.041) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 30% at 60% 70%, rgba(139,92,246,0.05) 0%, transparent 65%),
-    radial-gradient(ellipse 45% 35% at 20% 65%, rgba(139,92,246,0.041) 0%, transparent 60%),
-    /* 中景发光粒子 50-80个 */
-    radial-gradient(2px 2px at 12% 25%, rgba(139,92,246,0.5) 0%, transparent 100%),
-    radial-gradient(2.5px 2.5px at 28% 32%, rgba(139,92,246,0.4) 0%, transparent 100%),
-    radial-gradient(2px 2px at 42% 20%, rgba(167,139,250,0.45) 0%, transparent 100%),
-    radial-gradient(3px 3px at 55% 28%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(2px 2px at 68% 22%, rgba(139,92,246,0.4) 0%, transparent 100%),
-    radial-gradient(2.5px 2.5px at 80% 30%, rgba(167,139,250,0.45) 0%, transparent 100%),
-    radial-gradient(2px 2px at 18% 45%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(3px 3px at 35% 50%, rgba(139,92,246,0.3) 0%, transparent 100%),
-    radial-gradient(2px 2px at 50% 42%, rgba(167,139,250,0.4) 0%, transparent 100%),
-    radial-gradient(2.5px 2.5px at 65% 48%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(2px 2px at 75% 52%, rgba(139,92,246,0.4) 0%, transparent 100%),
-    radial-gradient(2px 2px at 22% 62%, rgba(167,139,250,0.35) 0%, transparent 100%),
-    radial-gradient(3px 3px at 40% 58%, rgba(139,92,246,0.3) 0%, transparent 100%),
-    radial-gradient(2.5px 2.5px at 58% 65%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(2px 2px at 72% 60%, rgba(167,139,250,0.4) 0%, transparent 100%),
-    radial-gradient(2px 2px at 15% 75%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(2.5px 2.5px at 32% 78%, rgba(139,92,246,0.3) 0%, transparent 100%),
-    radial-gradient(2px 2px at 48% 72%, rgba(167,139,250,0.35) 0%, transparent 100%),
-    radial-gradient(3px 3px at 62% 75%, rgba(139,92,246,0.3) 0%, transparent 100%),
-    radial-gradient(2px 2px at 78% 78%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(2.5px 2.5px at 8% 55%, rgba(167,139,250,0.4) 0%, transparent 100%),
-    radial-gradient(2px 2px at 88% 45%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(2px 2px at 92% 65%, rgba(139,92,246,0.3) 0%, transparent 100%),
-    radial-gradient(2.5px 2.5px at 5% 88%, rgba(167,139,250,0.35) 0%, transparent 100%),
-    radial-gradient(2px 2px at 95% 82%, rgba(139,92,246,0.3) 0%, transparent 100%),
-    /* 第2组粒子 */
-    radial-gradient(1.8px 1.8px at 6% 15%, rgba(139,92,246,0.4) 0%, transparent 100%),
-    radial-gradient(2.2px 2.2px at 20% 12%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(1.8px 1.8px at 38% 8%, rgba(167,139,250,0.4) 0%, transparent 100%),
-    radial-gradient(2px 2px at 52% 14%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(2.3px 2.3px at 70% 10%, rgba(139,92,246,0.3) 0%, transparent 100%),
-    radial-gradient(1.8px 1.8px at 86% 16%, rgba(167,139,250,0.4) 0%, transparent 100%),
-    radial-gradient(2px 2px at 95% 28%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(1.8px 1.8px at 3% 42%, rgba(139,92,246,0.3) 0%, transparent 100%),
-    radial-gradient(2.2px 2.2px at 25% 38%, rgba(167,139,250,0.35) 0%, transparent 100%),
-    radial-gradient(1.8px 1.8px at 45% 35%, rgba(139,92,246,0.4) 0%, transparent 100%),
-    radial-gradient(2px 2px at 62% 40%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(2.3px 2.3px at 82% 38%, rgba(167,139,250,0.3) 0%, transparent 100%),
-    radial-gradient(1.8px 1.8px at 10% 68%, rgba(139,92,246,0.35) 0%, transparent 100%),
-    radial-gradient(2px 2px at 55% 82%, rgba(139,92,246,0.3) 0%, transparent 100%),
-    radial-gradient(2.2px 2.2px at 88% 72%, rgba(167,139,250,0.35) 0%, transparent 100%);
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  filter: blur(1px);
-  animation: cosmic-nebula-float 18s ease-in-out infinite;
+    url('/bg.png') center / cover no-repeat,
+    radial-gradient(38% 46% at 14% 18%, rgba(129, 140, 248, 0.30), transparent 70%),
+    radial-gradient(42% 42% at 86% 12%, rgba(244, 114, 182, 0.26), transparent 70%),
+    radial-gradient(48% 48% at 78% 86%, rgba(96, 165, 250, 0.24), transparent 70%),
+    radial-gradient(40% 40% at 18% 82%, rgba(167, 139, 250, 0.22), transparent 70%),
+    linear-gradient(135deg, #eef2ff 0%, #faf5ff 45%, #fdf2f8 100%);
+  /* 背景位移参数（原样照搬空壳，用于把白鹤与中央玻璃圈对齐） */
+  transform: translate(var(--bg-shift-x), var(--bg-shift-y));
 }
-
-/* ---- 银河带：从左下到右上的半透明纹理 (5%-10%) ---- */
-.cosmic-galaxy-band {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.cosmic-galaxy-band::before {
-  content: '';
-  position: absolute;
-  top: -20%;
-  left: -10%;
-  width: 140%;
-  height: 140%;
-  background:
-    /* 主银河带 */
-    linear-gradient(
-      135deg,
-      transparent 25%,
-      rgba(139,92,246,0.041) 30%,
-      rgba(139,92,246,0.059) 35%,
-      rgba(139,92,246,0.05) 40%,
-      rgba(167,139,250,0.041) 45%,
-      rgba(139,92,246,0.03) 50%,
-      rgba(139,92,246,0.041) 55%,
-      rgba(167,139,250,0.03) 60%,
-      transparent 70%
-    ),
-    /* 银河纹理纹理 */
-    radial-gradient(ellipse 30% 60% at 35% 40%, rgba(139,92,246,0.059) 0%, transparent 70%),
-    radial-gradient(ellipse 25% 50% at 60% 55%, rgba(139,92,246,0.05) 0%, transparent 65%);
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  filter: blur(40px);
-  animation: cosmic-galaxy-shift 25s ease-in-out infinite;
-}
-
-/* ---- 星云漂浮层 ---- */
-.cosmic-nebula-drift {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.cosmic-nebula-drift::before {
+.bg-layer::after {
   content: '';
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(ellipse 70% 50% at 20% 30%, rgba(139,92,246,0.07) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 40% at 80% 20%, rgba(139,92,246,0.05) 0%, transparent 45%),
-    radial-gradient(ellipse 65% 55% at 50% 60%, rgba(167,139,250,0.041) 0%, transparent 50%),
-    radial-gradient(ellipse 50% 45% at 70% 75%, rgba(139,92,246,0.059) 0%, transparent 45%),
-    radial-gradient(ellipse 55% 35% at 15% 70%, rgba(139,92,246,0.041) 0%, transparent 40%);
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  filter: blur(60px);
-  animation: cosmic-nebula-float 20s ease-in-out infinite;
+  background: radial-gradient(60% 60% at 50% 40%, rgba(255,255,255,0.30), transparent 70%);
+  mix-blend-mode: screen;
 }
 
 /* ============================================================
-   3. 前景流星层：每 15-30 秒随机划过
-   ============================================================ */
-.cosmic-meteors {
-  position: fixed;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.cosmic-meteors::before,
-.cosmic-meteors::after {
-  content: '';
-  position: absolute;
-  width: 2px;
-  height: 2px;
-  background: transparent;
-  border-radius: 50%;
-  opacity: 0;
-}
-
-/* 流星1 - 左上到右下 */
-.cosmic-meteors::before {
-  box-shadow:
-    0 0 6px 2px rgba(255,255,255,0.8),
-    0 0 12px 4px rgba(139,92,246,0.6),
-    0 0 24px 6px rgba(139,92,246,0.3);
-  animation: cosmic-meteor-1 18s linear infinite;
-  animation-delay: 3s;
-}
-
-/* 流星2 */
-.cosmic-meteors::after {
-  box-shadow:
-    0 0 6px 2px rgba(255,255,255,0.7),
-    0 0 12px 4px rgba(139,92,246,0.5),
-    0 0 24px 6px rgba(139,92,246,0.3);
-  animation: cosmic-meteor-2 22s linear infinite;
-  animation-delay: 10s;
-}
-
-/* ============================================================
-   4. 背景光晕呼吸动画
-   ============================================================ */
-.cosmic-aura {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.cosmic-aura::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at center, rgba(139,92,246,0.041) 0%, transparent 70%);
-  animation: cosmic-aura-breathe 12s ease-in-out infinite;
-}
-
-/* ============================================================
-   5. 动画关键帧
-   ============================================================ */
-
-/* 远景恒星闪烁 */
-@keyframes cosmic-stars-twinkle {
-  0%, 100% { opacity: 0.6; }
-  25% { opacity: 0.85; }
-  50% { opacity: 0.5; }
-  75% { opacity: 0.9; }
-}
-
-/* 星云漂浮 */
-@keyframes cosmic-nebula-float {
-  0% { transform: translate(0, 0) scale(1); opacity: 0.7; }
-  33% { transform: translate(15px, -10px) scale(1.03); opacity: 0.85; }
-  66% { transform: translate(-10px, 8px) scale(0.97); opacity: 0.65; }
-  100% { transform: translate(0, 0) scale(1); opacity: 0.7; }
-}
-
-/* 银河带位移 */
-@keyframes cosmic-galaxy-shift {
-  0% { transform: translate(0, 0) rotate(0deg); opacity: 0.7; }
-  50% { transform: translate(10px, -5px) rotate(0.5deg); opacity: 0.9; }
-  100% { transform: translate(0, 0) rotate(0deg); opacity: 0.7; }
-}
-
-/* 背景光晕呼吸 */
-@keyframes cosmic-aura-breathe {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 0.7; }
-}
-
-/* 流星1轨迹 */
-@keyframes cosmic-meteor-1 {
-  0% {
-    top: -5%;
-    left: 15%;
-    opacity: 0;
-    transform: rotate(-35deg) scaleX(1);
-  }
-  2% {
-    opacity: 1;
-  }
-  6% {
-    top: 105%;
-    left: 85%;
-    opacity: 0;
-    transform: rotate(-35deg) scaleX(3);
-  }
-  100% {
-    top: 105%;
-    left: 85%;
-    opacity: 0;
-  }
-}
-
-/* 流星2轨迹 */
-@keyframes cosmic-meteor-2 {
-  0% {
-    top: -5%;
-    left: 60%;
-    opacity: 0;
-    transform: rotate(-40deg) scaleX(1);
-  }
-  2% {
-    opacity: 1;
-  }
-  6% {
-    top: 105%;
-    left: 25%;
-    opacity: 0;
-    transform: rotate(-40deg) scaleX(3);
-  }
-  100% {
-    top: 105%;
-    left: 25%;
-    opacity: 0;
-  }
-}
-
-/* ============================================================
-   6. 玻璃态卡片（含外发光）
+   3. 玻璃态卡片
    ============================================================ */
 .glass-card {
   background: var(--glass-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
-  border-radius: 12px;
-  box-shadow: 0 0 15px rgba(139,92,246,0.15);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow);
   transition: all 0.3s ease;
 }
 
 .glass-card:hover {
-  border-color: rgba(139,92,246,0.2);
-  box-shadow: 0 0 25px rgba(139,92,246,0.35);
+  box-shadow: var(--glass-shadow-hover);
   transform: translateY(-1px);
 }
 
-/* ============================================================
-   7. KPI 数字脉冲发光
-   ============================================================ */
-.kpi-glow {
-  animation: cosmic-kpi-pulse 8s ease-in-out infinite;
-}
-
-@keyframes cosmic-kpi-pulse {
-  0%, 100% {
-    text-shadow: 0 0 8px rgba(139,92,246,0.3);
-  }
-  50% {
-    text-shadow: 0 0 20px rgba(139,92,246,0.6), 0 0 40px rgba(139,92,246,0.3);
-  }
-}
-
-/* ============================================================
-   8. 宇宙传送门上传区域
-   ============================================================ */
-
-/* 传送门容器 */
-.portal-upload {
-  position: relative;
+/* 更轻的面板：用于侧边栏 / 输入框 / 内层容器 */
+.glass-panel {
   background: var(--glass-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1.5px solid rgba(196,181,253,0.45);
-  border-radius: 50%;
-  width: min(360px, 78vw);
-  height: min(360px, 78vw);
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow:
-    0 0 30px rgba(196,181,253,0.2),
-    0 0 60px rgba(196,181,253,0.12),
-    inset 0 0 30px rgba(196,181,253,0.08);
-  transition: all 0.4s ease;
-  overflow: visible;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
 }
 
-.portal-upload:hover {
-  border-color: rgba(196,181,253,0.55);
-  box-shadow:
-    0 0 40px rgba(196,181,253,0.25),
-    0 0 80px rgba(196,181,253,0.18),
-    inset 0 0 40px rgba(196,181,253,0.12);
-  transform: scale(1.03);
-}
-
-.portal-upload.drag-active {
-  border-color: rgba(196,181,253,0.6);
-  box-shadow:
-    0 0 40px rgba(196,181,253,0.25),
-    0 0 80px rgba(196,181,253,0.22),
-    inset 0 0 40px rgba(196,181,253,0.12);
-  transform: scale(1.05);
-}
-
-/* 传送门外环 - 蓝紫色粒子环 */
-.portal-ring-outer {
-  position: absolute;
-  inset: -20px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(196,181,253,0.22);
-  animation: portal-ring-spin 12s linear infinite;
-  pointer-events: none;
-}
-
-/* 传送门中环 - 旋转光圈 */
-.portal-ring-middle {
-  position: absolute;
-  inset: -38px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  border-top-color: rgba(196,181,253,0.45);
-  border-right-color: rgba(167,139,250,0.28);
-  animation: portal-ring-spin-reverse 8s linear infinite;
-  pointer-events: none;
-  box-shadow: 0 0 15px rgba(196,181,253,0.22);
-}
-
-/* 传送门内环 */
-.portal-ring-inner {
-  position: absolute;
-  inset: -8px;
-  border-radius: 50%;
-  border: 1px solid rgba(196,181,253,0.22);
-  animation: portal-ring-spin 15s linear infinite;
-  pointer-events: none;
-}
-
-/* 传送门第四环 - 在外环更外侧作为"第二道光圈"（目标图双环感） */
-.portal-ring-quad {
-  position: absolute;
-  inset: -42px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(196,181,253,0.18);
-  animation: portal-ring-spin-reverse 16s linear infinite;
-  pointer-events: none;
-}
-
-/* 传送门粒子 */
-.portal-particles {
-  position: absolute;
-  inset: -30px;
-  pointer-events: none;
-}
-
-.portal-particle {
-  position: absolute;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: rgba(167,139,250,0.45);
-  box-shadow: 0 0 5px 1px rgba(196,181,253,0.28);
-  animation: portal-particle-orbit 6s linear infinite;
-}
-
-.portal-particle:nth-child(1) { top: 50%; left: -15px; animation-delay: 0s; }
-.portal-particle:nth-child(2) { top: 10%; left: 40%; animation-delay: -1s; background: rgba(196,181,253,0.5); }
-.portal-particle:nth-child(3) { top: 80%; left: 30%; animation-delay: -2s; background: rgba(196,181,253,0.45); }
-.portal-particle:nth-child(4) { top: 30%; left: 85%; animation-delay: -3s; }
-.portal-particle:nth-child(5) { top: 70%; left: 75%; animation-delay: -4s; background: rgba(167,139,250,0.45); }
-.portal-particle:nth-child(6) { top: 20%; left: 15%; animation-delay: -5s; background: rgba(196,181,253,0.45); }
-
-@keyframes portal-particle-orbit {
-  0% { transform: rotate(0deg) translateX(0px) scale(1); opacity: 0.6; }
-  50% { transform: rotate(180deg) translateX(5px) scale(1.5); opacity: 1; }
-  100% { transform: rotate(360deg) translateX(0px) scale(1); opacity: 0.6; }
-}
-
-/* 能量核心（上传按钮中心） */
-.portal-core {
-  position: relative;
-  z-index: 1;
-  width: 130px;
-  height: 130px;
-  border-radius: 50%;
-  /* 深紫黑球 + 中心亮紫光晕（范围扩大到中圈） + 极淡蓝紫边缘光 */
-  background:
-    radial-gradient(circle at 50% 50%, rgba(167,139,250,0.4) 0%, rgba(167,139,250,0.15) 35%, rgba(167,139,250,0) 70%),
-    radial-gradient(circle at 50% 50%, #1e1b3a 0%, #15132a 55%, #0d0b1c 100%);
-  box-shadow:
-    0 0 50px rgba(167,139,250,0.35),
-    0 0 90px rgba(167,139,250,0.2),
-    0 0 4px rgba(196,181,253,0.18) inset,
-    inset 0 0 0 1px rgba(167,139,250,0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* 半透明玻璃（用于文件列表等，对齐空壳 0.22 透度） */
+.glass-card-soft {
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.48);
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.01);
   transition: all 0.3s ease;
-  animation: portal-core-breathe 4s ease-in-out infinite;
 }
 
-.portal-core:hover {
-  box-shadow:
-    0 0 60px rgba(167,139,250,0.45),
-    0 0 110px rgba(167,139,250,0.28),
-    0 0 4px rgba(196,181,253,0.22) inset,
-    inset 0 0 0 1px rgba(167,139,250,0.32);
+/* 玻璃输入框 */
+.glass-input {
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  color: var(--text-primary);
+  border-radius: 10px;
+  transition: all 0.2s ease;
 }
-
-@keyframes portal-core-breathe {
-  0%, 100% {
-    box-shadow:
-      0 0 40px rgba(167,139,250,0.3),
-      0 0 80px rgba(167,139,250,0.18),
-      0 0 4px rgba(196,181,253,0.15) inset,
-      inset 0 0 0 1px rgba(167,139,250,0.22);
-  }
-  50% {
-    box-shadow:
-      0 0 55px rgba(167,139,250,0.42),
-      0 0 100px rgba(167,139,250,0.25),
-      0 0 6px rgba(196,181,253,0.2) inset,
-      inset 0 0 0 1px rgba(167,139,250,0.28);
-  }
-}
-
-/* 传送门旋转动画 */
-@keyframes portal-ring-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes portal-ring-spin-reverse {
-  from { transform: rotate(360deg); }
-  to { transform: rotate(0deg); }
+.glass-input::placeholder { color: #94a3b8; }
+.glass-input:focus {
+  outline: none;
+  border-color: var(--accent-soft);
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.25);
 }
 
 /* ============================================================
-   9. 滚动条
+   4. 环形上传区（呼应空壳中央圆环）
    ============================================================ */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* 中央透明玻璃圈（严格对齐空壳 index.html 的 ring-container 结构） */
+.donut-drop {
+  --ring: min(360px, 80vw);
+  width: var(--ring);
+  height: var(--ring);
+  border-radius: 50%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+.donut-mask-wrapper {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  -webkit-mask: radial-gradient(circle closest-side, transparent 58%, #000 58.5%);
+  mask: radial-gradient(circle closest-side, transparent 58%, #000 58.5%);
+  transform: translateZ(0);
+}
+.frosted-donut {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.outer-border {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.45);
+  box-shadow:
+    inset 0 0 20px rgba(255, 255, 255, 0.3),
+    0 0 20px rgba(255, 255, 255, 0.15);
+  pointer-events: none;
+}
+.inner-border {
+  position: absolute;
+  top: 21%;
+  left: 21%;
+  width: 58%;
+  height: 58%;
+  border-radius: 50%;
+  background: transparent;
+  border: 4px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    inset 0 0 15px rgba(255, 255, 255, 0.3),
+    0 0 15px rgba(255, 255, 255, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 中央文档图标（浅粉，对齐空壳） */
+.doc-icon {
+  width: 54px;
+  height: 54px;
+  stroke: #EAADC2;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.donut-drop:hover { transform: scale(1.02); }
+.donut-drop.drag-active { transform: scale(1.04); }
+.donut-drop.drag-active .outer-border {
+  border-color: rgba(167, 139, 250, 0.8);
+  box-shadow:
+    0 0 0 6px rgba(167, 139, 250, 0.28),
+    inset 0 0 20px rgba(255, 255, 255, 0.3),
+    0 0 20px rgba(255, 255, 255, 0.15);
+}
+.donut-drop.drag-active .inner-border { border-color: rgba(167, 139, 250, 0.85); }
+
+/* ============================================================
+   5. KPI 数字（轻量强调，去掉重辉光）
+   ============================================================ */
+.kpi-glow { color: var(--accent); }
+
+/* ============================================================
+   6. 滚动条
+   ============================================================ */
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(139,92,246,0.3);
-  border-radius: 3px;
+  background: rgba(100, 116, 139, 0.3);
+  border-radius: 4px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.5); }
+::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.5); }
 
 /* ============================================================
-   10. 页面进入动画
+   7. 页面进入动画
    ============================================================ */
-.page-enter {
-  animation: page-enter 0.5s ease-out;
-}
-
+.page-enter { animation: page-enter 0.5s ease-out; }
 @keyframes page-enter {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 /* ============================================================
-   11. 工具类
+   8. 工具类
    ============================================================ */
-.text-cosmic-starlight { color: var(--cosmic-starlight); }
-.text-cosmic-galaxy { color: var(--cosmic-galaxy); }
-.text-cosmic-moon { color: var(--cosmic-moon); }
-.text-cosmic-aurora { color: var(--cosmic-aurora); }
+.text-accent { color: var(--accent); }
+.text-accent-soft { color: var(--accent-soft); }
 
 /* ============================================================
-   12. Markdown 正文（数据洞察报告 / AI 对话富文本）
+   9. Markdown 正文（数据洞察报告 / AI 对话富文本）
    仅作用于 .md-body 后代，不影响页面其它组件
    ============================================================ */
 .md-body {
-  color: #CBD5E1;
+  color: #334155;
   line-height: 1.7;
   font-size: 13px;
   word-break: break-word;
@@ -693,51 +268,51 @@ select option {
 .md-body h2,
 .md-body h3,
 .md-body h4 {
-  color: #F8FAFC;
+  color: #0f172a;
   font-weight: 600;
   line-height: 1.4;
   margin: 14px 0 8px;
 }
 .md-body h1 { font-size: 18px; }
-.md-body h2 { font-size: 16px; border-left: 3px solid #8B5CF6; padding-left: 10px; }
-.md-body h3 { font-size: 14px; color: #A78BFA; }
-.md-body h4 { font-size: 13px; color: #A78BFA; }
+.md-body h2 { font-size: 16px; border-left: 3px solid var(--accent); padding-left: 10px; }
+.md-body h3 { font-size: 14px; color: #7c3aed; }
+.md-body h4 { font-size: 13px; color: #7c3aed; }
 
 .md-body p { margin: 6px 0; }
 .md-body ul { list-style: disc; padding-left: 22px; margin: 6px 0; }
 .md-body ol { list-style: decimal; padding-left: 22px; margin: 6px 0; }
 .md-body li { margin: 3px 0; padding-left: 2px; }
-.md-body li::marker { color: #8B5CF6; }
+.md-body li::marker { color: var(--accent); }
 
-.md-body strong { color: #F8FAFC; font-weight: 600; }
-.md-body em { color: #E2E8F0; font-style: italic; }
+.md-body strong { color: #0f172a; font-weight: 600; }
+.md-body em { color: #475569; font-style: italic; }
 
-.md-body a { color: #8B5CF6; text-decoration: underline; text-underline-offset: 2px; }
-.md-body a:hover { color: #A78BFA; }
+.md-body a { color: #7c3aed; text-decoration: underline; text-underline-offset: 2px; }
+.md-body a:hover { color: var(--accent); }
 
 .md-body code {
-  background: rgba(139, 92, 246, 0.12);
+  background: rgba(139, 92, 246, 0.1);
   padding: 1px 5px;
   border-radius: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
-  color: #E9D5FF;
+  color: #6d28d9;
 }
 .md-body pre {
-  background: rgba(2, 6, 23, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  background: #1e293b;
+  border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 8px;
   padding: 10px 12px;
   overflow-x: auto;
   margin: 8px 0;
 }
-.md-body pre code { background: transparent; padding: 0; color: #CBD5E1; }
+.md-body pre code { background: transparent; padding: 0; color: #e2e8f0; }
 
 .md-body blockquote {
-  border-left: 3px solid #8B5CF6;
+  border-left: 3px solid var(--accent);
   padding-left: 12px;
   margin: 8px 0;
-  color: #94A3B8;
+  color: #64748b;
 }
 
 .md-body table {
@@ -748,12 +323,12 @@ select option {
 }
 .md-body th,
 .md-body td {
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.3);
   padding: 5px 8px;
   text-align: left;
 }
-.md-body th { background: rgba(139, 92, 246, 0.1); color: #F8FAFC; font-weight: 600; }
-.md-body tbody tr:nth-child(even) { background: rgba(148, 163, 184, 0.04); }
+.md-body th { background: rgba(139, 92, 246, 0.08); color: #0f172a; font-weight: 600; }
+.md-body tbody tr:nth-child(even) { background: rgba(148, 163, 184, 0.06); }
 
-.md-body hr { border: none; border-top: 1px solid rgba(148, 163, 184, 0.15); margin: 12px 0; }
+.md-body hr { border: none; border-top: 1px solid rgba(148, 163, 184, 0.25); margin: 12px 0; }
 .md-body img { max-width: 100%; border-radius: 8px; }

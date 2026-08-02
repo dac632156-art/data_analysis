@@ -3,68 +3,102 @@
 三路并排，互不调用，各吃 Base 结果（或原始清洗 df）产出 ChartData。
 确定性算法，无 LLM。详见 分析模型/同期群与用户状态跃迁模型拆解.md。
 """
+from collections import defaultdict
 from typing import Any, Dict, List
 
 import pandas as pd
 
 from src.analysis_templates.base import ChartData
 from src.analysis_engine.models.cohort import (
-    CFG, _month_index, _mi_to_label, _safe_dt, SENTINEL,
+    CFG, _month_index, _mi_to_label, _safe_dt, SENTINEL, _SUMMARY_COHORT_WINDOW,
 )
 
 
-# ==================== A. 渠道 / 类目维度升维 ====================
+# ==================== A. 横截面活跃留存用户数（健康度） ====================
 def compute_advanced_a(work: pd.DataFrame, base: Dict[str, Any]) -> List[ChartData]:
-    """A：按 流量来源 / 商品类目 拆 M1 留存用户数（堆叠条形）。
+    """A：月度活跃留存用户数（横截面健康度）。
 
-    触发：存在 流量来源 或 商品类目 列。
-    产出：每维度一张 cohort_stacked（x=首单月, stack by 维度值, y=M1 留存用户数）。
+    对每个统计月 m：统计「当月有订单、且首购月 < m」的老客去重人数。
+    横截面口径：锚点=当月 m，无「次月」约束，与基座纵向同期群留存率（j=1）严格区分，不可混用。
+
+    触发（文档口径）：存在 流量来源 或 商品类目 列才调用本函数；
+    但函数内防御——维度列虽在但全为空时，仍产出 ALL 总览线（不会空手而归）。
+
+    输出长表：统计月 m × 维度 k（含 'ALL' 总览）× 活跃留存用户数（量级数百）。
+    公式：ActiveRetained(m,k)=|{u : ∃o s.t. Order_Month(o)=m ∧ dim_k(o)=k, 且 Cohort_Month(u)<m}|
     """
     charts: List[ChartData] = []
-    today_month = base["today_month"]
 
-    for dim in ["流量来源", "商品类目"]:
-        if dim not in work.columns:
-            continue
+    # 统计月集合：全量订单月（去重升序），保证时间线连续；用标签作 X 轴类目
+    order_all = _month_index(work["__dt__"])
+    all_months = sorted(order_all.dropna().unique().tolist())
+    if not all_months:
+        return charts
 
-        df = work.copy()
-        first_dt = df.groupby("用户ID")["__dt__"].transform("min")
-        df["Cohort_Month"] = _month_index(first_dt)
-        df["Index_j"] = (_month_index(df["__dt__"]) - df["Cohort_Month"]).astype(int)
-        mature = (today_month - df["Cohort_Month"]) >= CFG.MIN_OBSERVATION_MONTHS
-        df = df[mature]
-        if df.empty:
-            continue
+    # 视觉窗口对齐基座热力图：仅展示最近 _SUMMARY_COHORT_WINDOW 个订单发生月。
+    # 仅裁剪「展示哪些月」；首购锚点 cohort_mi 仍基于全量 work 计算，
+    # 故「首购在窗口外、窗口内再次消费即算留存」口径不变。
+    if len(all_months) > _SUMMARY_COHORT_WINDOW:
+        all_months = all_months[-_SUMMARY_COHORT_WINDOW:]
+    month_set = set(all_months)
 
-        if "订单ID" in df.columns:
-            agg_src = df.drop_duplicates(subset=["订单ID"], keep="first")
-        else:
-            agg_src = df
+    # 派生每用户首购月（base 未带则自行 groupby 算）
+    first_dt = work.groupby("用户ID")["__dt__"].transform("min")
+    cohort_mi = _month_index(first_dt)
+    order_mi = _month_index(work["__dt__"])
 
-        g0 = agg_src[agg_src["Index_j"] == 0].groupby(["Cohort_Month", dim])["用户ID"].nunique()
-        g1 = agg_src[agg_src["Index_j"] == 1].groupby(["Cohort_Month", dim])["用户ID"].nunique()
-        merged = pd.concat([g0.rename("u0"), g1.rename("u1")], axis=1).reset_index()
-        if merged.empty:
-            continue
+    # 横截面筛选：排除当月新客（首购月 == 订单月），仅留老客
+    mask = order_mi > cohort_mi
+    retained = work[mask].copy()
+    if retained.empty:
+        return charts
+    retained["__om__"] = order_mi[mask].values
+    # 仅保留窗口内订单月，使 ALL 线 / 维度线 / TopN 图例选取口径与窗口一致
+    retained = retained[retained["__om__"].isin(month_set)].copy()
+    if retained.empty:
+        return charts
 
-        rows = []
-        for _, r in merged.iterrows():
-            u1 = r.get("u1", 0)
-            if not u1 or (isinstance(u1, float) and u1 != u1) or u1 <= 0:
-                continue
-            rows.append({
-                "首单月": _mi_to_label(r["Cohort_Month"]),
-                "group": str(r[dim]),
-                "value": int(u1),
-            })
-        if not rows:
-            continue
+    # ALL 总览线：逐月老客去重人数（同一用户当月只计一次，不论买多少维度值）
+    all_series = retained.groupby("__om__")["用户ID"].nunique()
+    all_rows = [{"统计月": _mi_to_label(m), "group": "ALL", "value": int(all_series.get(m, 0))}
+                for m in all_months]
 
+    # 维度探测（文档口径至少一个存在才触发；全空则仅出 ALL 总览线，防御兜底）
+    dims = [d for d in ("流量来源", "商品类目") if d in work.columns]
+    valid_dims = [d for d in dims if retained[d].notna().any()]
+
+    if not valid_dims:
+        charts.append(ChartData(
+            slot="cohort_a_active",
+            chart_type="cohort_active_line",
+            title="月度活跃留存用户数（横截面健康度）",
+            x="统计月", y="value", data=all_rows,
+        ))
+        return charts
+
+    TOPN = {"流量来源": 6, "商品类目": 5}
+    for dim in valid_dims:
+        rows = list(all_rows)  # 复制 ALL 总览线
+        # 逐维度：当月买该维度值的老客去重（同月买多个维度值 → 各维度线各计一次）
+        dim_counts = retained.dropna(subset=[dim]).groupby(["__om__", dim])["用户ID"].nunique()
+        # 维度值总活跃人数 Top N-1，其余并入「其他(合计)」（避免图例爆炸）
+        tot = dim_counts.groupby(dim).sum()
+        n = TOPN.get(dim, 10)
+        top = set(tot.sort_values(ascending=False).head(n - 1).index.tolist())
+        per_month = defaultdict(lambda: defaultdict(int))
+        for (m, g), v in dim_counts.items():
+            key = g if g in top else "其他(合计)"
+            per_month[m][key] += int(v)
+        for m in all_months:
+            for g, v in per_month[m].items():
+                rows.append({"统计月": _mi_to_label(m), "group": str(g), "value": v})
+
+        dim_label = {"流量来源": "渠道", "商品类目": "商品类目"}.get(dim, dim)
         charts.append(ChartData(
             slot=f"cohort_a_{dim}",
-            chart_type="cohort_stacked",
-            title=f"{dim} 各渠道 M1 留存用户数（堆叠）",
-            x="首单月", y="value", data=rows,
+            chart_type="cohort_active_line",
+            title=f"月度活跃留存用户数 —— 按{dim_label}（横截面健康度）",
+            x="统计月", y="value", data=rows,
         ))
     return charts
 
@@ -145,9 +179,13 @@ def compute_advanced_c(work: pd.DataFrame, base: Dict[str, Any]) -> List[ChartDa
     has_refund_date = "退款完成日期" in work.columns
 
     df = work.copy()
+    # 剔除无有效订单日期的行：与基座一致，避免 Index_j 强转在 NaN 上崩
+    if df["__dt__"].isna().any():
+        df = df[df["__dt__"].notna()].copy()
     first_dt = df.groupby("用户ID")["__dt__"].transform("min")
     df["Cohort_Month"] = _month_index(first_dt)
-    df["Index_j"] = (_month_index(df["__dt__"]) - df["Cohort_Month"]).astype(int)
+    # 可空整数类型，杜绝残留 NaN 触发强转崩溃
+    df["Index_j"] = (_month_index(df["__dt__"]) - df["Cohort_Month"]).astype("Int64")
 
     # 仅纳入成熟 cohort（与基座一致）
     today_month = base["today_month"]
@@ -171,7 +209,7 @@ def compute_advanced_c(work: pd.DataFrame, base: Dict[str, Any]) -> List[ChartDa
             rdt = _safe_dt(df["退款完成日期"])
             rmonth = _month_index(rdt)
             # NaT（空日期）回退到订单月偏移
-            df["refund_j"] = (rmonth - df["Cohort_Month"]).fillna(df["Index_j"]).astype(int)
+            df["refund_j"] = (rmonth - df["Cohort_Month"]).fillna(df["Index_j"]).astype("Int64")
             # 退款行必须带唯一「订单ID」：否则 concat 后该列=NaN，下游
             # drop_duplicates(subset=["订单ID"]) 会把所有 NaN 视为相同 → 多笔退款被压缩成一行，
             # 导致净毛利少扣退款而虚高。
@@ -216,13 +254,21 @@ def compute_advanced_c(work: pd.DataFrame, base: Dict[str, Any]) -> List[ChartDa
     charts: List[ChartData] = []
 
     # (1) 净毛利 cohort 热力图（ARPU_net = R_net / U）
-    cohort_labels = [m for m in base["cohort_labels"] if m in net_g["Cohort_Month"].unique()]
-    max_j = int(net_g["Index_j"].max()) if len(net_g) else 0
+    # 与基座对齐：最近 _SUMMARY_COHORT_WINDOW 个 cohort × j∈[0, _W-1]（金额类保留 j=0）
+    all_labels = base["cohort_labels"]
+    win_labels = all_labels[-_SUMMARY_COHORT_WINDOW:] if len(all_labels) > _SUMMARY_COHORT_WINDOW else all_labels
+    win_set = set(win_labels)  # 与基座 cohort.py 一致：仅在窗口内的 (首单月+j) 才参与计算
+    cohort_labels = [m for m in win_labels if m in net_g["Cohort_Month"].unique()]
+    max_j = min(int(net_g["Index_j"].max()) if len(net_g) else 0, _SUMMARY_COHORT_WINDOW - 1)
     heat_rows = []
     for m in cohort_labels:
         sub = net_g[net_g["Cohort_Month"] == m]
         for _, r in sub.iterrows():
             j = int(r["Index_j"])
+            if (m + j) not in win_set:  # 目标月(首单月+j)不在窗口内 → 不参与计算/渲染，与基座留存率图对齐
+                continue
+            if j > max_j:
+                continue
             u = r["U"]
             v = (r["R_net"] / u) if u and u > 0 else None
             if v is None or (isinstance(v, float) and v != v):

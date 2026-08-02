@@ -1658,9 +1658,43 @@ function buildReportHTML(
     // 关联的图表：仅当 echarts 数组中有对应索引的数据时才生成图表容器
     const hasChart = sec.chartIndex !== undefined && sec.chartIndex < echarts.length;
     const chartId = hasChart ? `report_chart_${sec.chartIndex}` : '';
-    const chartDiv = chartId
-      ? `<div class="chart-container"><div id="${chartId}" style="width:100%!important;min-width:600px;height:420px;display:block;"></div><div class="chart-caption">${sec.subtitle || cleanTitle(sec.title)}</div></div>`
-      : '';
+    const chartDiv = (() => {
+      if (!chartId) return '';
+      // ★ 热力图按行数自适应高度：行数多则容器更高，避免格子压扁/文字重叠
+      let chartH = 420; // 默认高度（非热力图保持此值）
+      const chartItem = echarts[sec.chartIndex!];
+      const isHeatmap =
+        (chartItem as any).chart_type === 'heatmap' ||
+        (chartItem.option?.series?.some?.((s: any) => s.type === 'heatmap') ?? false);
+      if (isHeatmap) {
+        let nRows = 0;
+        const opt = chartItem.option as any;
+        // 优先取 yAxis.data 长度（热力图行数）
+        if (opt?.yAxis?.data?.length) {
+          nRows = opt.yAxis.data.length;
+        } else if (Array.isArray(opt?.yAxis)) {
+          nRows = opt.yAxis.reduce((max: number, ya: any) => Math.max(max, ya?.data?.length || 0), 0);
+        }
+        // 兜底：从 series 数据中统计不同 yIndex（数组第二项）去重数
+        if (!nRows) {
+          const heatSeries = opt?.series?.filter?.((s: any) => s.type === 'heatmap');
+          if (heatSeries?.length) {
+            const ySet = new Set<number>();
+            heatSeries.forEach((s: any) => {
+              (s.data || []).forEach((d: any) => {
+                if (Array.isArray(d) && d.length >= 2) ySet.add(d[1]);
+              });
+            });
+            nRows = ySet.size;
+          }
+        }
+        // 动态高度 = 行数 × 每行像素 + 标题/图例边距，夹在 [420, 900] 之间
+        if (nRows > 0) {
+          chartH = Math.max(420, Math.min(900, nRows * 44 + 120));
+        }
+      }
+      return `<div class="chart-container"><div id="${chartId}" style="width:100%!important;min-width:600px;height:${chartH}px;display:block;"></div><div class="chart-caption">${sec.subtitle || cleanTitle(sec.title)}</div></div>`;
+    })();
 
     // 分析文本：转换 Markdown 加粗 **xxx** → <strong>xxx</strong>，去除末尾空行
     let analysisHtml = (sec.analysis || '')

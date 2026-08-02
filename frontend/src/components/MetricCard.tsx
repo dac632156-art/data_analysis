@@ -10,6 +10,7 @@ interface Props {
   value: string | number;
   icon?: string;
   color?: string;
+  className?: string;
 }
 
 const iconMap: Record<string, string> = {
@@ -21,11 +22,11 @@ const iconMap: Record<string, string> = {
   'target': '🎯',
 };
 
-export default function MetricCard({ title, value, icon, color = P.primary }: Props) {
+export default function MetricCard({ title, value, icon, color = P.primary, className }: Props) {
   const emoji = icon ? (iconMap[icon] || '📊') : '📊';
 
   return (
-    <div className="glass-card p-4 flex items-start gap-4">
+    <div className={`${className ?? 'glass-card'} p-4 flex items-start gap-4`}>
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center text-lg flex-shrink-0"
         style={{ background: `${color}20`, color }}
@@ -34,7 +35,7 @@ export default function MetricCard({ title, value, icon, color = P.primary }: Pr
       </div>
       <div className="min-w-0">
         <p className="text-xs text-slate-500 uppercase tracking-wider mb-0.5">{title}</p>
-        <p className="kpi-glow text-xl font-bold truncate" style={{ color: P.textPrimary }}>{value}</p>
+        <p className="kpi-glow text-xl font-bold truncate" style={{ color: 'var(--text-primary)' }}>{value}</p>
       </div>
     </div>
   );

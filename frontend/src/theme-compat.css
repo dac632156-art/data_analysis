@@ -1,0 +1,74 @@
+/* ============================================================
+   旧页面浅色化兼容层
+   仅重定向旧暗色工具类，不影响新建的浅色页面。
+   使用属性选择器 [class*="..."]，避免任意值类名的转义问题。
+   ============================================================ */
+
+/* ---------- 文字色：暗色 → 浅色背景下的深色 ---------- */
+[class*="text-[#f8fafc]"],
+[class*="text-[#94a3b8]"],
+[class*="text-slate-100"],
+[class*="text-slate-200"],
+[class*="text-slate-300"],
+[class*="text-slate-400"] {
+  color: #334155 !important;
+}
+
+[class*="text-[#A78BFA]"],
+[class*="text-[#8B5CF6]"] { color: #7c3aed !important; }
+[class*="text-[#22D3EE]"] { color: #0891b2 !important; }
+[class*="text-[#FBBF24]"] { color: #b45309 !important; }
+[class*="text-[#FB7185]"] { color: #be123c !important; }
+
+[class*="text-green-400"],
+[class*="text-emerald-400"] { color: #047857 !important; }
+[class*="text-red-400"] { color: #e11d48 !important; }
+[class*="text-blue-400"] { color: #1d4ed8 !important; }
+[class*="text-yellow-400"] { color: #b45309 !important; }
+[class*="text-rose-400"] { color: #be123c !important; }
+
+/* ---------- 深色面板 / 输入框 → 浅色玻璃 ---------- */
+[class*="bg-white/[0.04]"],
+[class*="bg-white/[0.03]"],
+[class*="bg-[#0F172A]"],
+[class*="bg-[#1E293B]"],
+[class*="bg-[#1a1f3a]"] {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+}
+
+/* Dashboard 控制栏（内联暗色背景） */
+[style*="rgba(10,10,30,0.8)"] {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.25) !important;
+  backdrop-filter: blur(20px);
+}
+
+/* ---------- 状态徽章底色 → 浅色 ---------- */
+[class*="bg-emerald-500/15"],
+[class*="bg-green-500/10"],
+[class*="bg-green-500/20"] { background: #dcfce7 !important; }
+[class*="bg-red-500/15"],
+[class*="bg-red-500/10"] { background: #ffe4e6 !important; }
+[class*="bg-[#A78BFA]/10"],
+[class*="bg-[#A78BFA]/15"],
+[class*="bg-[#A78BFA]/20"],
+[class*="bg-[#8B5CF6]/20"] { background: #ede9fe !important; }
+
+[class*="bg-[#FBBF24]/[0.08]"] {
+  background: rgba(251, 191, 36, 0.14) !important;
+  border-color: rgba(251, 191, 36, 0.5) !important;
+}
+[class*="bg-[#FB7185]/[0.08]"] {
+  background: rgba(251, 113, 133, 0.14) !important;
+  border-color: rgba(251, 113, 133, 0.5) !important;
+}
+
+/* ---------- 边框 → 浅色 ---------- */
+[class*="border-white/[0.08]"],
+[class*="border-white/[0.06]"] { border-color: rgba(148, 163, 184, 0.35) !important; }
+[class*="border-[#8B5CF6]/20"],
+[class*="border-[#A78BFA]/20"],
+[class*="border-[#A78BFA]/30"] { border-color: rgba(139, 92, 246, 0.35) !important; }
+[class*="border-slate-700/40"] { border-color: rgba(148, 163, 184, 0.4) !important; }
+[class*="border-[#1a1f3a]"] { border-color: rgba(148, 163, 184, 0.35) !important; }

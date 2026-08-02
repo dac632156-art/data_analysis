@@ -158,6 +158,7 @@ def _reconstruct_table(t_dict: Dict[str, Any]) -> TableData:
         table_type=str(t_dict.get("table_type", "")),
         columns=list(t_dict.get("columns", []) if isinstance(t_dict.get("columns"), list) else []),
         rows=list(t_dict.get("rows", []) if isinstance(t_dict.get("rows"), list) else []),
+        slot=str(t_dict.get("slot", "")),
     )
 
 

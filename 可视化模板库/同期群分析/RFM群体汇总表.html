@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFM 8 群体汇总 - 完美仙气图标版</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh;
+            background-image: url('./背景.png'); /* 确保和你的背景图在同一目录下 */
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            padding: 40px;
+        }
+
+        /* 核心：高级毛玻璃卡片 */
+        .dashboard-card { 
+            width: 1000px;
+            background: rgba(255, 255, 255, 0.45);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 24px; 
+            box-shadow: 
+                0 20px 40px -10px rgba(0, 0, 0, 0.05),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            padding: 40px; 
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        /* 顶部标题区 */
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1E293B;
+            letter-spacing: 0.5px;
+        }
+        
+        .title span { color: #94A3B8; font-weight: 400; margin-left: 8px;}
+
+        .header-actions { display: flex; gap: 12px; }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            padding: 8px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            color: #475569;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+        .btn:hover { background: rgba(255, 255, 255, 0.9); }
+
+        /* 表格排版 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: center;
+        }
+
+        th {
+            padding: 0 15px 25px 15px;
+            font-weight: 500;
+            color: #1E293B;
+            font-size: 14px;
+            border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+        }
+        
+        th.segment-header { text-align: left; vertical-align: bottom; }
+
+        /* 表头图标容器 */
+        .th-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* 统一图标全局样式：粉色透明轮廓 */
+        .th-content svg {
+            width: 44px;
+            height: 44px;
+            stroke: rgba(244, 114, 182, 0.85); /* 樱花粉轮廓 */
+            stroke-width: 1.5;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        td {
+            padding: 20px 15px;
+            color: #475569;
+            font-size: 14px;
+            font-weight: 600;
+            border-bottom: 1px dashed rgba(0, 0, 0, 0.06);
+        }
+
+        td.segment-col { text-align: left; }
+        tr:last-child td { border-bottom: none; }
+
+        /* 垂直细虚线分割线 */
+        td:not(:first-child):not(:last-child), 
+        th:not(:first-child):not(:last-child) {
+            border-right: 1px dashed rgba(0, 0, 0, 0.04);
+        }
+
+        /* 仙气胶囊徽章 */
+        .badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-card">
+        <div class="card-header">
+            <div class="title">RFM 8 群体 <span>| 汇总数据</span></div>
+            <div class="header-actions">
+                <div class="btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                    2026-07-29
+                </div>
+                <div class="btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    Export
+                </div>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th class="segment-header">分层群体 (Segment)</th>
+                    <th>
+                        <div class="th-content">
+                            <!-- 1. 完美连贯的小兔子脸 (人数) -->
+                            <svg viewBox="0 0 32 32">
+                                <!-- 一笔画出完整的兔子耳朵和圆脸，绝不断线 -->
+                                <path d="M 11 12.5 
+                                         C 9 2, 14 2, 15 11 
+                                         Q 16 10, 17 11 
+                                         C 18 2, 23 2, 21 12.5 
+                                         A 9 7 0 1 1 11 12.5 Z" />
+                                <!-- 眼睛 -->
+                                <circle cx="12.5" cy="16.5" r="1.2" fill="rgba(244, 114, 182, 0.85)" stroke="none"/>
+                                <circle cx="19.5" cy="16.5" r="1.2" fill="rgba(244, 114, 182, 0.85)" stroke="none"/>
+                                <!-- 嘴巴 -->
+                                <path d="M 15 19 Q 16 21 17 19" />
+                                <!-- 腮红 (半透明) -->
+                                <ellipse cx="9.5" cy="18" rx="1.5" ry="1" fill="rgba(244, 114, 182, 0.25)" stroke="none" />
+                                <ellipse cx="22.5" cy="18" rx="1.5" ry="1" fill="rgba(244, 114, 182, 0.25)" stroke="none" />
+                            </svg>
+                            <span>总人数</span>
+                        </div>
+                    </th>
+                    <th>
+                        <div class="th-content">
+                            <!-- 2. 分离的精致饼图 (占比) -->
+                            <svg viewBox="0 0 32 32">
+                                <!-- 底部主体扇区 (270度) -->
+                                <path d="M 14 16 L 14 6 A 10 10 0 1 0 24 16 Z" />
+                                <!-- 右上角分离的扇区 (90度) -->
+                                <path d="M 16.5 13.5 L 16.5 3.5 A 10 10 0 0 1 26.5 13.5 Z" />
+                            </svg>
+                            <span>占比 (%)</span>
+                        </div>
+                    </th>
+                    <th>
+                        <div class="th-content">
+                            <!-- 3. 标准束口钱袋 (净毛利) -->
+                            <svg viewBox="0 0 32 32">
+                                <!-- 钱袋身体 -->
+                                <path d="M 11 10 C 6 12 5 25 16 25 C 27 25 26 12 21 10 Z" />
+                                <!-- 顶部抽口 -->
+                                <path d="M 11 10 L 9 4 Q 16 3 23 4 L 21 10" />
+                                <!-- 绑绳 -->
+                                <path d="M 9 10 L 23 10" />
+                                <!-- 羊角符号 ¥ -->
+                                <path d="M 13 14 L 16 18 L 19 14 M 16 18 L 16 21 M 14 19 L 18 19 M 14 16.5 L 18 16.5" stroke-width="1.2" />
+                            </svg>
+                            <span>人均净毛利</span>
+                        </div>
+                    </th>
+                    <th>
+                        <div class="th-content">
+                            <!-- 4. 循环刷新箭头 (复购率) - 修复版 -->
+                            <svg viewBox="0 0 32 32">
+                                <!-- 顺时针圆环，右上角留缺口 -->
+                                <path d="M 24.5 11.5 A 10 10 0 1 1 16 6" />
+                                <!-- 顶部向右的箭头，完美对齐圆弧终点 -->
+                                <polyline points="12.5 2.5 16 6 12.5 9.5" />
+                            </svg>
+                            <span>复购率</span>
+                        </div>
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <!-- JS 动态注入 -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // JSON 核心数据
+        const rfmData = [
+            { "分层": "重要价值", "人数": 5552, "占比": "34.1%", "人均净毛利": "808.62", "复购率": "100.0%" },
+            { "分层": "重要保持", "人数": 968, "占比": "6.0%", "人均净毛利": "616.61", "复购率": "12.4%" },
+            { "分层": "重要发展", "人数": 1900, "占比": "11.7%", "人均净毛利": "729.68", "复购率": "100.0%" },
+            { "分层": "重要挽留", "人数": 1341, "占比": "8.2%", "人均净毛利": "583.34", "复购率": "4.8%" },
+            { "分层": "一般价值", "人数": 1569, "占比": "9.6%", "人均净毛利": "66.81", "复购率": "100.0%" },
+            { "分层": "一般保持", "人数": 1672, "占比": "10.3%", "人均净毛利": "44.26", "复购率": "3.9%" },
+            { "分层": "一般发展", "人数": 740, "占比": "4.5%", "人均净毛利": "66.57", "复购率": "100.0%" },
+            { "分层": "一般挽留", "人数": 2526, "占比": "15.5%", "人均净毛利": "46.49", "复购率": "1.3%" }
+        ];
+
+        // 8 色高级粉彩胶囊调色板
+        const colorPalette = {
+            "重要价值": { bg: "#C8E1F5", text: "#1E3A8A" }, 
+            "重要保持": { bg: "#E2C9F3", text: "#4C1D95" }, 
+            "重要发展": { bg: "#FCCDDF", text: "#831843" }, 
+            "重要挽留": { bg: "#D7EFE5", text: "#064E3B" }, 
+            "一般价值": { bg: "#FCDDC8", text: "#7C2D12" }, 
+            "一般保持": { bg: "#F9F1C6", text: "#713F12" }, 
+            "一般发展": { bg: "#BAC2F0", text: "#312E81" }, 
+            "一般挽留": { bg: "#E8C9CE", text: "#881337" }  
+        };
+
+        const tbody = document.getElementById('table-body');
+        
+        rfmData.forEach(row => {
+            const segment = row["分层"];
+            const colors = colorPalette[segment];
+            
+            const tr = document.createElement('tr');
+            
+            tr.innerHTML = `
+                <td class="segment-col">
+                    <span class="badge" style="background-color: ${colors.bg}; color: ${colors.text};">
+                        ${segment}
+                    </span>
+                </td>
+                <td>${row["人数"].toLocaleString()}</td>
+                <td>${row["占比"]}</td>
+                <td>¥ ${row["人均净毛利"]}</td>
+                <td>${row["复购率"]}</td>
+            `;
+            
+            tbody.appendChild(tr);
+        });
+    </script>
+</body>
+</html>

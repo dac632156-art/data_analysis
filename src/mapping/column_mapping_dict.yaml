@@ -176,8 +176,11 @@ mappings:
     - 商品类目
     - category
     - product_category
+    - product_category_name
     - 商品分类
     - 产品类目
+    - product_category_preference
+    - product_category_reference
   类目ID:
     - 类目ID
     - category_id

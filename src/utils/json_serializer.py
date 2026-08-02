@@ -90,5 +90,22 @@ def sanitize_json(obj: Any) -> Any:
     if isinstance(obj, (list, tuple)):
         return [sanitize_json(item) for item in obj]
 
-    # 其他类型 — 原样返回（让 FastAPI 的 JSONResponse 尝试处理）
-    return obj
+    # set / frozenset → list（递归清理元素）
+    if isinstance(obj, (set, frozenset)):
+        return [sanitize_json(item) for item in obj]
+
+    # bytes / bytearray → utf-8 解码（失败兜底转 str）
+    if isinstance(obj, (bytes, bytearray)):
+        try:
+            return obj.decode("utf-8", errors="replace")
+        except Exception:
+            try:
+                return str(obj)
+            except Exception:
+                return None
+
+    # 其他未知类型 — 安全降级为字符串，杜绝 FastAPI 序列化 500
+    try:
+        return str(obj)
+    except Exception:
+        return None

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFM 8 大群体占比 - 仙气云朵版</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        body { 
+            background: #F8F9FA; 
+            margin: 0; padding: 40px; 
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh;
+        }
+
+        .dashboard-card { 
+            position: relative; 
+            width: 850px; 
+            height: 650px; 
+            background-image: url('./背景.png');
+            background-size: cover; 
+            background-position: center;
+            border-radius: 24px; 
+            box-shadow: 0 20px 40px -10px rgba(99, 102, 241, 0.05), 0 0 0 1px rgba(255, 255, 255, 0.8); 
+            padding: 30px; 
+            display: flex; 
+            flex-direction: column; 
+        }
+
+        .chart-wrapper {
+            position: relative;
+            width: 100%;
+            flex: 1; 
+        }
+
+        #chart-container { 
+            width: 100%; height: 100%;
+        }
+
+        #status-msg { position: absolute; top: 15px; left: 30px; font-size: 13px; color: #94A3B8; font-weight: 600; z-index: 100;}
+    </style>
+</head>
+<body>
+    <div class="dashboard-card">
+        <div id="status-msg">正在渲染多重云朵纹理...</div>
+        <div class="chart-wrapper">
+            <div id="chart-container"></div>
+        </div>
+    </div>
+
+    <script>
+        const myChart = echarts.init(document.getElementById('chart-container'));
+
+        const colorDictionary = {
+            '重要价值': '#C7E7FB', '重要保持': '#E0C5F0', '重要发展': '#FBC2E8', '重要挽留': '#C4EAD1',
+            '一般价值': '#FED3C2', '一般保持': '#F3C0C7', '一般发展': '#F7F1BA', '一般挽留': '#B6BBF5'
+        };
+
+        function createPureWatercolorPattern(img, hexColor, sliceIndex) {
+            const canvas = document.createElement('canvas');
+            const width = 850;
+            const height = 650;
+            canvas.width = width; 
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+
+            const cx = width / 2;
+            const cy = height / 2;
+
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate((sliceIndex * 137) * Math.PI / 180); 
+            const drawSize = 850;
+            ctx.drawImage(img, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
+            ctx.restore();
+
+            const imageData = ctx.getImageData(0, 0, width, height);
+            const data = imageData.data;
+
+            const hex = hexColor.replace('#', '');
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+
+            for (let i = 0; i < data.length; i += 4) {
+                const brightness = data[i]; 
+                const darkness = (255 - brightness) / 255; 
+
+                let opacity = 0.35 + (darkness * 2.2); 
+                if (opacity > 1.0) opacity = 1.0;
+
+                data[i]   = Math.round(255 * (1 - opacity) + r * opacity);
+                data[i+1] = Math.round(255 * (1 - opacity) + g * opacity);
+                data[i+2] = Math.round(255 * (1 - opacity) + b * opacity);
+                data[i+3] = 255; 
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+            return canvas;
+        }
+
+        async function init() {
+            try {
+                const response = await fetch('./mock6.json');
+                const data = await response.json();
+                
+                let target = null;
+                function deepSearch(obj) {
+                    if (!obj || typeof obj !== 'object') return;
+                    if (obj.slot === 'rfm_pie' && obj.option) { target = obj; return; }
+                    for (let key in obj) { deepSearch(obj[key]); if (target) return; }
+                }
+                deepSearch(data);
+                
+                if (!target) throw new Error("JSON 中未找到 slot: 'rfm_pie'");
+
+                let imgResponse = await fetch('./bg5.png').catch(() => fetch('./bg.png'));
+                const blob = await imgResponse.blob();
+                const img = new Image();
+                img.src = URL.createObjectURL(blob);
+                
+                img.onload = () => {
+                    const option = target.option;
+                    
+                    // ========== 核心修改：工具箱强制右上角定位 ==========
+                    option.toolbox = {
+                        // 强制右对齐，优先级最高，彻底解决居中问题
+                        left: 'right',
+                        top: 12,
+                        right: 20,
+                        orient: 'horizontal', // 横向排列
+                        itemSize: 16,         // 图标尺寸
+                        itemGap: 12,          // 图标间距
+                        feature: {
+                            saveAsImage: { title: '下载图片' },
+                            myExport: {
+                                show: true, 
+                                title: '导出数据',
+                                icon: 'path://M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+                                onclick: function() {
+                                    const blob = new Blob([JSON.stringify(target.option.series[0].data)], {type: 'application/json'});
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url; a.download = 'rfm_data.json'; a.click();
+                                }
+                            }
+                        }
+                    };
+                    
+                    if(option.title) option.title.textStyle.color = '#334155';
+                    if(option.legend) option.legend.textStyle.color = '#64748B';
+
+                    if (option.series && option.series.length > 0) {
+                        const pieSeries = option.series[0];
+                        pieSeries.radius = ['42%', '72%']; 
+                        
+                        if(pieSeries.label) pieSeries.label.color = '#64748B';
+                        if(pieSeries.labelLine) pieSeries.labelLine.lineStyle.color = '#CBD5E1';
+                        
+                        if (pieSeries.data) {
+                            pieSeries.data.forEach((item, index) => {
+                                const hexColor = colorDictionary[item.name] || '#CBD5E1';
+                                const pureWatercolorCanvas = createPureWatercolorPattern(img, hexColor, index);
+                                
+                                item.itemStyle = {
+                                    color: { image: pureWatercolorCanvas, repeat: 'no-repeat' },
+                                    borderColor: 'rgba(255, 255, 255, 0.7)', 
+                                    borderWidth: 2 
+                                };
+                            });
+                        }
+                    }
+
+                    myChart.setOption(option, true); // 第二个参数true表示不合并，完全覆盖配置
+                    document.getElementById('status-msg').style.display = 'none';
+                };
+            } catch (err) {
+                document.getElementById('status-msg').innerText = "❌ 渲染失败: " + err.message;
+                document.getElementById('status-msg').style.color = "#EF4444";
+                console.error(err);
+            }
+        }
+
+        init();
+        window.addEventListener('resize', () => myChart.resize());
+    </script>
+</body>
+</html>

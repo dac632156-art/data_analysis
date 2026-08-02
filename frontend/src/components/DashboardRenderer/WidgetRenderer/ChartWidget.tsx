@@ -5,6 +5,7 @@ import type { WidgetSlot } from '../../../types/dashboard';
 import { useDashboardTheme } from '../ThemeProvider';
 import { buildChartBaseConfig, buildAxisStyle, buildPieStyle, buildRadarStyle, chartTypeToHeight, isGLChartType } from '../ChartConfigBuilder';
 import { useLazyLoad } from '../hooks';
+import { EtherealBubbleChart } from '../../EtherealCharts/EtherealBubbleChart';
 
 interface ChartWidgetProps {
   widget: WidgetSlot;
@@ -235,6 +236,13 @@ export const ChartWidget: React.FC<ChartWidgetProps> = memo(({ widget, onFilter,
 
   const height = chartTypeToHeight(widget.chart_type, widget.size_class);
 
+  // 气泡 / 散点类：统一走可视化模板库气泡图组件（EtherealBubbleChart），其余类型仍走原生 ECharts
+  const bubbleOption = widget.chart_config?.option as Record<string, unknown> | undefined;
+  const isBubbleScatter =
+    !!mergedOption &&
+    (widget.chart_type === 'bubble' || widget.chart_type === 'scatter') &&
+    !!bubbleOption;
+
   if (!shouldRender) {
     // 懒加载占位
     return (
@@ -285,7 +293,14 @@ export const ChartWidget: React.FC<ChartWidgetProps> = memo(({ widget, onFilter,
           ↓ 下钻
         </button>
       )}
-      <div ref={chartRef} className="w-full" style={{ height }} />
+      {isBubbleScatter ? (
+        <EtherealBubbleChart
+          chartNode={bubbleOption as Record<string, unknown>}
+          height={height}
+        />
+      ) : (
+        <div ref={chartRef} className="w-full" style={{ height }} />
+      )}
       {/* 图表文字说明：解释该图含义（空值兜底不渲染） */}
       {widget.description ? (
         <p className={`mt-2 text-xs leading-relaxed ${theme.textSecondary} opacity-80`}>

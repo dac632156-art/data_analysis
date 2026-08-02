@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>环形图测试</title>
+    
+    <!-- 引入 ECharts 库 (核心修复点) -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    
+    <script src="./utils.js"></script>
+    <script src="./表格组件.js"></script>
+</head>
+<body>
+
+    <div id="table-container"></div>
+
+    <script>
+        // 渲染环形图
+        renderChartBySlot('table-container', 'mock7.json', 'rfm_table');
+    </script>
+</body>
+</html>

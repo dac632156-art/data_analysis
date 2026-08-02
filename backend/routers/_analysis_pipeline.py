@@ -46,6 +46,7 @@ def run_df_to_packages(df, intents=None) -> Tuple[List[dict], Dict[str, Any]]:
                         "title": getattr(c, "title", None),
                         "role": getattr(c, "role", None),
                         "option": getattr(c, "option", None),
+                        "raw_data": getattr(c, "raw_data", None),
                     }
                     for c in pkg.charts
                 ]

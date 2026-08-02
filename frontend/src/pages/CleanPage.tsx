@@ -445,7 +445,7 @@ export default function CleanPage() {
           <div translate="no" className="notranslate">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold text-[#f8fafc]">数据预览</h2>
-              <button onClick={refreshAllData} className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors">
+              <button onClick={refreshAllData} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-900 transition-colors">
                 <FiRefreshCw className="w-3 h-3" /> 刷新
               </button>
             </div>

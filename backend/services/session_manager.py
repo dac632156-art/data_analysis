@@ -7,11 +7,13 @@ import os
 import uuid
 import time
 import tempfile
+import logging
 import dataclasses
 import pandas as pd
 from typing import Dict, Optional, List, Any
 from threading import RLock, Thread
 from config import QUOTA_BYTES
+logger = logging.getLogger(__name__)
 
 
 @dataclasses.dataclass
@@ -546,20 +548,27 @@ class SessionManager:
             return []
         result = []
         for ds in session.datasets.values():
-            result.append({
-                "dataset_id": ds.dataset_id,
-                "file_name": ds.file_name,
-                "file_size_bytes": ds.file_size_bytes,
-                "rows": ds.rows,
-                "columns": ds.columns,
-                "column_info": ds.column_info,
-                "preview": ds.preview,
-                "uploaded_at": ds.uploaded_at,
-                "is_active": ds.dataset_id == session.active_dataset_id,
-                "is_merged": ds.is_merged,
-                "sources": ds.sources,
-                "merge_keys": ds.merge_keys,
-            })
+            try:
+                result.append({
+                    "dataset_id": ds.dataset_id,
+                    "file_name": ds.file_name,
+                    "file_size_bytes": ds.file_size_bytes,
+                    "rows": ds.rows,
+                    "columns": ds.columns,
+                    "column_info": ds.column_info,
+                    "preview": ds.preview,
+                    "uploaded_at": ds.uploaded_at,
+                    "is_active": ds.dataset_id == session.active_dataset_id,
+                    "is_merged": ds.is_merged,
+                    "sources": ds.sources,
+                    "merge_keys": ds.merge_keys,
+                })
+            except Exception as e:
+                # 单条坏数据不应拖垮整个列表接口：记录并跳过该条
+                bad_id = getattr(ds, "dataset_id", "<unknown>")
+                logger.error("[get_datasets] 跳过损坏数据集 dataset_id=%s: %s",
+                             bad_id, e)
+                continue
         # 按上传时间倒序（最新在前）
         result.sort(key=lambda x: x.get("uploaded_at", 0), reverse=True)
         return result

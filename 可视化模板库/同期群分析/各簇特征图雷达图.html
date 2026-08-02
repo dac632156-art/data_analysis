@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>各簇特征差异画像 - 仙气水彩版</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        body { background-color: #F8F9FA; margin: 0; padding: 40px; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        /* 【背景更新】：应用背景图片 */
+        .dashboard-card { 
+            position: relative; width: 750px; height: 600px; 
+            background-image: url('./背景.png'); 
+            background-size: cover; 
+            background-position: center; 
+            border-radius: 24px; 
+            box-shadow: 0 20px 40px -10px rgba(99, 102, 241, 0.05), 0 0 0 1px rgba(255, 255, 255, 0.8); 
+            padding: 30px; 
+            overflow: hidden; 
+        }
+        #chart-container { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <div class="dashboard-card">
+        <div id="chart-container"></div>
+    </div>
+
+    <script>
+        const myChart = echarts.init(document.getElementById('chart-container'));
+        const pastelColors = ['#F1C0E8', '#A3C4F3']; 
+
+        function createPureWatercolorPattern(img, hexColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 150; canvas.height = 150;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, Math.random()*200, Math.random()*200, 300, 300, 0, 0, 150, 150);
+            
+            const imageData = ctx.getImageData(0, 0, 150, 150);
+            const data = imageData.data;
+            const hex = hexColor.replace('#', '');
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            
+            for (let i = 0; i < data.length; i += 4) {
+                const darkness = (255 - data[i]) / 255; 
+                let opacity = 0.40 + (darkness * 2.8); 
+                if (opacity > 1.0) opacity = 1.0;
+                
+                data[i]   = Math.round(255 * (1 - opacity) + r * opacity);
+                data[i+1] = Math.round(255 * (1 - opacity) + g * opacity);
+                data[i+2] = Math.round(255 * (1 - opacity) + b * opacity);
+                data[i+3] = 255; 
+            }
+            ctx.putImageData(imageData, 0, 0);
+            return canvas;
+        }
+
+        async function init() {
+            try {
+                const response = await fetch('./mock6.json');
+                const data = await response.json();
+                
+                let target = null;
+                function deepSearch(obj) {
+                    if (!obj || typeof obj !== 'object') return;
+                    if (obj.slot === 'cluster_radar' && obj.option) { target = obj; return; }
+                    for (let key in obj) { deepSearch(obj[key]); if (target) return; }
+                }
+                deepSearch(data);
+                if (!target) throw new Error("未找到 radar 配置");
+
+                let imgResponse = await fetch('./bg5.png').catch(() => fetch('./bg.png'));
+                const blob = await imgResponse.blob();
+                const img = new Image();
+                img.src = URL.createObjectURL(blob);
+                img.onload = () => {
+                    const option = target.option;
+                    
+                    // ========== 核心修改：工具箱强制右上角定位 ==========
+                    option.toolbox = {
+                        show: true,
+                        left: 'right',       // 强制右对齐，优先级最高，彻底覆盖原配置
+                        right: 20, 
+                        top: 10,
+                        orient: 'horizontal',
+                        itemSize: 16,         // 统一图标尺寸
+                        itemGap: 12,          // 统一图标间距
+                        z: 9999,
+                        feature: {
+                            saveAsImage: { title: '下载图片' },
+                            myExport: {
+                                show: true, title: '导出数据',
+                                icon: 'path://M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+                                onclick: function() {
+                                    const blob = new Blob([JSON.stringify(option.series)], {type: 'application/json'});
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url; a.download = 'radar_data.json'; a.click();
+                                }
+                            }
+                        }
+                    };
+
+                    option.radar.axisName = { color: '#475569', fontWeight: 'bold', fontSize: 14, padding: [5, 5] };
+                    option.radar.splitArea = { show: false };
+                    option.radar.splitLine = { lineStyle: { color: ['#F1F5F9', '#E2E8F0'], width: 1.5 } };
+                    option.radar.axisLine = { lineStyle: { color: '#E2E8F0', type: 'dashed' } };
+                    
+                    // 保证蓝色(C1)渲染在最后
+                    option.series.sort((a, b) => a.name.includes('高单价') ? -1 : 1);
+
+                    option.series.forEach((s, idx) => {
+                        const color = pastelColors[idx % pastelColors.length];
+                        const patternCanvas = createPureWatercolorPattern(img, color);
+                        
+                        s.itemStyle = { color: '#ffffff', borderColor: color, borderWidth: 1.5 };
+                        s.lineStyle = { width: 2, color: color };
+                        s.areaStyle = { color: { image: patternCanvas, repeat: 'repeat' }, opacity: 0.85 };
+                        s.symbol = 'circle';
+                        s.symbolSize = 7;
+                    });
+
+                    // 第二个参数 true = 完全覆盖原有配置，不合并，避免残留属性干扰定位
+                    myChart.setOption(option, true);
+                };
+            } catch (err) { console.error(err); }
+        }
+        init();
+        window.addEventListener('resize', () => myChart.resize());
+    </script>
+</body>
+</html>

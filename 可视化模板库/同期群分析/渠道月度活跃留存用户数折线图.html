@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>月度活跃留存 - 仙气果冻折线图</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            margin: 0; padding: 40px; 
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh;
+            background-image: url('./背景.png'); /* 替换为你的水彩背景图 */
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+
+        .dashboard-card { 
+            position: relative; 
+            width: 900px; 
+            height: 600px; 
+            border-radius: 24px; 
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 
+                0 20px 40px -10px rgba(99, 102, 241, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            padding: 40px; 
+        }
+
+        #chart-container { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <div class="dashboard-card">
+        <div id="chart-container"></div>
+    </div>
+
+    <script>
+        const myChart = echarts.init(document.getElementById('chart-container'));
+        
+        // 仙气粉彩色系
+        const customPalette = ['#FCCDDF', '#C8E1F5', '#E2C9F3', '#D7EFE5', '#FCDDC8', '#E8C9CE', '#F9F1C6', '#BAC2F0'];
+
+        async function init() {
+            try {
+                const response = await fetch('./mock6.json');
+                const data = await response.json();
+                
+                let target = null;
+                // 递归查找对应的 slot 配置
+                function deepSearch(obj) {
+                    if (!obj || typeof obj !== 'object') return;
+                    if (obj.slot === 'cohort_a_流量来源' && obj.option) { target = obj; return; }
+                    for (let key in obj) { deepSearch(obj[key]); if (target) return; }
+                }
+                deepSearch(data);
+                if (!target) throw new Error("未找到对应图表配置");
+
+                const rawOption = target.option;
+                myChart.clear(); // 清空原有所有暗黑主题干扰
+
+                // 构建完美复刻设计图的 Option
+                const option = {
+                    title: {
+                        text: target.title || 'Retained Users by Channel',
+                        left: 0,
+                        top: 0,
+                        textStyle: {
+                            color: '#475569',
+                            fontSize: 22,
+                            fontWeight: 'bold',
+                            fontFamily: 'sans-serif'
+                        }
+                    },
+                    // 工具栏固定在右上角
+                    toolbox: {
+                        right: 0, top: 0,
+                        feature: {
+                            saveAsImage: { title: '下载' },
+                            myExport: {
+                                show: true, title: '导出',
+                                icon: 'path://M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+                                onclick: function() {
+                                    const blob = new Blob([JSON.stringify(rawOption.series)], {type: 'application/json'});
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url; a.download = 'retained_users.json'; a.click();
+                                }
+                            }
+                        }
+                    },
+                    // 玻璃质感悬浮提示框
+                    tooltip: {
+                        trigger: 'axis',
+                        backgroundColor: 'rgba(255, 255, 255, 0.85)',
+                        borderColor: '#E2E8F0',
+                        borderWidth: 1,
+                        padding: [12, 16],
+                        textStyle: { color: '#475569', fontWeight: 'bold' },
+                        extraCssText: 'box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); backdrop-filter: blur(8px); border-radius: 12px;'
+                    },
+                    // 底部图例（完美对齐设计图）
+                    legend: {
+                        show: true,
+                        bottom: 0,
+                        icon: 'circle',
+                        itemWidth: 12,
+                        itemHeight: 12,
+                        itemGap: 20,
+                        textStyle: { color: '#64748B', fontWeight: 600, fontSize: 13 }
+                    },
+                    // 留出充足的上下边距
+                    grid: { top: 80, left: 20, right: 20, bottom: 60, containLabel: true },
+                    
+                    xAxis: {
+                        type: 'category',
+                        data: rawOption.xAxis.data,
+                        boundaryGap: false, // 贴边显示
+                        axisLabel: { 
+                            color: '#94A3B8', 
+                            fontWeight: 600, 
+                            fontSize: 13,
+                            margin: 16
+                        },
+                        axisLine: { show: false }, // 隐藏轴线
+                        axisTick: { show: false }  // 隐藏刻度
+                    },
+                    yAxis: {
+                        type: 'value',
+                        axisLabel: { 
+                            color: '#94A3B8', 
+                            fontWeight: 600, 
+                            fontSize: 13 
+                        },
+                        // 仙气版虚线网格
+                        splitLine: { 
+                            lineStyle: { 
+                                type: 'dashed', 
+                                color: 'rgba(0,0,0,0.06)' 
+                            } 
+                        },
+                        axisLine: { show: false },
+                        axisTick: { show: false }
+                    },
+                    // 核心：遍历原数据的 series，重写为果冻质感线条
+                    series: rawOption.series.map((s, index) => {
+                        const color = customPalette[index % customPalette.length];
+                        return {
+                            name: s.name,
+                            type: 'line',
+                            data: s.data,
+                            smooth: true,        // 开启平滑曲线
+                            symbol: 'circle',    // 拐点为圆形
+                            symbolSize: 10,      // 拐点尺寸增大
+                            showSymbol: true,    // 强制显示所有拐点
+                            itemStyle: {
+                                color: '#ffffff',       // 拐点内部掏空为纯白
+                                borderColor: color,     // 彩色边框
+                                borderWidth: 3,         // 边框加粗
+                                shadowColor: color + '80', // 拐点发光
+                                shadowBlur: 10
+                            },
+                            lineStyle: {
+                                color: color,
+                                width: 3,               // 线条加粗
+                                shadowColor: color + '50', // 线条向下发光，形成悬浮感
+                                shadowBlur: 12,
+                                shadowOffsetY: 4
+                            }
+                        };
+                    })
+                };
+
+                myChart.setOption(option, true);
+            } catch (err) { 
+                console.error("渲染失败:", err); 
+            }
+        }
+
+        init();
+        window.addEventListener('resize', () => myChart.resize());
+    </script>
+</body>
+</html>

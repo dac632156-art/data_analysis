@@ -1,25 +1,26 @@
 import { useEffect, useState, useCallback } from 'react';
-import { FileText, Trash2, AlertTriangle, Database, GitMerge } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { FileText, Trash2, AlertTriangle, Database, GitMerge, ArrowRight } from 'lucide-react';
 import MetricCard from '../components/MetricCard';
 import DataTable from '../components/DataTable';
-import FileUploader from '../components/FileUploader';
 import { useData } from '../contexts/DataContext';
 import { formatBytes } from '../utils/format';
 import {
-  uploadFile, listDatasets, removeDataset, selectDataset,
-  releaseUploadSlot,
+  uploadFile, listDatasets, removeDataset, selectDataset, releaseUploadSlot,
 } from '../api/client';
 import type { DatasetInfo } from '../types/api';
 
 const QUOTA_DEFAULT = 30 * 1024 * 1024;
+const ACCEPT = '.csv, .xlsx, .xls, .json, .sqlite, .db';
 
 export default function UploadPage() {
   const { state, dispatch } = useData();
-  const { sessionId, datasets, activeDatasetId, usedBytes, quotaBytes, fileName, rows, columns, loading, error, preview, columnInfo } = state;
+  const navigate = useNavigate();
+  const { sessionId, datasets, activeDatasetId, usedBytes, quotaBytes, fileName, rows, columns, preview, columnInfo } = state;
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // 修复九：挂载拉回列表 + 额度（刷新后内存清空，从后端恢复）
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -28,16 +29,13 @@ export default function UploadPage() {
         if (!alive) return;
         dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
         dispatch({ type: 'SET_QUOTA', usedBytes: res.used_bytes, quotaBytes: res.quota_bytes });
-        const active = res.datasets.find(d => d.is_active);
+        const active = res.datasets.find((d) => d.is_active);
         if (active) dispatch({ type: 'SELECT_DATASET', datasetId: active.dataset_id });
       } catch { /* 会话暂无数据，忽略 */ }
     })();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [sessionId]);
 
-  // 逐文件上传（修复四 + 修复八：累计额度前置判断）
   const doUpload = useCallback(async (file: File) => {
     if (state.usedBytes + file.size > (state.quotaBytes || QUOTA_DEFAULT)) {
       throw new Error('累计上传额度已满，无法继续上传');
@@ -45,7 +43,6 @@ export default function UploadPage() {
     setUploadError(null);
     try {
       const res = await uploadFile(file, sessionId);
-      // 多 sheet Excel 会返回 datasets 列表，单表时为长度为 1 的列表；统一走列表
       const items = (res.datasets && res.datasets.length)
         ? res.datasets
         : [{
@@ -58,7 +55,7 @@ export default function UploadPage() {
             duplicate_rows: res.duplicate_rows,
             preview: res.preview,
             column_info: res.column_info,
-            column_names: (res.column_info?.map(c => c.name)) ?? [],
+            column_names: (res.column_info?.map((c) => c.name)) ?? [],
           }];
       items.forEach((d, i) => {
         const ds: DatasetInfo = {
@@ -92,7 +89,7 @@ export default function UploadPage() {
       const res = await listDatasets(sessionId);
       dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
       dispatch({ type: 'SET_QUOTA', usedBytes: res.used_bytes, quotaBytes: res.quota_bytes });
-      const active = res.datasets.find(d => d.is_active);
+      const active = res.datasets.find((d) => d.is_active);
       if (active) dispatch({ type: 'SELECT_DATASET', datasetId: active.dataset_id });
     } catch { /* ignore */ }
   }, [sessionId]);
@@ -114,152 +111,220 @@ export default function UploadPage() {
       const res = await listDatasets(sessionId);
       dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
       dispatch({ type: 'SET_QUOTA', usedBytes: res.used_bytes, quotaBytes: res.quota_bytes });
-      const active = res.datasets.find(d => d.is_active);
+      const active = res.datasets.find((d) => d.is_active);
       if (active) dispatch({ type: 'SELECT_DATASET', datasetId: active.dataset_id });
     } catch { /* ignore */ }
     finally { setDeleting(false); }
   }, [sessionId, datasets]);
 
-  // 额度进度条
+  // 拖拽上传（原生实现，无额外依赖）
+  const onDrop = async (files: FileList | null) => {
+    setDragging(false);
+    if (!files || files.length === 0) return;
+    for (const file of Array.from(files)) {
+      try {
+        await doUpload(file);
+      } catch (e: any) {
+        setUploadError(e?.message || '上传失败');
+      }
+    }
+  };
+
   const quota = quotaBytes || QUOTA_DEFAULT;
   const pct = quota > 0 ? Math.min(100, (usedBytes / quota) * 100) : 0;
   const full = usedBytes >= quota;
   const warn = pct > 80;
   const barColor = full ? '#fb7185' : warn ? '#fbbf24' : '#8b5cf6';
 
-
   return (
-    <div className="text-[#f8fafc]">
-          {/* 额度进度条 */}
-          <div className="glass-card p-4 mb-4">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm text-[#94a3b8]">上传额度</span>
-              <span className="text-sm font-medium" style={{ color: full ? '#fb7185' : warn ? '#fbbf24' : '#8b5cf6' }}>
-                已用 {formatBytes(usedBytes)} / {formatBytes(quota)}
-              </span>
-            </div>
-            <div className="h-2 rounded-full bg-[#1e293b] overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: barColor, boxShadow: `0 0 12px ${barColor}` }} />
-            </div>
-            {full && <p className="text-xs text-[#fb7185] mt-2">额度已用尽，请删除部分报表或释放插槽。</p>}
+    <div className="page-enter pt-10">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/70 border border-violet-200 text-violet-600 shadow-[0_4px_14px_rgba(139,92,246,0.18)]">
+          <Database className="w-5 h-5" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Data Uploads</h1>
+          <p className="text-sm text-slate-500 mt-0.5">拖拽或浏览上传你的数据文件</p>
+        </div>
+      </div>
+
+      {/* 额度进度条（全透明） */}
+      <div className="p-4 mb-6">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-sm text-slate-500">上传额度</span>
+          <span className="text-sm font-medium" style={{ color: full ? '#e11d48' : warn ? '#d97706' : '#7c3aed' }}>
+            已用 {formatBytes(usedBytes)} / {formatBytes(quota)}
+          </span>
+        </div>
+        <div className="h-2 rounded-full bg-slate-200/70 overflow-hidden">
+          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: barColor }} />
+        </div>
+        {full && <p className="text-xs text-rose-500 mt-2">额度已用尽，请删除部分报表或释放插槽。</p>}
+      </div>
+
+      {/* 环形上传区（透明玻璃圈，对齐空壳） */}
+      <div className="flex flex-col items-center justify-center py-4">
+        <label
+          className={`donut-drop ${dragging ? 'drag-active' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => { e.preventDefault(); onDrop(e.dataTransfer.files); }}
+        >
+          <div className="donut-mask-wrapper">
+            <div className="frosted-donut" />
           </div>
-
-          {/* 上传区 */}
-          <FileUploader onUpload={doUpload} disabled={full} />
-          {uploadError && (
-            <div className="mt-3 glass-card p-3 text-sm text-[#fb7185] flex items-center gap-2">
-              <AlertTriangle size={14} />{uploadError}
+          <div className="outer-border" />
+          <div className="inner-border">
+            <div className="relative z-[3] flex flex-col items-center text-center px-8 pointer-events-none">
+              <svg className="doc-icon" viewBox="0 0 24 24" width="54" height="54">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              <p className="mt-4 text-slate-700 font-medium">拖拽文件到此处 或 点击浏览</p>
+              <p className="mt-1 text-xs text-slate-400">支持 CSV · Excel · JSON · SQLite</p>
             </div>
-          )}
+          </div>
+          <input
+            type="file"
+            accept={ACCEPT}
+            multiple
+            className="hidden"
+            disabled={full}
+            onChange={(e) => onDrop(e.target.files)}
+          />
+        </label>
+        {uploadError && (
+          <div className="mt-4 glass-card px-4 py-2.5 text-sm text-rose-500 flex items-center gap-2">
+            <AlertTriangle size={14} />{uploadError}
+          </div>
+        )}
+      </div>
 
-          {/* 已上传报表列表 */}
-          <div className="glass-card p-5 mt-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold flex items-center gap-2"><Database size={18} className="text-[#8b5cf6]" />已上传报表
-                <span className="text-xs text-[#94a3b8]">（{datasets.length}）</span>
-              </h2>
-              <button
-                onClick={handleDeleteAll}
-                disabled={deleting || datasets.length === 0}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ background: 'linear-gradient(135deg,#8b5cf6,#a78bfa)', color: '#fff', boxShadow: '0 0 16px rgba(139,92,246,0.4)' }}
-              >
-                {deleting ? '删除中…' : '一键删除'}
-              </button>
-            </div>
+      {/* 已上传报表列表 */}
+      <div className="glass-card-soft p-5 mt-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-900">
+            <Database size={18} className="text-violet-500" />已上传报表
+            <span className="text-xs text-slate-400">（{datasets.length}）</span>
+          </h2>
+          <button
+            onClick={handleDeleteAll}
+            disabled={deleting || datasets.length === 0}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {deleting ? '删除中…' : '一键删除'}
+          </button>
+        </div>
 
-            {datasets.length === 0 ? (
-              <p className="text-sm text-[#94a3b8] py-6 text-center">暂无报表，请拖拽文件上传。</p>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {datasets.map((ds) => {
-                  const isActive = ds.dataset_id === activeDatasetId;
-                  return (
-                    <div
-                      key={ds.dataset_id}
-                      onClick={() => handleSelect(ds.dataset_id)}
-                      className={`relative flex items-center justify-between p-4 rounded-xl cursor-pointer transition-all duration-300 border ${isActive ? 'border-[#8b5cf6] bg-[#8b5cf6]/10' : 'border-white/10 bg-white/5 hover:border-[#8b5cf6]/50'}`}
-                      style={isActive ? { boxShadow: '0 0 20px rgba(139,92,246,0.35)' } : undefined}
-                    >
-                      {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-[#8b5cf6]" />}
-                      <div className="flex items-center gap-3 min-w-0">
-                        <FileText size={20} className="text-[#8b5cf6] shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-medium text-[#f8fafc] truncate">{ds.file_name}</p>
-                          {ds.is_merged && (
-                            <span className="mt-1 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-[#8b5cf6]/15 text-[#a78bfa] border border-[#8b5cf6]/30">
-                              <GitMerge size={11} />合并宽表
-                              {ds.merge_keys && ds.merge_keys.length > 0 ? ` · 按 ${ds.merge_keys.join('/')} 关联` : ''}
-                              {ds.sources && ds.sources.length > 0 ? ` · 来源${ds.sources.length}表` : ''}
-                            </span>
-                          )}
-                          <p className="text-xs text-[#94a3b8]">{formatBytes(ds.file_size_bytes)} · {ds.rows} 行 × {ds.columns.length} 列</p>
-                        </div>
+        {datasets.length === 0 ? (
+          <p className="text-sm text-slate-400 py-6 text-center">暂无报表，请拖拽文件上传。</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {datasets.map((ds) => {
+              const isActive = ds.dataset_id === activeDatasetId;
+              return (
+                <div
+                  key={ds.dataset_id}
+                  onClick={() => handleSelect(ds.dataset_id)}
+                  className={`relative flex items-center justify-between p-4 rounded-xl cursor-pointer transition-all border ${
+                    isActive ? 'border-violet-300 bg-violet-50/70' : 'border-slate-200 bg-white/50 hover:border-violet-300'
+                  }`}
+                >
+                  {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl bg-violet-500" />}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <FileText size={20} className="text-violet-500 shrink-0" />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-slate-800 truncate">{ds.file_name}</p>
+                        {isActive ? (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200 font-medium">Active</span>
+                        ) : (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">点击选用</span>
+                        )}
                       </div>
-                      <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleRemove(ds.dataset_id)}
-                          className="p-1.5 rounded-lg text-[#94a3b8] hover:text-[#fb7185] hover:bg-[#fb7185]/10 transition-colors"
-                          title="删除该报表"
-                        ><Trash2 size={16} /></button>
-                      </div>
+                      {ds.is_merged && (
+                        <span className="mt-1 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200">
+                          <GitMerge size={11} />合并宽表
+                          {ds.merge_keys && ds.merge_keys.length > 0 ? ` · 按 ${ds.merge_keys.join('/')} 关联` : ''}
+                          {ds.sources && ds.sources.length > 0 ? ` · 来源${ds.sources.length}表` : ''}
+                        </span>
+                      )}
+                      <p className="text-xs text-slate-500 mt-0.5">{formatBytes(ds.file_size_bytes)} · {ds.rows} 行 × {ds.columns.length} 列</p>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* 当前数据集概览与预览（active 数据集）*/}
-          {fileName ? (
-            <div className="mt-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <MetricCard label="当前报表" value={fileName} hint="文件名" />
-                <MetricCard label="总行数" value={rows.toString()} hint="数据规模" />
-                <MetricCard label="总列数" value={columns.toString()} hint="字段数量" />
-              </div>
-              {columnInfo && columnInfo.length > 0 && (
-                <div className="glass-card p-5 mb-6">
-                  <h3 className="text-base font-medium mb-4">字段信息</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-[#94a3b8] border-b border-white/10">
-                          <th className="py-2 pr-4">字段名</th><th className="py-2 pr-4">类型</th>
-                          <th className="py-2 pr-4">缺失值</th><th className="py-2 pr-4">唯一值</th><th className="py-2">示例</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {columnInfo.map((c, i) => (
-                          <tr key={i} className="border-b border-white/5">
-                            <td className="py-2 pr-4 text-[#f8fafc]">{c.name}</td>
-                            <td className="py-2 pr-4 text-[#94a3b8]">{c.dtype}</td>
-                            <td className="py-2 pr-4 text-[#94a3b8]">{c.missing}（{c.missing_rate}%）</td>
-                            <td className="py-2 pr-4 text-[#94a3b8]">{c.unique}</td>
-                            <td className="py-2 text-[#94a3b8] truncate max-w-xs">{c.sample}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => handleRemove(ds.dataset_id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                      title="删除该报表"
+                    ><Trash2 size={16} /></button>
                   </div>
                 </div>
-              )}
-              <div className="glass-card p-5">
-                <h3 className="text-base font-medium mb-4">数据预览（前 100 行）</h3>
-                <DataTable data={preview} maxRows={100} />
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 当前数据集概览与预览 */}
+      {fileName ? (
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-slate-900">数据概览</h2>
+            <button
+              onClick={() => navigate('/analysis')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 transition-colors"
+            >
+              进入分析 <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <MetricCard label="当前报表" value={fileName} hint="文件名" className="glass-card-soft" />
+            <MetricCard label="总行数" value={rows.toString()} hint="数据规模" className="glass-card-soft" />
+            <MetricCard label="总列数" value={columns.toString()} hint="字段数量" className="glass-card-soft" />
+          </div>
+          {columnInfo && columnInfo.length > 0 && (
+            <div className="glass-card-soft p-5 mb-6">
+              <h3 className="text-base font-medium mb-4 text-slate-800">字段信息</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-slate-500 border-b border-slate-200">
+                      <th className="py-2 pr-4">字段名</th><th className="py-2 pr-4">类型</th>
+                      <th className="py-2 pr-4">缺失值</th><th className="py-2 pr-4">唯一值</th><th className="py-2">示例</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {columnInfo.map((c, i) => (
+                      <tr key={i} className="border-b border-slate-100">
+                        <td className="py-2 pr-4 text-slate-800">{c.name}</td>
+                        <td className="py-2 pr-4 text-slate-500">{c.dtype}</td>
+                        <td className="py-2 pr-4 text-slate-500">{c.missing}（{c.missing_rate}%）</td>
+                        <td className="py-2 pr-4 text-slate-500">{c.unique}</td>
+                        <td className="py-2 text-slate-500 truncate max-w-xs">{c.sample}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-          ) : (
-            <p className="text-sm text-[#94a3b8] mt-6 text-center py-6">请选择一张报表以查看预览。</p>
           )}
-
-          {/* 底部操作栏 */}
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={handleRelease}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-[#fb7185]/15 text-[#fb7185] hover:bg-[#fb7185]/25 transition-colors"
-            >结束会话 / 释放插槽</button>
+          <div className="glass-card-soft p-5">
+            <h3 className="text-base font-medium mb-4 text-slate-800">数据预览（前 100 行）</h3>
+            <DataTable data={preview} maxRows={100} />
           </div>
+        </div>
+      ) : (
+        <p className="text-sm text-slate-400 mt-6 text-center py-6">请选择一张报表以查看预览。</p>
+      )}
+
+      {/* 底部操作栏 */}
+      <div className="mt-6 flex justify-end">
+        <button
+          onClick={handleRelease}
+          className="px-4 py-2 rounded-lg text-sm font-medium bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 transition-colors"
+        >结束会话 / 释放插槽</button>
+      </div>
     </div>
   );
 }

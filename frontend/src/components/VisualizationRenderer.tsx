@@ -4,6 +4,8 @@
 import React from 'react';
 import { marked } from 'marked';
 import EChartView, { EChartsOption } from './EChartView';
+import { EtherealChart } from './EtherealCharts/EtherealChart';
+import EtherealTable from './EtherealCharts/EtherealTable';
 import { theme } from '../theme';
 import type { AnalysisPackage, PackageKPIItem, PackageTableData, PackageChartItem } from '../types/api';
 
@@ -14,6 +16,29 @@ const C = theme.chart;
 // 用 marked 渲染 Markdown（## 标题、- 列表、**加粗**），避免原始 Markdown 文本裸显。
 function renderMarkdown(text: string): string {
   return marked.parse(text || '') as string;
+}
+
+/**
+ * 把可能是对象/数组的「文本」归一为字符串，杜绝 [object Object]。
+ * 后端 insights/conclusions 偶尔返回 BusinessFinding 对象（含 .text/.content/.summary），
+ * 而非纯字符串；这里优先提取常见可读字段，否则 JSON 序列化。
+ */
+function normalizeText(input: unknown): string {
+  if (input == null) return '';
+  if (typeof input === 'string') return input;
+  if (typeof input === 'number' || typeof input === 'boolean') return String(input);
+  if (Array.isArray(input)) return input.map((v) => normalizeText(v)).join(' ');
+  if (typeof input === 'object') {
+    const obj = input as Record<string, unknown>;
+    const cand = obj.text ?? obj.content ?? obj.summary ?? obj.value ?? obj.message ?? obj.detail;
+    if (cand != null) return normalizeText(cand);
+    try {
+      return JSON.stringify(obj);
+    } catch {
+      return String(input);
+    }
+  }
+  return String(input);
 }
 
 interface Props {
@@ -35,7 +60,7 @@ function KPIBlock({ kpis }: { kpis: PackageKPIItem[] }) {
         const arrow = kpi.change ? (kpi.change.startsWith('+') ? '↑' : kpi.change.startsWith('-') ? '↓' : '') : null;
         return (
           <div key={i} className="glass-card" style={{ flex: '1 1 140px', padding: '12px 16px', textAlign: 'center', minWidth: 100 }}>
-            <p style={{ fontSize: 10, color: P.textSecondary, marginBottom: 4 }}>{kpi.label}</p>
+            <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 4 }}>{kpi.label}</p>
             <p style={{ fontSize: 22, fontWeight: 700, color: valueColor, fontFamily: 'monospace', margin: 0 }}>
               {isChange ? (kpi.value + '%') : kpi.value}
               {arrow && <span style={{ fontSize: 14, color: arrow === '↑' ? P.success : P.danger }}> {arrow}</span>}
@@ -49,136 +74,68 @@ function KPIBlock({ kpis }: { kpis: PackageKPIItem[] }) {
 
 function TableBlock({ table }: { table: PackageTableData }) {
   if (!table || !table.rows || table.rows.length === 0) return null;
-  const isRanking = table.table_type === 'ranking';
+
+  // 全站表格统一走 EtherealTable（可视化模板库仙气风格：背景.png / 第1列胶囊 / 浅色毛玻璃）。
+  // EtherealTable 已内置兼容三种 rows 形态：
+  //   1) 纯值 dict 行 {列名: 值}
+  //   2) 含 {value} 包装的 dict 行 {列名: {value, direction, color, ...}}
+  //   3) 二维 cell 数组 [{value, color, direction, highlight}, ...]（后端 RenderedCell[][]，profile_overview 走这种）
+  // 当 rows 为二维数组时，必须用 columns prop 显式告知列名（EtherealTable 无法从二维数组反推）。
   return (
-    <div style={{ marginBottom: 12, overflow: 'auto', maxHeight: 320 }}>
-      <h4 style={{ fontSize: 12, color: P.primary, marginBottom: 6 }}>{table.title}</h4>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-        <thead>
-          <tr>
-            {isRanking && <th style={thStyle}>#</th>}
-            {table.columns.map((col, i) => (
-              <th key={i} style={thStyle}>{col}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {table.rows.map((row, ri) => (
-            <tr key={ri} style={ri % 2 === 0 ? { background: 'rgba(255,255,255,0.02)' } : undefined}>
-              {isRanking && <td style={tdStyle}>{ri + 1}</td>}
-              {Array.isArray(row) ? row.map((cell, ci) => (
-                <td key={ci} style={{ ...tdStyle, fontWeight: isRanking && ri < 3 ? 700 : 400 }}>
-                  {cell !== null && cell !== undefined ? String(cell) : '-'}
-                </td>
-              )) : (
-                <td style={tdStyle}>-</td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div style={{ marginBottom: 12 }}>
+      <EtherealTable
+        chartNode={{ title: table.title, columns: table.columns, rows: table.rows as unknown[] }}
+        columns={table.columns}
+      />
     </div>
   );
 }
 
-function _heatmapRowCount(option: any): number {
-  const yAxis = option?.yAxis;
-  if (!yAxis) return 0;
-  const ys = Array.isArray(yAxis) ? yAxis : [yAxis];
-  for (const y of ys) {
-    if (y && Array.isArray(y.data) && y.data.length > 0) return y.data.length;
-  }
-  return 0;
-}
-
-// 同期群下三角热力图按 cohort 行数展开高度，避免 360px 被纵向挤扁、y 轴标签重叠。
-function getChartHeight(chart: PackageChartItem): number {
-  const type = chart.chart_type;
-  const opt = chart.option as any;
-  if (type === 'cohort_heatmap' || type === 'heatmap') {
-    const rows = _heatmapRowCount(opt);
-    if (rows > 0) return Math.max(360, 80 + rows * 38);
-    return 420;
-  }
-  if (type === 'dual_axis' || type === 'cohort_trend') return 420;
-  return 360;
-}
-
+// 外部零干预：不计算、不传递 height，所有图表组件使用自身内部写好的默认高度/形状。
 function ChartBlock({ chart }: { chart: PackageChartItem }) {
   if (!chart || !chart.option) return null;
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 12, color: P.textPrimary }}>{chart.title}</span>
+        <span style={{ fontSize: 12, color: 'var(--text-primary)' }}>{chart.title}</span>
       </div>
-      <EChartView option={chart.option as EChartsOption} height={getChartHeight(chart)} />
+      <EtherealChart
+        slot={chart.slot}
+        chartType={chart.chart_type}
+        chartNode={chart.option}
+        data={chart.raw_data}
+        title={chart.title}
+      />
     </div>
   );
 }
 
-function InsightBlock({ insights }: { insights: string[] }) {
-  if (!insights || insights.length === 0) return null;
+function InsightBlock({ insights }: { insights?: unknown[] | unknown }) {
+  const raw = Array.isArray(insights) ? insights : (insights != null ? [insights] : []);
+  const list = raw.map((v) => normalizeText(v)).filter((s) => s.trim().length > 0);
+  if (list.length === 0) return null;
   return (
     <div style={{ marginTop: 8, padding: '10px 14px', background: 'rgba(139,92,246,0.059)', borderRadius: 8, border: '1px solid rgba(139,92,246,0.12)' }}>
-      {insights.map((ins, i) => (
-        <div key={i} className="md-body" style={{ fontSize: 12, color: P.textSecondary, margin: '4px 0', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: renderMarkdown(ins) }} />
+      {list.map((ins, i) => (
+        <div key={i} className="md-body" style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: renderMarkdown(ins) }} />
       ))}
     </div>
   );
 }
 
-function ConclusionBlock({ conclusions }: { conclusions: string[] }) {
-  if (!conclusions || conclusions.length === 0) return null;
+function ConclusionBlock({ conclusions }: { conclusions?: unknown[] | unknown }) {
+  const raw = Array.isArray(conclusions) ? conclusions : (conclusions != null ? [conclusions] : []);
+  const list = raw.map((v) => normalizeText(v)).filter((s) => s.trim().length > 0);
+  if (list.length === 0) return null;
   return (
     <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(139,92,246,0.059)', borderRadius: 8, border: '1px solid rgba(139,92,246,0.15)' }}>
       <p style={{ fontSize: 11, color: '#8B5CF6', fontWeight: 600, marginBottom: 6 }}>核心结论</p>
-      {conclusions.map((c, i) => (
-        <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 12, color: P.textPrimary, margin: '6px 0', lineHeight: 1.6 }}>
+      {list.map((c, i) => (
+        <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 12, color: 'var(--text-primary)', margin: '6px 0', lineHeight: 1.6 }}>
           <span style={{ color: '#8B5CF6', fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
           <div className="md-body" style={{ flex: 1, minWidth: 0 }} dangerouslySetInnerHTML={{ __html: renderMarkdown(c) }} />
         </div>
       ))}
-    </div>
-  );
-}
-
-function UnsupportedBlock({ pkg }: { pkg: AnalysisPackage }) {
-  const reasons = (pkg.insights || []).filter(s => s);
-  const reasonText = reasons.length > 0 ? reasons[0] : '当前数据不支持该分析';
-  const fallbackFrom = pkg.fallback_from || '无';
-  // 优先使用后端按分析类型动态生成的建议；缺失时给一个通用的兜底提示
-  const suggestion = (pkg.suggestion && pkg.suggestion.trim())
-    ? pkg.suggestion
-    : '请检查数据是否包含该分析所需的字段（如趋势分析需要日期+数值列，结构分析需要分类列），或更换分析表述后重试。';
-
-  return (
-    <div style={{
-      margin: '12px 0', padding: 16,
-      background: `linear-gradient(135deg, ${hexA(P.warning, 0.06)} 0%, ${hexA(P.danger, 0.03)} 100%)`,
-      border: `1px solid ${hexA(P.warning, 0.25)}`, borderRadius: 10,
-      display: 'flex', alignItems: 'flex-start', gap: 12,
-    }}>
-      <div style={{
-        width: 28, height: 28, borderRadius: '50%',
-        background: hexA(P.warning, 0.15), display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0,
-      }}>
-        <span style={{ fontSize: 14 }}>⚠️</span>
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: 13, color: P.warning, fontWeight: 600, margin: 0 }}>
-          无法执行分析
-        </p>
-        <p style={{ fontSize: 11, color: P.textPrimary, margin: '4px 0 0' }}>
-          问题：{pkg.business_question}
-        </p>
-        <p style={{ fontSize: 10, color: P.textSecondary, margin: '4px 0 0' }}>
-          原因：{reasonText} | 降级来源：{fallbackFrom}
-        </p>
-        <p style={{ fontSize: 10, color: P.textDisabled, margin: '6px 0 0', lineHeight: 1.5 }}>
-          💡 建议：{suggestion}
-        </p>
-      </div>
     </div>
   );
 }
@@ -188,10 +145,10 @@ function UnsupportedBlock({ pkg }: { pkg: AnalysisPackage }) {
 export default function VisualizationRenderer({ packages, selectedPackageIndex = 0 }: Props) {
   if (!packages || packages.length === 0) {
     return (
-      <div style={{ padding: 48, textAlign: 'center', color: P.textDisabled }}>
+      <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
         <span style={{ fontSize: 32, display: 'block', marginBottom: 8 }}>📊</span>
         <p style={{ fontSize: 14, margin: 0 }}>暂无分析结果</p>
-        <p style={{ fontSize: 11, color: P.textDisabled, margin: '4px 0 0' }}>请先在数据洞察中生成分析计划并执行</p>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: '4px 0 0' }}>请先在数据洞察中生成分析计划并执行</p>
       </div>
     );
   }
@@ -199,20 +156,14 @@ export default function VisualizationRenderer({ packages, selectedPackageIndex =
   const pkg = packages[Math.min(selectedPackageIndex, packages.length - 1)] || packages[0];
   if (!pkg) return null;
 
-  if (!pkg.can_run) {
-    return (
-      <div style={{ animation: 'fadeIn 0.3s ease' }}>
-        <UnsupportedBlock pkg={pkg} />
-      </div>
-    );
-  }
+  if (!pkg.can_run) return null;
 
   return (
     <div style={{ padding: '8px 0', animation: 'fadeIn 0.35s ease' }}>
       <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }`}</style>
       <div style={{ marginBottom: 12 }}>
-        <span style={{ fontSize: 11, color: P.textDisabled }}>分析问题：</span>
-        <span style={{ fontSize: 13, color: P.textPrimary, fontWeight: 600 }}>{pkg.business_question}</span>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>分析问题：</span>
+        <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>{pkg.business_question}</span>
         <span style={{ marginLeft: 8, fontSize: 10, color: P.primary, background: hexA(P.primary, 0.1), padding: '1px 8px', borderRadius: 4 }}>
           {pkg.analysis_type}
         </span>
@@ -244,11 +195,11 @@ export default function VisualizationRenderer({ packages, selectedPackageIndex =
 
 /* ===== 内联样式 ===== */
 const thStyle: React.CSSProperties = {
-  padding: '6px 10px', textAlign: 'left', color: P.textSecondary, fontSize: 10,
+  padding: '6px 10px', textAlign: 'left', color: 'var(--text-secondary)', fontSize: 10,
   borderBottom: `1px solid ${C.grid}`, fontWeight: 500,
 };
 const tdStyle: React.CSSProperties = {
-  padding: '5px 10px', borderBottom: `1px solid ${P.border}`, color: P.textPrimary,
+  padding: '5px 10px', borderBottom: `1px solid ${P.border}`, color: 'var(--text-primary)',
 };
 /** 将 #RRGGBB 转为带 alpha 的 rgba()（用于背景/边框淡色） */
 function hexA(hex: string, alpha: number): string {

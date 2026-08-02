@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>看板测试</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    
+    <script src="./utils.js"></script>
+    <script src="./小卡片组件.js"></script>
+    <script src="./柱状图.js"></script>
+    <script src="./下三角热力图组件.js"></script>
+    <script src="./折线图组件.js"></script>
+    <script src="./环形图组件.js"></script>
+    <script src="./双轴图组件.js"></script>
+    <script src="./表格组件.js"></script>
+    <script src="./雷达图组件.js"></script>
+    
+</head>
+<body>
+    <div id="c1"></div>
+    <div id="c2"></div>
+
+    <script>   //如想要背景可以传入第四个参数{ bgUrl: './背景.png' }
+        renderChartBySlot('c2', 'mock6.json', 'card_arpu');
+        renderChartBySlot('c1', 'mock6.json', 'clv_a_流量来源');
+    </script>
+</body>
+</html>

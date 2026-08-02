@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "抖音两日冲刺_DataMind.md",
-                "mode": "source",
+                "file": "知识库/前端/前端怎么调后端API.md",
+                "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "抖音两日冲刺_DataMind"
+              "title": "前端怎么调后端API"
             }
           }
         ],
@@ -198,20 +198,26 @@
       "bases:新建数据库": false
     }
   },
-  "active": "955fb15eb1d3fe56",
+  "active": "dd3973b8f1311f74",
   "lastOpenFiles": [
+    "_churn_verify_out.txt",
+    "_churn_verify.py",
+    "src/mapping/mapping.db-journal",
+    "_test_churn_out.txt",
+    "_test_churn_e2e.py",
+    "frontend/vite.config.ts.timestamp-1785435199023-c229ed648d7358.mjs",
+    "_verify_rfm_region.py",
+    "_verify_ranking_yaxis.py",
+    "_verify_cohort_filter.py",
+    "__pycache__/_churn_verify.cpython-311.pyc",
+    "src/analysis_engine/models/__pycache__/churn_rule.cpython-311.pyc",
+    "分析模型/规则型用户流失预警模型拆解.md",
+    "分析模型/用户画像模型拆解.md",
+    "src/mapping/映射词典.md",
+    "抖音两日冲刺_DataMind.md",
+    "分析模型/K-means聚类引擎拆解.md",
     "分析模型/RFM用户分层模型拆解.md",
     "知识库/后端/同期群模型核心与3进阶.md",
-    "_demo_cohort.py",
-    "src/mapping/mapping.db-journal",
-    "src/mapping/mapping.db",
-    "frontend/vite.config.ts.timestamp-1785062569201-0f16af8012fcb8.mjs",
-    "_verify.py",
-    "src/mapping/column_mapping_dict.yaml.bak",
-    "_fix_dict.py",
-    "src/mapping/mapping.db.bak",
-    "_repro.py",
-    "数据测试集/测试5.csv",
     "抖音两日冲刺_剪映步骤_DataMind.md",
     "抖音速发包_DataMind.md",
     "CodeBuddy协作计划清单.md",
@@ -229,13 +235,7 @@
     "知识库/前端/React是什么.md",
     "项目总结！！！.md",
     "知识库/列名映射子系统.md",
-    "src/mapping/映射词典.md",
     "知识库/前后端src三层分工.md",
-    "知识库/数据洞察分析后端全链路.md",
-    "知识库/数据清洗AI规则_prompt约束.md",
-    "知识库/数据清洗兜底机制.md",
-    "知识库/项目架构全景图.md",
-    "知识库/项目架构目录树.md",
     "未命名.canvas",
     "after_click_chart1.png",
     "bar_highlight_full.png",

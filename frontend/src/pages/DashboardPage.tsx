@@ -198,6 +198,7 @@ export default function DashboardPage() {
                 y: c.y || '',
                 analysis_type: pkg.analysis_type || '',
                 chart_type: c.chart_type || '',
+                raw_data: (c.data || c.raw_data || []) as Record<string, unknown>[],
               } as EChartItem);
             }
           }
@@ -528,7 +529,7 @@ export default function DashboardPage() {
   if (!hasData) {
     return (
       <div className="page-enter">
-        <h1 className="text-2xl font-bold text-white mb-4" style={{ textShadow: '0 0 15px rgba(139,92,246,0.3)' }}>仪表盘</h1>
+        <h1 className="text-2xl font-bold text-slate-900 mb-4">仪表盘</h1>
         <div className="glass-card p-8 text-center text-slate-500">请先在「数据上传」页面上传数据</div>
       </div>
     );
@@ -537,10 +538,10 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col h-full">
       {/* 控制栏 */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-4 py-3" style={{ background: 'rgba(10,10,30,0.8)', borderBottom: '1px solid rgba(139,92,246,0.1)' }}>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-4 py-3" style={{ background: 'rgba(255,255,255,0.35)', borderBottom: '1px solid rgba(255,255,255,0.50)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
         <div className="flex items-center gap-3 flex-wrap">
           {/* 模板切换 */}
-          <div className="flex rounded-lg overflow-hidden border border-[#1a1f3a] flex-wrap">
+          <div className="flex rounded-lg overflow-hidden border border-white/40 bg-white/20 flex-wrap">
             {TEMPLATES.map((tpl) => (
               <button
                 key={tpl.id}
@@ -550,8 +551,8 @@ export default function DashboardPage() {
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${
                   template === tpl.id
-                    ? 'bg-[#8B5CF6]/20 text-[#A78BFA]'
-                    : 'text-slate-500 hover:text-slate-300'
+                    ? 'bg-white/50 text-[#0f172a] font-semibold'
+                    : 'text-slate-600 hover:text-slate-800 hover:bg-white/30'
                 }`}
                 title={tpl.desc}
               >
@@ -565,13 +566,13 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {/* 恢复默认 */}
           <button onClick={() => template === 'schema' ? loadSchema() : loadEChartsDashboard()}
-            className="px-2 py-1.5 text-xs rounded text-slate-500 hover:text-slate-300 transition-colors">
+            className="px-2 py-1.5 text-xs rounded text-slate-600 hover:text-slate-800 transition-colors">
             恢复默认
           </button>
 
           {/* 加载已保存图表 */}
           <button onClick={handleLoadSaved} disabled={loading}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded bg-[#A78BFA]/10 border border-[#A78BFA]/20 text-[#A78BFA] hover:bg-[#A78BFA]/20 transition-colors">
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded bg-white/40 border border-white/50 text-[#0f172a] hover:bg-white/60 transition-colors">
             <FiSave className="w-3 h-3" />
             已制作图表
           </button>
@@ -579,25 +580,25 @@ export default function DashboardPage() {
           {/* 标题切换 */}
           <button onClick={() => setHideChartTitle(!hideChartTitle)}
             className={`px-2.5 py-1.5 text-xs rounded-lg transition-colors ${
-              hideChartTitle ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'text-slate-500 hover:text-slate-300'
+              hideChartTitle ? 'bg-emerald-100 text-emerald-700 border border-emerald-300' : 'text-slate-600 hover:text-slate-800'
             }`}>
             {hideChartTitle ? '📊 标题已隐藏' : '📊 显示标题'}
           </button>
 
           {/* PNG截图 + HTML导出 */}
           <button onClick={handleDownloadScreen} disabled={downloading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-l-lg bg-[#A78BFA]/20 border border-[#A78BFA]/20 text-[#A78BFA] hover:bg-[#A78BFA]/30 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-l-lg bg-white/40 border border-white/50 text-[#0f172a] hover:bg-white/60 transition-colors"
             title="导出为 PNG 图片">
             <FiDownload className="w-3.5 h-3.5" />
             {downloading ? '截图中...' : 'PNG截图'}
           </button>
           <button onClick={handleExportHTML}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-r-lg bg-[#A78BFA]/20 border border-l-0 border-[#A78BFA]/20 text-[#A78BFA] hover:bg-[#A78BFA]/30 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-r-lg bg-white/40 border border-l-0 border-white/50 text-[#0f172a] hover:bg-white/60 transition-colors"
             title="导出为可交互 HTML 文件">
             📄 HTML
           </button>
           <button onClick={handleDownloadPackages}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[#A78BFA]/20 border border-[#A78BFA]/20 text-[#A78BFA] hover:bg-[#A78BFA]/30 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-white/40 border border-white/50 text-[#0f172a] hover:bg-white/60 transition-colors"
             title="下载分析包 JSON 文件">
             📦 分析包JSON
           </button>
@@ -627,49 +628,49 @@ export default function DashboardPage() {
         ) : template === 'report' ? (
           /* 分析报告生成面板 */
           <div className="flex-1 flex items-center justify-center p-8 bg-transparent">
-            <div className="max-w-2xl w-full text-center space-y-6 p-12 rounded-2xl bg-[#0F172A]/[0.85] backdrop-blur-sm border border-[#8B5CF6]/20 shadow-[0_0_32px_rgba(139,92,246,0.15)]">
+            <div className="max-w-2xl w-full text-center space-y-6 p-12 rounded-2xl bg-white/50 border border-white/60 shadow-[0_8px_32px_rgba(99,102,241,0.10)]" style={{ backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
               <div className="text-6xl">📊</div>
-              <h2 className="text-2xl font-bold text-slate-100">生成数据分析报告</h2>
-              <p className="text-slate-300 leading-relaxed">
-                AI 将基于<strong className="text-[#22D3EE]">精确统计数据</strong>，自动执行五阶段分析流水线，生成专业数据分析报告：
+              <h2 className="text-2xl font-bold text-slate-800">生成数据分析报告</h2>
+              <p className="text-slate-600 leading-relaxed">
+                AI 将基于<strong className="text-indigo-600">精确统计数据</strong>，自动执行五阶段分析流水线，生成专业数据分析报告：
               </p>
-              <div className="text-left text-sm text-slate-300 space-y-2 bg-[#1E293B]/50 border border-slate-700/40 rounded-lg p-4">
-                <div>🔍 <strong className="text-slate-100">阶段1-2</strong>：字段识别 → 图表规划（Python pandas 精确计算）</div>
-                <div>📊 <strong className="text-slate-100">阶段3</strong>：统计分析 → 趋势/同比/TOP/异常/结构（代码计算）</div>
-                <div>💡 <strong className="text-slate-100">阶段4</strong>：洞察生成 → 5类洞察（趋势/结构/集中度/异常/风险）</div>
-                <div>📄 <strong className="text-slate-100">阶段5</strong>：报告生成 → 结构化报告（概览→指标→趋势→结构→TOP→异常→结论→建议）</div>
+              <div className="text-left text-sm text-slate-700 space-y-2 bg-white/40 border border-white/60 rounded-lg p-4">
+                <div>🔍 <strong className="text-slate-800">阶段1-2</strong>：字段识别 → 图表规划（Python pandas 精确计算）</div>
+                <div>📊 <strong className="text-slate-800">阶段3</strong>：统计分析 → 趋势/同比/TOP/异常/结构（代码计算）</div>
+                <div>💡 <strong className="text-slate-800">阶段4</strong>：洞察生成 → 5类洞察（趋势/结构/集中度/异常/风险）</div>
+                <div>📄 <strong className="text-slate-800">阶段5</strong>：报告生成 → 结构化报告（概览→指标→趋势→结构→TOP→异常→结论→建议）</div>
               </div>
               {!ds.apiKey && (
-                <div className="text-sm text-[#FBBF24] bg-[#FBBF24]/[0.08] border border-[#FBBF24]/30 p-3 rounded-lg">
+                <div className="text-sm text-amber-700 bg-amber-50/80 border border-amber-300 p-3 rounded-lg">
                   ⚠️ 请先在左上角配置 AI API Key，报告需要 AI 来编写分析洞察
                 </div>
               )}
               <button
                 onClick={handleExportReport}
                 disabled={reportGenerating || !ds.apiKey}
-                className="px-8 py-3 text-base font-semibold rounded-lg bg-gradient-to-r from-[#0d1b2a] to-[#1b4965] text-white hover:shadow-[0_0_20px_rgba(56,189,248,0.35)] disabled:opacity-50 transition-all"
+                className="px-8 py-3 text-base font-semibold rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:from-indigo-600 hover:to-purple-600 hover:shadow-[0_6px_20px_rgba(99,102,241,0.35)] disabled:opacity-50 transition-all"
               >
                 {reportGenerating ? `⏳ ${reportText}` : '🚀 生成分析报告并下载'}
               </button>
               {reportGenerating && (
-                <p className="text-sm text-[#22D3EE] animate-pulse">{reportText}</p>
+                <p className="text-sm text-indigo-600 animate-pulse">{reportText}</p>
               )}
               {reportError && (
-                <p className="text-sm text-[#FB7185] bg-[#FB7185]/[0.08] border border-[#FB7185]/30 p-3 rounded-lg">{reportError}</p>
+                <p className="text-sm text-rose-700 bg-rose-50/80 border border-rose-300 p-3 rounded-lg">{reportError}</p>
               )}
               {reportDegraded && (
-                <div className="flex flex-col gap-3 p-4 rounded-lg border border-[#FBBF24]/50 bg-[#FBBF24]/[0.08]">
+                <div className="flex flex-col gap-3 p-4 rounded-lg border border-amber-300 bg-amber-50/80">
                   <div className="flex items-start gap-2">
-                    <span className="text-[#FBBF24] text-lg leading-none">⚠️</span>
+                    <span className="text-amber-600 text-lg leading-none">⚠️</span>
                     <div className="text-sm">
-                      <div className="font-semibold text-[#FBBF24] mb-1">报告已降级为统计摘要</div>
-                      <p className="leading-relaxed text-slate-200">{reportDegraded.message}</p>
+                      <div className="font-semibold text-amber-700 mb-1">报告已降级为统计摘要</div>
+                      <p className="leading-relaxed text-slate-700">{reportDegraded.message}</p>
                     </div>
                   </div>
                   <button
                     onClick={handleExportReport}
                     disabled={reportGenerating}
-                    className="self-start px-4 py-2 text-sm font-semibold rounded-lg bg-[#8B5CF6] text-white hover:bg-[#7C4DF0] hover:shadow-[0_0_16px_rgba(139,92,246,0.45)] focus:outline-none focus:shadow-[0_0_16px_rgba(139,92,246,0.45)] disabled:opacity-50 transition-all"
+                    className="self-start px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 hover:shadow-[0_4px_14px_rgba(99,102,241,0.35)] focus:outline-none focus:shadow-[0_4px_14px_rgba(99,102,241,0.35)] disabled:opacity-50 transition-all"
                   >
                     {reportGenerating ? `⏳ ${reportText}` : '🔄 重新生成（AI 洞察版）'}
                   </button>
@@ -691,7 +692,7 @@ export default function DashboardPage() {
           <div className="w-full max-w-4xl h-[80vh] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center px-4 py-2 bg-[#0f172a]">
               <span className="text-sm text-slate-300">分析报告</span>
-              <button onClick={() => setReportHtml('')} className="text-slate-500 hover:text-white">✕</button>
+              <button onClick={() => setReportHtml('')} className="text-slate-500 hover:text-slate-900">✕</button>
             </div>
             <iframe srcDoc={reportHtml} className="w-full h-full border-0" sandbox="allow-scripts" />
           </div>

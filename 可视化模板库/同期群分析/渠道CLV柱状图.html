@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>各渠道平均 CLV - 果冻光感版</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            margin: 0; padding: 40px; 
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh;
+            background-image: url('./背景.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+
+        .dashboard-card { 
+            position: relative; 
+            width: 850px; 
+            height: 600px; 
+            border-radius: 24px; 
+            background: rgba(255, 255, 255, 0.32);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 
+                0 20px 40px -10px rgba(99, 102, 241, 0.12),
+                inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            padding: 30px; 
+        }
+
+        #chart-container { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <div class="dashboard-card">
+        <div id="chart-container"></div>
+    </div>
+
+    <script>
+        const myChart = echarts.init(document.getElementById('chart-container'));
+        const customPalette = ['#FCCDDF', '#C8E1F5', '#E2C9F3', '#D7EFE5', '#FCDDC8', '#E8C9CE', '#F9F1C6', '#BAC2F0'];
+
+        // 颜色微提亮函数（提亮幅度大幅降低）
+        function lightenColor(hex, percent) {
+            const num = parseInt(hex.replace('#', ''), 16);
+            const r = Math.min(255, (num >> 16) + Math.round(255 * percent));
+            const g = Math.min(255, ((num >> 8) & 0x00FF) + Math.round(255 * percent));
+            const b = Math.min(255, (num & 0x0000FF) + Math.round(255 * percent));
+            return `rgba(${r}, ${g}, ${b}, 0.9)`;
+        }
+
+        async function init() {
+            try {
+                const response = await fetch('./mock6.json');
+                const data = await response.json();
+                
+                let target = null;
+                function deepSearch(obj) {
+                    if (!obj || typeof obj !== 'object') return;
+                    if (obj.slot === 'clv_a_流量来源' && obj.option) { target = obj; return; }
+                    for (let key in obj) { deepSearch(obj[key]); if (target) return; }
+                }
+                deepSearch(data);
+                if (!target) throw new Error("未找到配置");
+
+                const rawData = target.option.series[0].data;
+                const categories = target.option.xAxis.data;
+
+                // ========== 1. 工具箱：强制右上角定位 ==========
+                const toolbox = {
+                    left: 'right',
+                    right: 20, 
+                    top: 10, 
+                    z: 9999,
+                    orient: 'horizontal',
+                    itemSize: 16,
+                    itemGap: 12,
+                    feature: {
+                        saveAsImage: { title: '下载图片' },
+                        myExport: {
+                            show: true, title: '导出数据',
+                            icon: 'path://M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z',
+                            onclick: function() {
+                                const blob = new Blob([JSON.stringify(rawData)], {type: 'application/json'});
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url; a.download = 'clv_data.json'; a.click();
+                            }
+                        }
+                    }
+                };
+
+                // ========== 2. 单系列 + 每根柱子单独配色 ==========
+                const barWidth = 28;
+                const barData = rawData.map((item, index) => {
+                    const color = customPalette[index % customPalette.length];
+                    return {
+                        value: item.value,
+                        name: categories[index],
+                        itemStyle: {
+                            // 柔和渐变：顶部微亮 + 主体色 + 底部半透
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: color + 'F0' },
+                                { offset: 0.1, color: color + 'E8' },
+                                { offset: 1, color: color + '70' }
+                            ]),
+                            borderRadius: barWidth / 2,
+                            borderColor: 'rgba(255, 255, 255, 0.4)',
+                            borderWidth: 1,
+                            shadowColor: color + '30',
+                            shadowBlur: 8,
+                            shadowOffsetY: 0
+                        }
+                    };
+                });
+
+                const option = {
+                    // ========== 【这里是新增的修复部分：Tooltip 悬浮提示】 ==========
+                    tooltip: {
+                        trigger: 'item', // 鼠标悬停在柱子上触发
+                        backgroundColor: 'rgba(255, 255, 255, 0.85)', // 玻璃质感背景
+                        borderColor: '#E2E8F0',
+                        borderWidth: 1,
+                        padding: [10, 16],
+                        textStyle: { color: '#475569', fontWeight: 'bold' },
+                        extraCssText: 'box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); backdrop-filter: blur(8px); border-radius: 12px;',
+                        formatter: function (params) {
+                            // 自动获取该柱子对应的色板颜色，画一个漂亮的小圆点
+                            const color = customPalette[params.dataIndex % customPalette.length];
+                            return `<div style="display:flex; align-items:center; gap:8px;">
+                                        <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background-color:${color};"></span>
+                                        <span>${params.name} : ${params.value.toFixed(4)}</span>
+                                    </div>`;
+                        }
+                    },
+                    // =========================================================
+
+                    toolbox: toolbox,
+
+                    // ========== 3. x轴：类目标签正常显示 ==========
+                    xAxis: {
+                        type: 'category',
+                        data: categories,
+                        axisLabel: {
+                            show: true,
+                            color: '#64748B',
+                            fontWeight: 600,
+                            fontSize: 13,
+                            interval: 0,        // 强制显示所有标签
+                            margin: 12
+                        },
+                        axisLine: { show: false },
+                        axisTick: { show: false }
+                    },
+
+                    yAxis: {
+                        type: 'value',
+                        axisLabel: {
+                            show: true,
+                            color: '#64748B',
+                            fontWeight: 500,
+                            fontSize: 13
+                        },
+                        axisLine: { show: false },
+                        axisTick: { show: false },
+                        splitLine: {
+                            show: true,
+                            lineStyle: {
+                                type: 'dashed',
+                                color: 'rgba(255, 255, 255, 0.45)',
+                                width: 1
+                            }
+                        }
+                    },
+
+                    grid: { top: 80, left: 60, right: 40, bottom: 60 },
+
+                    // ========== 4. 单系列柱状图 ==========
+                    series: [{
+                        type: 'bar',
+                        data: barData,
+                        barWidth: barWidth,
+                        barGap: '30%',
+                        label: {
+                            show: true,
+                            position: 'top',
+                            color: '#475569',
+                            fontWeight: 600,
+                            fontSize: 13,
+                            distance: 8,
+                            formatter: (p) => p.value.toFixed(1)
+                        }
+                    }]
+                };
+
+                myChart.setOption(option, true);
+            } catch (err) { console.error("渲染失败:", err); }
+        }
+
+        init();
+        window.addEventListener('resize', () => myChart.resize());
+    </script>
+</body>
+</html>

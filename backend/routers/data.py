@@ -2,13 +2,15 @@
 数据操作 API 路由（预览、列信息、分页等）
 """
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
 import pandas as pd
 import numpy as np
 import io
 import asyncio
+import logging
+import traceback
 from urllib.parse import quote
 from concurrent.futures import ThreadPoolExecutor
 
@@ -32,6 +34,7 @@ def _parse_missing_rate(row) -> float:
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class DataRequest(BaseModel):
@@ -646,6 +649,12 @@ async def data_download(req: DownloadRequest):
     )
 
 
+@router.get("/data/download")
+async def data_download_get(session_id: str, export_original: bool = False):
+    """导出（GET 入口，供前端 <a> 原生下载，规避 blob.click 在部分浏览器不触发的坑）。逻辑复用 POST 版本。"""
+    return await data_download(DownloadRequest(session_id=session_id, export_original=export_original))
+
+
 class DatasetSelectRequest(BaseModel):
     session_id: str
     dataset_id: str
@@ -668,14 +677,23 @@ async def data_select(req: DatasetSelectRequest):
 @router.get("/data/datasets")
 async def data_datasets(session_id: str):
     """返回会话全部数据集元信息（供前端"已上传报表"列表 / 刷新拉回）+ 累计额度"""
-    session = manager.get_session(session_id)
-    used = session.uploaded_bytes if session else 0
-    return sanitize_json({
-        "success": True,
-        "datasets": manager.get_datasets(session_id),
-        "used_bytes": used,
-        "quota_bytes": QUOTA_BYTES,
-    })
+    try:
+        session = manager.get_session(session_id)
+        used = session.uploaded_bytes if session else 0
+        return sanitize_json({
+            "success": True,
+            "datasets": manager.get_datasets(session_id),
+            "used_bytes": used,
+            "quota_bytes": QUOTA_BYTES,
+        })
+    except Exception as e:
+        # 抓全量堆栈到服务端日志，并以可读 JSON 返回，避免静默崩成 500(ERR_BAD_RESPONSE)
+        logger.error("[data/datasets] 列出数据集失败 session_id=%s: %s\n%s",
+                     session_id, e, traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content=sanitize_json({"success": False, "error": f"列出数据集失败: {e}"}),
+        )
 
 
 @router.post("/data/remove-dataset")

@@ -45,16 +45,19 @@ export default function KPICards({ kpis, maxCount = 6, style }: Props) {
             key={i}
             className="relative flex flex-col items-center rounded-xl p-3 min-w-[120px] flex-1 max-w-[180px]"
             style={{
-              background: P.card,
-              border: `1px solid ${color}33`,
-              backdropFilter: 'blur(8px)',
+              // ★ 浅色玻璃：白玻璃 + 主题色淡边 + backdrop blur
+              background: 'rgba(255,255,255,0.50)',
+              border: `1px solid ${color}40`,
+              boxShadow: `0 4px 16px ${color}18`,
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
             }}
           >
             {/* 图标 */}
             {kpi.icon && <span className="text-lg mb-1">{kpi.icon}</span>}
 
-            {/* 数值 */}
-            <div className="text-lg font-bold" style={{ color, textShadow: `0 0 8px ${color}40` }}>
+            {/* 数值（深色高对比，去掉重辉光） */}
+            <div className="text-lg font-bold" style={{ color: '#0f172a' }}>
               {kpi.value}
             </div>
 
@@ -63,7 +66,7 @@ export default function KPICards({ kpis, maxCount = 6, style }: Props) {
               <div className="flex items-center gap-1 mt-1">
                 <span
                   className="text-xs font-semibold"
-                  style={{ color: isUp ? P.success : P.danger }}
+                  style={{ color: isUp ? '#059669' : '#dc2626' }}
                 >
                   {isUp ? '↑' : '↓'} {formatChange(kpi.change)}
                 </span>
@@ -71,7 +74,7 @@ export default function KPICards({ kpis, maxCount = 6, style }: Props) {
             )}
 
             {/* 标题 */}
-            <div className="text-[10px] text-slate-500 mt-1 text-center leading-tight">
+            <div className="text-[10px] text-slate-600 mt-1 text-center leading-tight font-medium">
               {kpi.title}
             </div>
           </div>

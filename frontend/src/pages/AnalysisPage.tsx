@@ -388,17 +388,19 @@ export default function AnalysisPage() {
         const pkgs = (st as unknown as { packages?: Array<Record<string, unknown>> }).packages;
         if (Array.isArray(pkgs)) allPkgs.push(...pkgs);
       });
-      if (allPkgs.length > 0) {
-        setAnalysisPackages(allPkgs);
+      // 过滤掉 can_run===false 的占位包：列表只展示真正跑成功的模型
+      const validPkgs = allPkgs.filter(p => p.can_run !== false);
+      if (validPkgs.length > 0) {
+        setAnalysisPackages(validPkgs);
         setSelectedPkgIndex(0);
-        const firstCharts = (allPkgs[0].charts as Array<{ title: string; option: unknown }>) || [];
+        const firstCharts = (validPkgs[0].charts as Array<{ title: string; option: unknown }>) || [];
         if (firstCharts.length > 0) {
           const c = firstCharts[0];
           setChartFigure(c.option as EChartsOption);
           setChartInfo({ title: c.title, option: c.option as Record<string, unknown> });
         }
         setTab('charts');
-        setComputeResult(`✅ 完成 ${allPkgs.length} 个分析，已切换到图表区`);
+        setComputeResult(`✅ 完成 ${validPkgs.length} 个分析，已切换到图表区`);
       } else {
         setComputeResult('⚠️ 未生成任何分析，请检查数据列是否规范（需含数值/日期/分类列）');
       }
@@ -545,7 +547,7 @@ export default function AnalysisPage() {
             className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-all border-b-2 ${
               tab === id
                 ? 'text-[#f8fafc] border-[#8B5CF6]'
-                : 'text-slate-500 border-transparent hover:text-slate-300'
+                : 'text-slate-500 border-transparent hover:text-slate-700'
             }`}
           >
             <Icon className="w-4 h-4" />

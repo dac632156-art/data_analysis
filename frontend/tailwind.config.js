@@ -8,21 +8,27 @@ export default {
     extend: {
       colors: {
         cosmic: {
-          deep: '#020617',
-          space: '#0f172a',
-          starlight: '#38bdf8',
+          deep: '#eef2ff',
+          space: '#faf5ff',
+          starlight: '#60a5fa',
           galaxy: '#8b5cf6',
-          moon: '#f8fafc',
-          aurora: '#22d3ee',
+          moon: '#0f172a',
+          aurora: '#f472b6',
         },
         glass: {
-          DEFAULT: 'rgba(15, 23, 42, 0.75)',
-          border: 'rgba(255, 255, 255, 0.06)',
+          DEFAULT: 'rgba(255, 255, 255, 0.55)',
+          border: 'rgba(255, 255, 255, 0.75)',
+        },
+        accent: {
+          DEFAULT: '#8b5cf6',
+          soft: '#a78bfa',
+          blue: '#60a5fa',
+          pink: '#f472b6',
         },
         text: {
-          primary: '#f8fafc',
-          secondary: '#94a3b8',
-          muted: '#64748b',
+          primary: '#0f172a',
+          secondary: '#475569',
+          muted: '#94a3b8',
         },
       },
       fontFamily: {

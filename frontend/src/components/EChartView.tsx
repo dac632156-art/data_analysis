@@ -3,7 +3,8 @@ import React, { useEffect, useRef, useMemo } from 'react';
 import * as echarts from 'echarts/core';
 import {
   BarChart, LineChart, PieChart, ScatterChart, EffectScatterChart, RadarChart,
-  TreemapChart, BoxplotChart, HeatmapChart, CustomChart,
+  TreemapChart, BoxplotChart, HeatmapChart, CustomChart, GraphChart,
+  FunnelChart,
 } from 'echarts/charts';
 import {
   TitleComponent, TooltipComponent, GridComponent, LegendComponent,
@@ -19,7 +20,8 @@ import 'echarts-gl';
 
 echarts.use([
   BarChart, LineChart, PieChart, ScatterChart, EffectScatterChart, RadarChart,
-  TreemapChart, BoxplotChart, HeatmapChart, CustomChart,
+  TreemapChart, BoxplotChart, HeatmapChart, CustomChart, GraphChart,
+  FunnelChart,
   TitleComponent, TooltipComponent, GridComponent, LegendComponent,
   ToolboxComponent, DataZoomComponent, VisualMapComponent,
   BrushComponent, MarkLineComponent, MarkPointComponent,
@@ -599,6 +601,57 @@ export default function EChartView({
       const t = o?.text;
       if (!Array.isArray(t) || t.length !== 2) o.text = ['高', '低'];
     });
+    // ★ 热力图兜底：ECharts 强制要求 heatmap series 必须配套 visualMap，
+    // 后端偶发漏配 / 老版本包仍会触发「Heatmap must use with visualMap」异常并冒泡
+    // 到 React ErrorBoundary 显示"页面渲染出错"。此处自动注入一个 minimal visualMap
+    // （按 series.data 实际值范围生成 min/max；空 series 时退到 0~1）。
+    const hasHeatmap = seriesArr.some((s) => String(s.type) === 'heatmap');
+    const baseRec = base as Record<string, unknown>;
+    const hasVM = Array.isArray(baseRec.visualMap)
+      ? (baseRec.visualMap as unknown[]).length > 0
+      : !!baseRec.visualMap;
+    if (hasHeatmap && !hasVM) {
+      let vMin = 0;
+      let vMax = 1;
+      for (const s of seriesArr) {
+        const data = (s as Record<string, unknown>).data as unknown[] | undefined;
+        if (!Array.isArray(data)) continue;
+        for (const item of data) {
+          let val: number | null = null;
+          if (Array.isArray(item)) {
+            const last = item[item.length - 1];
+            if (typeof last === 'number' && Number.isFinite(last)) val = last;
+          } else if (item && typeof item === 'object') {
+            const obj = item as Record<string, unknown>;
+            const v = obj.value;
+            if (Array.isArray(v)) {
+              const last = v[v.length - 1];
+              if (typeof last === 'number' && Number.isFinite(last)) val = last;
+            } else if (typeof v === 'number' && Number.isFinite(v)) {
+              val = v;
+            }
+          } else if (typeof item === 'number' && Number.isFinite(item)) {
+            val = item;
+          }
+          if (val !== null) {
+            if (val < vMin) vMin = val;
+            if (val > vMax) vMax = val;
+          }
+        }
+      }
+      // 若全相等则给 max 一个小偏移，避免 ECharts 区间为 0 报错
+      if (vMin === vMax) vMax = vMin + 1;
+      baseRec.visualMap = {
+        min: vMin,
+        max: vMax,
+        calculable: true,
+        orient: 'horizontal',
+        left: 'center',
+        bottom: 0,
+        inRange: { color: ['#0b3a5c', '#1d6cb0', '#3aa6ff', '#a6dcff', '#ffefa0', '#ff8a4d', '#f04158'] },
+        text: ['高', '低'],
+      };
+    }
     if (highlightLabel) {
       return applyHighlightBlur(base, highlightLabel);
     }
@@ -692,7 +745,26 @@ export default function EChartView({
           const fallbackSeries = (fallbackOption.series as Array<Record<string, unknown>>) || [];
           fallbackOption.series = fallbackSeries.filter(s => !String(s.type).includes('3D'));
           if (Object.keys(fallbackOption).length > 1) {
-            chart.setOption(fallbackOption as EChartsOption, { notMerge: true });
+            try {
+              chart.setOption(fallbackOption as EChartsOption, { notMerge: true });
+            } catch (innerErr) {
+              // ★ 兜底：2D setOption 仍失败（如 heatmap 缺 visualMap 等）时，渲染一个
+              // "图表数据异常"占位 option，阻止异常冒泡到 ErrorBoundary 让整页崩溃。
+              console.error('[EChartView] 2D 降级仍失败，渲染错误占位:', innerErr);
+              chart.setOption({
+                title: { text: '图表数据异常', left: 'center', top: 'middle', textStyle: { color: '#F87171', fontSize: 14 } },
+              } as EChartsOption, { notMerge: true });
+            }
+          }
+        } else {
+          // ★ 非 3D 的 setOption 失败：兜底渲染错误占位，阻止整页崩溃。
+          console.warn('[EChartView] setOption 失败（2D），渲染错误占位');
+          try {
+            chart.setOption({
+              title: { text: '图表数据异常', left: 'center', top: 'middle', textStyle: { color: '#F87171', fontSize: 14 } },
+            } as EChartsOption, { notMerge: true });
+          } catch (innerErr) {
+            console.error('[EChartView] 错误占位也失败:', innerErr);
           }
         }
       }

@@ -1,13 +1,27 @@
 /* DataTable - 数据表格组件
-   ★ 颜色统一来自 theme/（Galaxy Executive Dashboard） */
+   ★ 统一改用「可视化模板库」风格的 EtherealTable 渲染（背景.png / 第1列胶囊 / 浅色毛玻璃）。
+   对外契约保持不变：data: Record<string,unknown>[] + maxHeight。内部仅做「格式适配 + 滚动容器」。 */
 import React, { useMemo } from 'react';
-import { theme } from '../theme';
-
-const P = theme.palette;
+import EtherealTable from './EtherealCharts/EtherealTable';
 
 interface Props {
   data: Record<string, unknown>[];
   maxHeight?: string;
+}
+
+/** 美化单元格显示（与旧版 DataTable 行为一致：ISO 日期规整、数字千分位） */
+function formatValue(val: unknown): unknown {
+  if (val === null || val === undefined) return '-';
+  if (typeof val === 'number') {
+    if (!Number.isFinite(val)) return '-';
+    return val; // 数字原样传，EtherealTable 负责千分位/小数格式化
+  }
+  const str = String(val);
+  const isoDateMatch = str.match(/^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/);
+  if (isoDateMatch) return isoDateMatch[1];
+  const isoFullMatch = str.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/);
+  if (isoFullMatch) return isoFullMatch[1].replace('T', ' ');
+  return str;
 }
 
 export default function DataTable({ data, maxHeight = '500px' }: Props) {
@@ -24,54 +38,19 @@ export default function DataTable({ data, maxHeight = '500px' }: Props) {
     );
   }
 
+  // 适配为 EtherealTable 所需格式：rows 为纯值 dict 行，列名取自首行 key
+  const rows = data.map((row) => {
+    const r: Record<string, unknown> = {};
+    for (const col of columns) r[col] = formatValue(row[col]);
+    return r;
+  });
+
   return (
-    <div className="glass-card overflow-hidden">
-      <div style={{ maxHeight }} className="overflow-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10">
-            <tr style={{ background: `${P.primary}1f` }}>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">#</th>
-              {columns.map((col) => (
-                <th key={col} className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {data.map((row, i) => (
-              <tr
-                key={i}
-                className="border-t border-white/[0.04] hover:bg-[#8B5CF6]/[0.06] transition-colors"
-              >
-                <td className="px-4 py-2.5 text-xs text-slate-500">{i + 1}</td>
-                {columns.map((col) => (
-                  <td key={col} className="px-4 py-2.5 text-slate-300">
-                    {formatValue(row[col])}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <div style={{ maxHeight, overflow: 'auto' }}>
+      <EtherealTable
+        chartNode={{ title: '数据预览', columns, rows }}
+        showIndex
+      />
     </div>
   );
-}
-
-function formatValue(val: unknown): string {
-  if (val === null || val === undefined) return '-';
-  if (typeof val === 'number') {
-    if (!Number.isFinite(val)) return '-';
-    if (Number.isInteger(val)) return val.toLocaleString();
-    return val.toFixed(4);
-  }
-  const str = String(val);
-  // 检测 ISO 日期时间格式并美化显示（如 2024-01-15T00:00:00 → 2024-01-15）
-  const isoDateMatch = str.match(/^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/);
-  if (isoDateMatch) return isoDateMatch[1];
-  // 检测完整 ISO 格式带时区
-  const isoFullMatch = str.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/);
-  if (isoFullMatch) return isoFullMatch[1].replace('T', ' ');
-  return str;
 }

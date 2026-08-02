@@ -166,20 +166,25 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
         { coords: [[104.06, 30.67], [116.46, 39.92]] },
       ];
 
-  // 省份着色（星空渐变）
+  // 省份着色（浅色玻璃渐变：低值白玻璃 → 高值紫色）
   const regions = hasRealData
     ? mapData.map((d) => {
         const ratio = maxVal > 0 ? d.value / maxVal : 0;
         const colors = [
-          'rgba(15,12,41,0.6)', 'rgba(45,27,105,0.55)', 'rgba(74,45,138,0.5)',
-          'rgba(59,130,246,0.45)', 'rgba(59,130,246,0.4)', 'rgba(6,182,212,0.38)',
-          'rgba(125,211,252,0.35)', 'rgba(103,232,249,0.3)',
+          'rgba(219,234,254,0.6)',  // 极低值：浅蓝玻璃
+          'rgba(186,209,255,0.65)',
+          'rgba(159,168,255,0.7)',
+          'rgba(139,124,248,0.7)',
+          'rgba(129,108,243,0.7)',
+          'rgba(167,139,250,0.7)',
+          'rgba(196,143,255,0.7)',
+          'rgba(217,138,255,0.7)',
         ];
         const idx = Math.min(Math.floor(ratio * (colors.length - 1)), colors.length - 1);
         return {
           name: d.geoName,
           itemStyle: { areaColor: colors[idx] },
-          label: { show: true, color: '#BFDBFE', fontSize: 10 },
+          label: { show: true, color: '#0f172a', fontSize: 10, fontWeight: 600 },
         };
       })
     : [];
@@ -187,10 +192,10 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
   return {
     tooltip: {
       trigger: 'item',
-      backgroundColor: 'rgba(15,12,41,0.95)',
-      borderColor: '#3B82F6',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#A78BFA',
       borderWidth: 1,
-      textStyle: { color: '#e0e7ff', fontSize: 12 },
+      textStyle: { color: '#0f172a', fontSize: 12 },
     },
     geo: {
       map: 'china',
@@ -200,19 +205,19 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
       aspectScale: 0.85,
       regions,
       itemStyle: {
-        areaColor: '#0B1025',
-        borderColor: '#312e81',
+        areaColor: 'rgba(255,255,255,0.45)',
+        borderColor: 'rgba(139,92,246,0.35)',
         borderWidth: 1,
         shadowBlur: 6,
-        shadowColor: 'rgba(59,130,246,0.25)',
+        shadowColor: 'rgba(139,92,246,0.15)',
       },
       emphasis: {
         itemStyle: {
-          areaColor: '#4f46e5',
-          shadowBlur: 25,
-          shadowColor: 'rgba(59,130,246,0.7)',
+          areaColor: 'rgba(167,139,250,0.75)',
+          shadowBlur: 18,
+          shadowColor: 'rgba(139,92,246,0.5)',
         },
-        label: { show: true, color: '#f0e6ff', fontSize: 14, fontWeight: 'bold' },
+        label: { show: true, color: '#0f172a', fontSize: 14, fontWeight: 'bold' },
       },
     },
     series: [
@@ -227,24 +232,24 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
           brushType: 'stroke',
           scale: 4,
           period: 4,
-          color: '#7DD3FC',
+          color: '#A78BFA',
         },
-        itemStyle: { color: '#e0e7ff', shadowBlur: 10, shadowColor: 'rgba(125,211,252,0.8)' },
+        itemStyle: { color: '#8B5CF6', shadowBlur: 10, shadowColor: 'rgba(139,92,246,0.55)' },
         label: {
           show: true,
           position: 'top',
           distance: 10,
-          color: '#67e8f9',
+          color: '#4c1d95',
           fontSize: 11,
           fontWeight: 'bold',
           formatter: '{c}',
-          textShadowBlur: 6,
-          textShadowColor: 'rgba(6,182,212,0.6)',
+          textShadowBlur: 4,
+          textShadowColor: 'rgba(255,255,255,0.9)',
         },
         emphasis: {
           scale: 2,
-          itemStyle: { color: '#f0e6ff', shadowBlur: 20 },
-          label: { fontSize: 15, color: '#f0e6ff' },
+          itemStyle: { color: '#7C3AED', shadowBlur: 20 },
+          label: { fontSize: 15, color: '#0f172a' },
         },
         zlevel: 1,
       },
@@ -252,14 +257,14 @@ function buildChinaMapOption(echartsCharts?: EChartItem[]): Record<string, unkno
         type: 'lines',
         coordinateSystem: 'geo',
         data: linesData,
-        lineStyle: { color: '#7DD3FC', width: 1, opacity: 0.4, curveness: 0.2 },
+        lineStyle: { color: '#A78BFA', width: 1, opacity: 0.55, curveness: 0.2 },
         effect: {
           show: true,
           period: 5,
           trailLength: 0.3,
           trailWidth: 1.5,
           symbolSize: 4,
-          color: '#7DD3FC',
+          color: '#A78BFA',
         },
         zlevel: 1,
       },
@@ -342,7 +347,7 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
     const color = kpi.color || '#7DD3FC';
     const numVal = typeof kpi.value === 'number' ? kpi.value : parseFloat(String(kpi.value));
     return (
-      <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid rgba(125,211,252,0.06)' }}>
+      <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.35)' }}>
         <span className="text-[11px] text-slate-400 truncate">{kpi.title}</span>
         <span className="text-sm font-bold font-mono" style={{ color, textShadow: `0 0 12px ${color}40` }}>
           <AnimatedNumber value={isNaN(numVal) ? 0 : numVal} duration={1.5} decimals={numVal % 1 !== 0 ? 2 : 0} />
@@ -353,17 +358,17 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
 
   return (
     <div className="w-full h-full flex flex-col"
-      style={{
-        background: `radial-gradient(ellipse at center, #0a1628 0%, #050d1a 50%, #020810 100%)`,
-        fontFamily: "'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif",
-        overflow: 'auto',
-      }}
+        style={{
+          background: 'transparent',
+          fontFamily: "'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif",
+          overflow: 'auto',
+        }}
     >
       {/* 顶部标题栏 */}
-      <div className="flex items-center justify-between px-6 py-3" style={{ borderBottom: '1px solid rgba(125,211,252,0.12)' }}>
+      <div className="flex items-center justify-between px-6 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.5)' }}>
         <div className="flex items-center gap-4">
           <div className="w-1.5 h-6 bg-gradient-to-b from-[#7DD3FC] to-[#38BDF8] rounded-full" />
-          <h1 className="text-xl font-bold text-white tracking-widest" style={{ textShadow: '0 0 30px rgba(125,211,252,0.6)' }}>数据智能指挥中心</h1>
+          <h1 className="text-xl font-bold text-[#0f172a] tracking-widest">数据智能指挥中心</h1>
         </div>
         <div className="flex items-center gap-8 text-xs">
           <span className="flex items-center gap-2 text-[#7DD3FC]">
@@ -379,8 +384,10 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
         {/* 左侧面板 */}
         <div className="flex flex-col gap-3" style={{ width: '22%', minWidth: 240 }}>
           <div className="flex-1 flex flex-col gap-2" style={{
-            background: 'rgba(125,211,252,0.03)',
-            border: '1px solid rgba(125,211,252,0.08)',
+            background: 'rgba(255,255,255,0.35)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255,255,255,0.45)',
             borderRadius: '8px',
             padding: '10px 14px',
           }}>
@@ -395,16 +402,16 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
               {dataPreview && dataPreview.length > 0 ? (
                 <table className="w-full text-[10px]">
                   <thead>
-                    <tr style={{ background: 'rgba(56,189,248,0.1)' }}>
+                    <tr style={{ background: 'rgba(139,92,246,0.06)' }}>
                       <th className="px-2 py-1.5 text-left text-slate-500">#</th>
                       {Object.keys(dataPreview[0]).slice(0, 3).map((k) => <th key={k} className="px-2 py-1.5 text-left text-slate-500">{k}</th>)}
                     </tr>
                   </thead>
                   <tbody>
                     {dataPreview.slice(0, 6).map((row, i) => (
-                      <tr key={i} className="border-t border-white/[0.03] hover:bg-[#7DD3FC]/[0.05]">
+                      <tr key={i} className="border-t border-black/[0.05] hover:bg-black/[0.03]">
                         <td className="px-2 py-1 text-slate-600">{i + 1}</td>
-                        {Object.keys(dataPreview[0]).slice(0, 3).map((k) => <td key={k} className="px-2 py-1 text-slate-300">{String(row[k] ?? '-')}</td>)}
+                        {Object.keys(dataPreview[0]).slice(0, 3).map((k) => <td key={k} className="px-2 py-1 text-slate-700">{String(row[k] ?? '-')}</td>)}
                       </tr>
                     ))}
                   </tbody>
@@ -429,8 +436,10 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
 
         {/* 中间主屏 - 中国数据态势 */}
         <div className="flex-1 relative" style={{
-          background: 'rgba(125,211,252,0.02)',
-          border: '1px solid rgba(125,211,252,0.08)',
+          background: 'rgba(255,255,255,0.30)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          border: '1px solid rgba(255,255,255,0.45)',
           borderRadius: '8px',
           overflow: 'hidden',
         }}>
@@ -448,8 +457,10 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
         {/* 右侧面板 */}
         <div className="flex flex-col gap-3" style={{ width: '22%', minWidth: 240 }}>
           <div className="flex-1 flex flex-col gap-2" style={{
-            background: 'rgba(125,211,252,0.03)',
-            border: '1px solid rgba(125,211,252,0.08)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            background: 'rgba(255,255,255,0.35)',
+            border: '1px solid rgba(255,255,255,0.45)',
             borderRadius: '8px',
             padding: '10px 14px',
           }}>
@@ -495,7 +506,7 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
       {tbHbCharts.length > 0 && (
         <div className="px-3 pb-3">
           {tbHbCharts.map((tb, idx) => (
-            <div key={idx} className="p-4 rounded-lg" style={{ background: 'rgba(10,14,30,0.95)', border: '1px solid rgba(125,211,252,0.12)' }}>
+            <div key={idx} className="p-4 rounded-lg" style={{ background: 'rgba(255,255,255,0.35)', border: '1px solid rgba(255,255,255,0.45)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
               <TbHbTable
                 data={tb.rows}
                 valueColumn={tb.value_column}
@@ -511,7 +522,7 @@ export default function CommandScreen({ kpis, dataPreview, categoryCol, valueCol
 
       {/* 底部信息条 */}
       <div className="px-6 py-2 flex items-center gap-6 text-xs"
-        style={{ background: 'rgba(125,211,252,0.04)', borderTop: '1px solid rgba(125,211,252,0.08)' }}>
+        style={{ background: 'rgba(255,255,255,0.35)', borderTop: '1px solid rgba(255,255,255,0.45)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
         <span className="text-[#7DD3FC] font-semibold">数据源</span>
         <span className="text-slate-600">|</span>
         <span className="text-slate-400">{dataPreview ? `共 ${dataPreview.length} 条记录` : '实时监控中'}</span>
