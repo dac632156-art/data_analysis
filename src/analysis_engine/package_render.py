@@ -122,7 +122,7 @@ def render_package(pkg: dict) -> dict:
     full = dict(pkg)
     full["rendered_kpis"] = render_kpis(pkg.get("kpis", []))
     full["rendered_tables"] = render_tables(pkg.get("tables", []))
-    full["rendered_charts"] = pkg.get("charts", [])
+    full["rendered_charts"] = list(pkg.get("charts", []))
     full["rendered_insights"] = render_insights(pkg.get("insights", []))
     full["rendered_conclusion"] = render_conclusion(pkg.get("conclusions", []))
     # 迁移：保证 tables 里每个 dict 都有 slot 键

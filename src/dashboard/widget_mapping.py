@@ -117,6 +117,32 @@ ANALYSIS_TO_WIDGET_MAPPING: Dict[str, Dict[str, Any]] = {
         "filter_dimension_keywords": ["category", "分类", "产品", "地区", "region"],
     },
 
+    # ===== 漏斗分析 =====
+    "funnel": {
+        "widget_type": "chart",
+        "business_topic": "转化漏斗",
+        "chart_type": "funnel",
+        "display_role": "main",
+        "default_title": "转化漏斗分析",
+        "description": "展示用户从访问到下单各环节的转化/流失情况",
+        "tags": ["funnel", "漏斗", "转化", "流失"],
+        "drill_down": False,
+        "cross_filter": False,
+        "filter_dimension_keywords": [],
+    },
+    "funnel_analysis": {
+        "widget_type": "chart",
+        "business_topic": "转化漏斗",
+        "chart_type": "funnel",
+        "display_role": "main",
+        "default_title": "转化漏斗分析",
+        "description": "展示用户从访问到下单各环节的转化/流失情况",
+        "tags": ["funnel", "漏斗", "转化", "流失"],
+        "drill_down": False,
+        "cross_filter": False,
+        "filter_dimension_keywords": [],
+    },
+
     # ===== 地理空间分析 =====
     "geo_analysis": {
         "widget_type": "map",

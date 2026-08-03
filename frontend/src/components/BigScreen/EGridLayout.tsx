@@ -185,13 +185,14 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
                   {isGL ? (
                     <GLMapView option={chart.option} height={520} title={hideChartTitle ? undefined : chart.title} />
                   ) : (
-                    <EtherealChart
-                      slot={chart.slot}
-                      chartType={chart.chart_type}
-                      chartNode={chart.option}
-                      data={chart.raw_data}
-                      title={chart.title}
-                    />
+              <EtherealChart
+                slot={chart.slot}
+                chartType={chart.chart_type}
+                chartNode={{ ...chart.option, chart_config: chart.chart_config }}
+                data={chart.raw_data}
+                title={chart.title}
+                cardBgUrl={chart.chart_type === 'funnel' ? undefined : undefined}
+              />
                   )}
                 </BorderBox1>
               </div>

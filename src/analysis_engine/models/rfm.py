@@ -529,17 +529,27 @@ class RFMModel(AnalysisModel):
             insights.append("数据未含住址列，未生成分层×地区净毛利矩阵表（建议补充住址维度深挖区域价值结构）。")
 
         # 双轴：分层 vs 人数 vs 人均净毛利
+        # 字段口径（A2 修复）：
+        #   人数  = 该分层用户数（左轴）
+        #   净GMV = 该分层 Σ订单实付金额（M_raw 之和，真实总消费）
+        #   净毛利 = 该分层 Σ净毛利（profit 之和，已扣成本/退款）
+        # 注：原实现把「净GMV」错填成人数、「净毛利」错填成人均值，前端再按 金额÷金额
+        #     算 Avg.Profit Margin 导致万倍率。这里改为真实金额，前端公式无需变动。
+        seg_agg = user_df.groupby("Segment")[["M_raw", "profit"]].sum()
         dual_rows: List[Dict] = []
         for s in SEGMENTS:
             sub = user_df[user_df["Segment"] == s]
-            cnt = len(sub)
+            cnt = int(len(sub))
+            gmv = float(seg_agg["M_raw"].get(s, 0.0))
+            margin = float(seg_agg["profit"].get(s, 0.0))
             dual_rows.append({
                 "分层": s,
-                "净GMV": int(cnt),
-                "净毛利": _safe_div(sub["profit"].sum(), cnt) if cnt else 0.0,
+                "人数": cnt,
+                "净GMV": round(gmv, 4),
+                "净毛利": round(margin, 4),
             })
         charts.append(ChartData(slot="rfm_dual", chart_type="dual_axis",
-                                title="分层 vs 人数 vs 人均净毛利", x="分层", y="净GMV", data=dual_rows))
+                                title="分层 vs 人数 vs 人均净毛利", x="分层", y="净GMV", right_col="净毛利", data=dual_rows))
 
         # 明细表
         table_rows: List[Dict] = []

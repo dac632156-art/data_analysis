@@ -36,7 +36,8 @@ async function renderEtherealRadarChart(domId, chartNode, cardBgUrl = './背景.
         if (!innerDom) throw new Error("内部图表挂载容器创建失败");
 
         const myChart = echarts.init(innerDom);
-        const pastelColors = ['#F1C0E8', '#A3C4F3']; // 粉、蓝独立配色
+        // 仙气水彩色板：取自气泡图组件.js 的 BASE_COLORS（同套柔彩体系），扩到 4 色避免多系列撞色
+        const pastelColors = ['#A3C4F3', '#F1C0E8', '#A78BFA', '#FB7185']; // 蓝、粉、淡紫、玫瑰粉
 
         // ☁️ 云朵状纯水墨纹理生成函数
         function createPureWatercolorPattern(img, hexColor) {
@@ -124,6 +125,8 @@ async function renderEtherealRadarChart(domId, chartNode, cardBgUrl = './背景.
                     name: row[xField],
                     type: 'radar',
                     data: [values],
+                    // 缓存均值用于图层排序（大图先画、小图后画浮在最上）
+                    _mean: values.reduce((s, v) => s + (v || 0), 0) / (values.length || 1),
                     itemStyle: { color: '#ffffff', borderColor: color, borderWidth: 1.5 },
                     lineStyle: { width: 2, color: color },
                     areaStyle: areaStyleConfig,
@@ -132,7 +135,9 @@ async function renderEtherealRadarChart(domId, chartNode, cardBgUrl = './背景.
                 };
             });
 
-            seriesConfigs.sort((a, b) => (a.name || '').includes('高单价') ? -1 : 1);
+            // 图层顺序修复：按均值从大到小排序，大图先画、小图最后画浮在最上层
+            // （原逻辑把高单价排最前导致大粉图压住小蓝图）
+            seriesConfigs.sort((a, b) => (b._mean || 0) - (a._mean || 0));
 
             option = {
                 radar: { indicator: indicators },
@@ -174,7 +179,13 @@ async function renderEtherealRadarChart(domId, chartNode, cardBgUrl = './背景.
         
         // 如果是从 JSON 直接读的 option，也加上水彩纹理
         if (chartNode.option && option.series && Array.isArray(option.series)) {
-            option.series.sort((a, b) => (a.name || '').includes('高单价') ? -1 : 1);
+            // 图层顺序修复：按均值从大到小排序，大图先画、小图最后画浮在最上层
+            option.series.forEach((s) => {
+                const dataArr = Array.isArray(s.data) ? s.data[0] : null;
+                const vals = (dataArr && Array.isArray(dataArr.value)) ? dataArr.value : [];
+                s._mean = vals.length ? vals.reduce((a, b) => a + (b || 0), 0) / vals.length : 0;
+            });
+            option.series.sort((a, b) => (b._mean || 0) - (a._mean || 0));
             option.series.forEach((s, idx) => {
                 const color = pastelColors[idx % pastelColors.length];
                 s.itemStyle = { color: '#ffffff', borderColor: color, borderWidth: 1.5 };

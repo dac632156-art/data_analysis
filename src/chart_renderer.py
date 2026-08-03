@@ -3,6 +3,8 @@ ChartRenderer —— 统一图表渲染层
 封装 echart_generator.create_chart()，ChartData → ECharts option
 """
 import logging
+import math
+import re
 
 import pandas as pd
 from typing import Optional, Dict, Any
@@ -72,6 +74,11 @@ class ChartRenderer:
                     yAxis["type"] = "log"
                     yAxis["min"] = 1
 
+            # 阈值红线：把 chart_config.threshold 直接写成 markLine 注入 series，
+            # 使任何拿到该 option 的客户端（医疗看板 / 分析预览 / 导出 HTML）都能自动画红线，
+            # 不再依赖某个前端组件单独计算 threshold。仅对柱状/直方图生效。
+            option = self._inject_threshold_markline(option, chart_data)
+
             # 生成器返回空 dict（{}）→ 视为「无内容可画」，直接返回 None，
             # 由 render_all 过滤掉，避免产生「空白卡片」占位。
             if not option:
@@ -96,3 +103,140 @@ class ChartRenderer:
 
     def render_all(self, chart_data_list: list, theme: str = "dark") -> list:
         return [c for c in (self.render(d, theme) for d in chart_data_list) if c is not None]
+
+    @staticmethod
+    def _inject_threshold_markline(option: Dict[str, Any], chart_data: "ChartData") -> Dict[str, Any]:
+        """对柱状/直方图 series 注入阈值红线 markLine（原地修改 option 并返回）。
+
+        红线动态落在"第一个数值 >= 阈值的区间起点"的「左边界」（即阈值的数值分界点），
+        **不依赖具体阈值**，任何数据算出的阈值都能正确定位。
+
+        实现要点（关键坑）：ECharts 的 category 轴 markLine 只认整数类目索引或类目名，
+        不支持浮点坐标（传 2.5 会被忽略/截断，红线又掉回柱子正中）。因此采用「双 X 轴」：
+        保留原 category 轴给柱子，新增一个隐藏的 value 轴（min=0, max=桶数-1）专门给
+        markLine 定位，传 best_idx-0.5 即可精确落在两桶之间（桶左边界）。
+        """
+        cfg = chart_data.chart_config or {}
+        threshold = cfg.get("threshold")
+        if not (isinstance(threshold, (int, float)) and math.isfinite(threshold)):
+            return option
+        if chart_data.chart_type not in ("bar", "histogram"):
+            return option
+        if not isinstance(option, dict):
+            return option
+
+        # 取 X 轴 category（兼容 xAxis 为 dict 或 list）
+        x_axis = option.get("xAxis")
+        if isinstance(x_axis, list):
+            x_axis = x_axis[0] if x_axis else None
+        categories = x_axis.get("data") if isinstance(x_axis, dict) else None
+        if not isinstance(categories, list) or not categories:
+            return option
+
+        # 从桶名提取「区间起点」用于定位阈值分界：
+        # - "≥157天" / ">=157" → 157（尾桶，区间起点即阈值下限）
+        # - "0~10天" / "0-10" → 取区间起点 0
+        # - "53" / "106"（纯数字桶名）→ 数字本身即起点
+        # 注意：不能只匹"≥"/">"前缀，否则中间桶(0~10天/53/106)提取不出数值，
+        # 红线就只能永远落在带≥的尾桶（之前的根因之一）。
+        def _bucket_start(cat: str) -> float | None:
+            s = str(cat)
+            # 优先匹配 "≥N" / ">=N" / ">N" 尾桶
+            m = re.search(r"[≥>=]+\s*(\d+(?:\.\d+)?)", s)
+            if m:
+                return float(m.group(1))
+            # 区间 "a~b" / "a-b" → 起点 a
+            m = re.search(r"(\d+(?:\.\d+)?)\s*[~\-]\s*\d+(?:\.\d+)?", s)
+            if m:
+                return float(m.group(1))
+            # 纯数字桶名 "53" / "106" → 数字本身
+            m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*", s)
+            if m:
+                return float(m.group(1))
+            return None
+
+        best_idx = -1
+        for i, cat in enumerate(categories):
+            v = _bucket_start(cat)
+            if v is None:
+                continue
+            if v >= float(threshold):
+                best_idx = i
+                break
+        if best_idx < 0:
+            # 阈值超过所有桶起点（如阈值大于尾桶下限）：红线落在「最右桶右边界外侧」，
+            # 表示全量已超阈值，而不是静默不画（否则"阈值很大时没红线"）
+            best_idx = len(categories) - 1
+            x_coord = float(best_idx) + 0.5
+        else:
+            # 红线落在命中桶的「左边界」= best_idx - 0.5；首桶 clamp 到 0 避免画出轴外左侧
+            x_coord = max(float(best_idx) - 0.5, 0.0)
+
+        label = cfg.get("threshold_label") or "阈值"
+        # 红线落在命中桶的「左边界」= best_idx - 0.5（value 轴浮点坐标）。
+        # 首桶 clamp 到 0，避免画到轴外左侧被裁掉。
+        x_coord = max(float(best_idx) - 0.5, 0.0)
+        # 标签带具体阈值数值（天），直击"看不出阈值是多少"的痛点；无论阈值多少都带"天"
+        threshold_val = float(threshold)
+        if abs(threshold_val - round(threshold_val)) < 1e-6:
+            label_formatter = f"{label} {int(round(threshold_val))}天"
+        else:
+            label_formatter = f"{label} {threshold_val:g}天"
+        mark_line = {
+            "symbol": "none",
+            "silent": True,
+            # 关键：用第二个（隐藏 value）轴定位，才能精确落在浮点坐标（桶左边界）
+            "xAxisIndex": 1,
+            "lineStyle": {"color": "#DC2626", "width": 3},
+            "label": {
+                "show": True,
+                # end：标签落在竖直线段「顶端外侧」，横排（不再沿线段旋转成竖排）
+                "position": "end",
+                # 负向 Y 偏移把标签向上推远，避免压到柱顶数字（如 "383"）
+                "offset": [0, -12],
+                "formatter": label_formatter,
+                "color": "#fff",
+                "backgroundColor": "#DC2626",
+                "padding": [2, 6],
+                "borderRadius": 4,
+                "fontSize": 12,
+            },
+            "data": [{"xAxis": x_coord}],
+        }
+
+        # 构造「双 X 轴」：原 category 轴 + 隐藏 value 轴（min=0, max=桶数-1，与类目索引对齐）
+        hidden_value_axis = {
+            "type": "value",
+            "show": False,
+            "min": 0,
+            "max": len(categories) - 1,
+            "splitNumber": max(len(categories) - 1, 1),
+        }
+        original_x_axis = option.get("xAxis")
+        if isinstance(original_x_axis, list):
+            # 已有多轴：避免重复追加隐藏轴（幂等）
+            has_hidden = any(
+                isinstance(ax, dict) and ax.get("type") == "value" and ax.get("_threshold_axis")
+                for ax in original_x_axis
+            )
+            if not has_hidden:
+                option["xAxis"] = [
+                    *original_x_axis,
+                    {**hidden_value_axis, "_threshold_axis": True},
+                ]
+        else:
+            option["xAxis"] = [
+                original_x_axis if isinstance(original_x_axis, dict) else {"type": "category", "data": categories},
+                {**hidden_value_axis, "_threshold_axis": True},
+            ]
+
+        # 向所有 series 注入（兼容 series 为 dict 或 list）
+        series = option.get("series")
+        if isinstance(series, dict):
+            option["series"] = {**series, "markLine": mark_line}
+        elif isinstance(series, list):
+            option["series"] = [
+                {**(s if isinstance(s, dict) else {"type": chart_data.chart_type}), "markLine": mark_line}
+                for s in series
+            ]
+        return option

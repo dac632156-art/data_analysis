@@ -91,30 +91,30 @@ export default function CoverPage() {
       </header>
 
       {/* 中间 Hero 内容 */}
-      <main className="relative z-10 w-full h-full flex flex-col px-8 md:px-16 lg:px-24 pt-32 md:pt-36">
+      <main className="relative z-10 w-full h-full flex flex-col px-8 md:px-16 lg:px-24 pt-28 md:pt-32">
         <div className="max-w-2xl">
           {/* 大标题：放大占位 */}
           <h1
             className="font-bold tracking-tight"
-            style={{ color: '#0F172A', fontSize: '80px', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.02em' }}
+            style={{ color: '#0F172A', fontSize: '96px', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.02em' }}
           >
             DataMind AI
           </h1>
 
           {/* 绿色框：英文翻译成中文 */}
           <p
-            className="mt-5"
-            style={{ color: '#334155', fontSize: '20px', fontWeight: 400, lineHeight: 1.6 }}
+            className="mt-7"
+            style={{ color: '#334155', fontSize: '24px', fontWeight: 400, lineHeight: 1.7 }}
           >
             释放数据的智能潜力，遇见你的 AI 数据伙伴。
           </p>
 
           {/* 按钮：保留 Start for Free（中文），删除 Learn More（红色框） */}
-          <div className="mt-8 flex items-center gap-4">
+          <div className="mt-10 flex items-center gap-4">
             <button
               type="button"
               onClick={() => navigate('/upload')}
-              className="px-7 py-3 rounded-full text-base font-medium transition-all duration-200 hover:scale-105 focus:outline-none"
+              className="px-9 py-4 rounded-full text-lg font-medium transition-all duration-200 hover:scale-105 focus:outline-none"
               style={{
                 color: '#FFFFFF',
                 background: '#38BDF8',

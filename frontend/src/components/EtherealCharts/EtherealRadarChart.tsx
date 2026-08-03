@@ -8,8 +8,10 @@ import 背景 from '../../assets/ethereal/背景.png';
 
 echarts.use([RadarChart, TooltipComponent, LegendComponent, ToolboxComponent, TitleComponent, CanvasRenderer]);
 
-// 对齐原版 echarts_雷达图.js 第 39 行 pastelColors
-const pastelColors = ['#F1C0E8', '#A3C4F3'];
+// 仙气水彩色板：取自 EtherealBubbleChart.tsx 的 BASE_COLORS（同套柔彩体系），
+// 扩到 4 色避免多系列撞色（原版只有 2 色，3 系列时必有两系列同色）。
+// 顺序：蓝 / 粉 / 淡紫 / 玫瑰粉，保持柔和水彩调性，不引入刺眼色。
+const pastelColors = ['#A3C4F3', '#F1C0E8', '#A78BFA', '#FB7185'];
 
 // 水墨纹理 canvas（对齐原版 createPureWatercolorPattern 第 42 行）
 function createPureWatercolorPattern(img: HTMLImageElement, hexColor: string): HTMLCanvasElement {
@@ -102,7 +104,14 @@ export const EtherealRadarChart: React.FC<Props> = ({ chartNode, height = 420 })
     const img = new Image();
     img.src = 背景;
     const build = () => {
-      const series = seriesRaw.map((s, idx) => {
+      // 图层顺序修复：ECharts 后画的 series 盖在先画的上面。
+      // 按各系列「均值（近似面积）」从大到小排序，让大图先画、小图最后画浮在最上层，
+      // 避免大粉图把小蓝图压在下面（用户期望：越小的图越在上面）。
+      const ordered = [...seriesRaw].sort(
+        (a, b) => b.value.reduce((s, v) => s + (v || 0), 0) / b.value.length
+                - a.value.reduce((s, v) => s + (v || 0), 0) / a.value.length,
+      );
+      const series = ordered.map((s, idx) => {
         // 严格对齐原版 pastelColors 硬编码（忽略 s.color）
         const color = pastelColors[idx % pastelColors.length];
         const areaStyle = img.complete && img.naturalWidth

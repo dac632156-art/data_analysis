@@ -92,6 +92,26 @@ def _interval_left(v) -> float:
     return float(m.group(1)) if m else float("inf")
 
 
+def _numeric_key(v) -> float:
+    """把分桶标签解析为可排序的数值键。
+
+    - 纯数字字符串 "0"/"15"/"53" → 该数字
+    - 尾桶 "≥157天"/"≥53天" → 该数字（保证排在普通区间之后）
+    - 区间字符串 "(a, b]"/"[a, b)" → 左端点（兜底，主路径已由 _interval_left 处理）
+    - 无法解析 → +inf（排末尾，避免污染普通文本列的字典序）
+    """
+    if v is None or (isinstance(v, float) and math.isnan(v)):
+        return float("inf")
+    s = str(v).strip()
+    if s == "":
+        return float("inf")
+    # 容忍 "≥157天" / ">=157天" / "(a, b]" 等前缀，提取首个数字
+    m = re.search(r"[-+]?\d*\.?\d+", s)
+    if m:
+        return float(m.group(0))
+    return float("inf")
+
+
 def _sort_data(df, x, y):
     """按 x 排序数据。
 
@@ -99,6 +119,10 @@ def _sort_data(df, x, y):
     - 区间字符串列（形如 '(a, b]'）：按左端点数值排序，确保直方图 X 轴随数值递增
       （qcut 分位数分箱区间宽度差异大，字典序排序会乱序，长尾形态不可见）。
       仅当列样本命中区间格式才启用，普通分类列（省份/类目等）不受影响。
+    - 纯数字分桶标签（如 churn_rule 的 "0"/"15"/"53" 与尾桶 "≥157天"）：
+      按数值排序，避免字符串字典序 "0"<"106"<"15" 导致的 X 轴乱序；
+      尾桶因数值最大（≥N）自然落在最右。普通文本列（省份/类目等）数字解析
+      会夹杂大量非数字键，统一 fallback 到 sort_values 字典序原行为，不受影响。
     """
     try:
         col = df[x]
@@ -108,6 +132,15 @@ def _sort_data(df, x, y):
             if re.match(r"^[\(\[]\s*[-+]?\d*\.?\d+\s*,\s*[-+]?\d*\.?\d+\s*[\)\]]$", sample):
                 order = col.map(_interval_left).argsort(kind="stable")
                 return df.iloc[order.values]
+            # 分支②：纯数字 / 带 ≥ 前缀尾桶 —— 数值排序（区分普通文本列用解析成功率）
+            non_na = col.dropna()
+            if len(non_na):
+                parsed = non_na.map(_numeric_key)
+                # 仅当所有非空样本都能解析为有限数字时，才启用数值排序；
+                # 否则视为普通文本列，保持 sort_values 原行为，避免误伤省份/类目等。
+                if parsed.notna().all() and (parsed < float("inf")).all():
+                    order = parsed.argsort(kind="stable")
+                    return df.iloc[order.values]
         return df.sort_values(x)
     except Exception:
         return df
@@ -406,7 +439,7 @@ def create_pie_chart(df: pd.DataFrame, names: Optional[str] = None, values: Opti
     }
 
 
-def create_histogram(df: pd.DataFrame, x: str, title: str = "直方图", **ignored) -> Dict[str, Any]:
+def create_histogram(df: pd.DataFrame, x: str, title: str = "直方图", y: Optional[str] = None, **ignored) -> Dict[str, Any]:
     """创建直方图（用 bar 模拟，手动分箱 — ECharts 无内置 histogram 类型）"""
     values = df[x].dropna()
     if len(values) == 0:
@@ -437,7 +470,7 @@ def create_histogram(df: pd.DataFrame, x: str, title: str = "直方图", **ignor
             "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}
         },
         "yAxis": {
-            "type": "value", "name": "频次",
+            "type": "value", "name": y if y else "频次",
             "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}
         },
         "series": [{
@@ -2337,6 +2370,28 @@ def create_graph(df, x="source", y="target", title="商品关联网络图", **ig
         return None
 
 
+def _infer_unit_hint(option: Dict[str, Any]) -> Optional[str]:
+    """根据 y 轴数值范围返回合适的单位提示（纯数据，不生成 JS 代码）。
+    返回 None 表示不需要单位格式化。"""
+    series_list = option.get("series", [])
+    if isinstance(series_list, dict):
+        series_list = [series_list]
+    max_v = 0
+    for s in series_list:
+        data = s.get("data", []) if isinstance(s, dict) else []
+        for d in data:
+            val = d.get("value", d) if isinstance(d, dict) else d
+            if isinstance(val, (int, float)) and not (isinstance(val, float) and math.isnan(val)):
+                max_v = max(max_v, abs(val))
+    if max_v >= 100000000:
+        return "亿"
+    elif max_v >= 10000000:
+        return "万"  # 千万级也用万
+    elif max_v >= 10000:
+        return "万"
+    return None
+
+
 # ==================== 统一入口 ====================
 
 CHART_FUNCTIONS = {
@@ -2382,4 +2437,7 @@ def create_chart(df: pd.DataFrame, chart_type: str, **kwargs) -> Optional[Dict[s
     option = CHART_FUNCTIONS[chart_type](df, **kwargs)
     if option is not None:
         option = _cap_option_data(option)
+        hint = _infer_unit_hint(option)
+        if hint:
+            option["_unitHint"] = hint
     return option

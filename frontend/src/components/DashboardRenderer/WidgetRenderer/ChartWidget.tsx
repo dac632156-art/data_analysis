@@ -6,6 +6,7 @@ import { useDashboardTheme } from '../ThemeProvider';
 import { buildChartBaseConfig, buildAxisStyle, buildPieStyle, buildRadarStyle, chartTypeToHeight, isGLChartType } from '../ChartConfigBuilder';
 import { useLazyLoad } from '../hooks';
 import { EtherealBubbleChart } from '../../EtherealCharts/EtherealBubbleChart';
+import { EtherealFunnelChart } from '../../EtherealCharts/EtherealFunnelChart';
 
 interface ChartWidgetProps {
   widget: WidgetSlot;
@@ -242,6 +243,8 @@ export const ChartWidget: React.FC<ChartWidgetProps> = memo(({ widget, onFilter,
     !!mergedOption &&
     (widget.chart_type === 'bubble' || widget.chart_type === 'scatter') &&
     !!bubbleOption;
+  // 漏斗图：走仙气漏斗组件（EtherealFunnelChart），与数据分析页/大屏一致
+  const isFunnel = !!mergedOption && widget.chart_type === 'funnel';
 
   if (!shouldRender) {
     // 懒加载占位
@@ -297,6 +300,13 @@ export const ChartWidget: React.FC<ChartWidgetProps> = memo(({ widget, onFilter,
         <EtherealBubbleChart
           chartNode={bubbleOption as Record<string, unknown>}
           height={height}
+        />
+      ) : isFunnel ? (
+        <EtherealFunnelChart
+          chartNode={bubbleOption as Record<string, unknown>}
+          title={widget.title}
+          height={height}
+          cardBgUrl=""
         />
       ) : (
         <div ref={chartRef} className="w-full" style={{ height }} />

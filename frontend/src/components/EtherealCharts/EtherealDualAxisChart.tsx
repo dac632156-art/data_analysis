@@ -29,12 +29,14 @@ export const EtherealDualAxisChart: React.FC<Props> = ({ chartNode, title, heigh
     let xAxisData: string[] = [];
     let gmvData: number[] = [];
     let profitData: number[] = [];
+    let headCountData: number[] = [];
 
     const node = chartNode || {};
     // 兼容三种结构：
     //  A) 标准 ECharts option（后端 /analysis/process-datasets）：series 直接在 node 上
     //  B) 私有嵌套结构：node.option.series
-    //  C) 私有扁平结构：node.data = [{首单月, 净GMV, 净毛利}, ...]
+    //  C) 私有扁平结构：node.data = [{首单月/分层, 净GMV, 净毛利, 人数?}, ...]
+    //     注：净GMV/净毛利 为真实金额（RFM 修正后）；人数 为可选字段（RFM 分层图带，cohort 图无）。
     const opt: Record<string, unknown> = (node.option as Record<string, unknown>) || node;
     const seriesArr = (opt.series as Array<Record<string, unknown>>) || [];
 
@@ -44,6 +46,7 @@ export const EtherealDualAxisChart: React.FC<Props> = ({ chartNode, title, heigh
       xAxisData = arr.map((item) => String(item[xField] || ''));
       gmvData = arr.map((item) => Number(item['净GMV'] || item.gmv || 0));
       profitData = arr.map((item) => Number(item['净毛利'] || item.profit || 0));
+      headCountData = arr.map((item) => Number(item['人数'] || 0));
     } else if (seriesArr.length > 0) {
       const xAxisNode = (opt.xAxis as Record<string, unknown>) || {};
       xAxisData = (Array.isArray(xAxisNode.data) ? xAxisNode.data : (xAxisNode as any)) as string[] || [];
@@ -66,8 +69,8 @@ export const EtherealDualAxisChart: React.FC<Props> = ({ chartNode, title, heigh
         <div style="font-size: 18px; font-weight: 700; color: #1E293B; letter-spacing: 0.5px; text-transform: uppercase;">
           ${headerTitle} <span style="color: #94A3B8; font-weight: 500; text-transform: none; margin-left: 8px;">| 净GMV与净毛利对比</span>
         </div>
-        <div style="background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.9); padding: 6px 14px; border-radius: 12px; font-size: 12px; font-weight: 600; color: #475569;">
-          Cohort View
+          <div style="background: rgba(255,255,255,0.6); border: 1px solid rgba(255,255,255,0.9); padding: 6px 14px; border-radius: 12px; font-size: 12px; font-weight: 600; color: #475569;">
+          RFM View
         </div>`;
     }
     if (kpiRowRef.current) {
@@ -98,8 +101,15 @@ export const EtherealDualAxisChart: React.FC<Props> = ({ chartNode, title, heigh
         textStyle: { color: '#475569', fontWeight: 'bold' },
         extraCssText: 'box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); backdrop-filter: blur(8px); border-radius: 12px;',
         axisPointer: { type: 'none' },
-        formatter: (params: Array<{ name: string; seriesName: string; value: number; marker: string }>) => {
+        formatter: (params: Array<{ name: string; seriesName: string; value: number; marker: string; dataIndex: number }>) => {
+          const di = params[0]?.dataIndex ?? 0;
+          const hc = headCountData[di] || 0;
           let html = `<div style="margin-bottom:8px;color:#64748B;font-size:13px;">${params[0].name}</div>`;
+          if (hc > 0) {
+            html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:4px;">
+              <span style="display:flex;align-items:center;color:#64748B;font-weight:600;">人数</span>
+              <span style="color:#0F172A;font-weight:700;">${hc.toLocaleString('en-US')}</span></div>`;
+          }
           params.forEach((item) => {
             let marker = item.marker;
             if (item.seriesName.includes('Profit') || item.seriesName.includes('净毛利')) {

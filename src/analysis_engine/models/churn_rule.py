@@ -374,24 +374,25 @@ def _advanced_f(df: pd.DataFrame, user_level: pd.DataFrame) -> dict:
         p_norm = normal_dim.value_counts(normalize=True)
         rows = []
         for v in values:
-            offset = round((float(p_churn.get(v, 0.0)) - float(p_norm.get(v, 0.0))) * 100, 1)
-            rows.append({"维度": dim, "维度取值": str(v), "偏移值": offset})
+            p_c = round(float(p_churn.get(v, 0.0)) * 100, 1)
+            p_n = round(float(p_norm.get(v, 0.0)) * 100, 1)
+            offset = round(p_c - p_n, 1)
+            rows.append({"维度": dim, "维度取值": str(v),
+                          "流失占比": p_c, "正常占比": p_n, "偏移值": offset})
             offset_lookup[(dim, str(v))] = offset
         rows.sort(key=lambda r: r["偏移值"], reverse=True)   # 每维度独立降序排名
-        all_rows.extend(rows)
+        # 截断：正(易流失)top3 + 负(稳定)top3，每维度最多6条
+        pos_top = [r for r in rows if r["偏移值"] > 0][:3]
+        neg_top = [r for r in rows if r["偏移值"] < 0][:3]
+        zero_rows = [r for r in rows if r["偏移值"] == 0]  # 持平的保留（通常很少）
+        all_rows.extend(pos_top + neg_top + zero_rows)
         user_dim_values[dim] = dim_user
         dim_count += 1
 
-    # 维度偏移图全局截断：正向 Top3 + 反向 Top3（偏移值=0 不取，合计 ≤6 条）
-    # 全局混排后取最显著偏离，聚焦核心归因；仅影响展示数据，不动 offset_lookup/top_flag
-    all_rows.sort(key=lambda r: r["偏移值"], reverse=True)
-    pos = [r for r in all_rows if r["偏移值"] > 0][:3]
-    # 反向取最负（偏离最大）的 3 个：降序排列后尾部即最负，切片末 3 项
-    neg = [r for r in all_rows if r["偏移值"] < 0][-3:]
-    all_rows = pos + neg
+
 
     if dim_count == 0:
-        return {"triggered": False, "chart": None, "dim_count": 0, "top_flag": None,
+        return {"triggered": False, "charts": [], "dim_count": 0, "top_flag": None,
                 "note": "进阶 F 未触发：白名单维度列存在但均无有效取值。"}
 
     # [流失集中维度TOP]（文档 128 行）：每个已流失用户，标注其各维度取值中偏移最大的
@@ -413,13 +414,23 @@ def _advanced_f(df: pd.DataFrame, user_level: pd.DataFrame) -> dict:
     for uid in churn_idx:
         top_flag.loc[uid] = _top_flag_for(uid)
 
-    chart = ChartData(
-        slot="hbar__attr_dim_offset", chart_type="hbar_family",
-        title="流失归因：维度偏移图族（流失群占比 − 正常群占比，pp）",
-        x="维度取值", y="偏移值", color="维度", data=all_rows,
-        chart_config={"family": True, "dims": list(user_dim_values.keys())},
-    )
-    return {"triggered": True, "chart": chart, "dim_count": dim_count,
+    # 维度偏移图：每个维度一张独立 hbar 图（chart_type="hbar"，前端走标准水平条形图渲染）
+    # 仅选取总偏移绝对值最大的前 3 个维度出图；每维度内部全量不截断
+    dim_abs = {}
+    for r in all_rows:
+        dim_abs[r["维度"]] = dim_abs.get(r["维度"], 0.0) + abs(r["偏移值"])
+    top3_dims = sorted(dim_abs, key=dim_abs.get, reverse=True)[:3]
+    charts = []
+    for dim in top3_dims:
+        dim_data = [r for r in all_rows if r["维度"] == dim]
+        # 每维度内部按偏移值降序排列，便于阅读
+        dim_data.sort(key=lambda r: r["偏移值"], reverse=True)
+        charts.append(ChartData(
+            slot="hbar__attr_dim_offset", chart_type="hbar",
+            title=f"流失归因 · {dim}：维度偏移（pp）",
+            x="维度取值", y="偏移值", color="维度", data=dim_data,
+        ))
+    return {"triggered": True, "charts": charts, "dim_count": dim_count,
             "top_flag": top_flag, "note": ""}
 
 
@@ -476,8 +487,8 @@ class ChurnRuleModel(AnalysisModel):
             KPIItem(label="正常", value=f"{N_normal:,}"),
             KPIItem(label="流失率", value=f"{churn_rate:.1%}"),
             KPIItem(label="健康率", value=f"{health_rate:.1%}"),
-            KPIItem(label="流失阈值 R_churn(天)", value=f"{R_churn:.1f}"),
-            KPIItem(label="群体平均间隔(天)", value=f"{G_bar:.1f}"),
+            KPIItem(label="流失阈值 R_churn(天)", value=f"{R_churn:.2f}"),
+            KPIItem(label="群体平均间隔(天)", value=f"{G_bar:.2f}"),
         ]
 
         # ===== 图表 =====
@@ -501,23 +512,36 @@ class ChurnRuleModel(AnalysisModel):
             x="档位", y="人数", data=tier_data,
         ))
 
-        # ② R_login 分布（预分箱 bar，避免 histogram 类型重算原始列）
+        # ② R_login 分布（自适应分箱 bar，避免 histogram 类型重算原始列）
         # R_login 已在 _analyze 内 clip(lower=0)，此处 edges 再做严格递增保护双保险
         r_vals = user_level["R_login"].astype(float)
         max_r = float(r_vals.max()) if len(r_vals) else 0.0
-        bin_w = max(15.0, round(R_churn / 5.0))
+        # 柱数自适应：按数据跨度与目标柱数挂钩，避免大跨度时 30+ 根柱子挤成一团
+        TARGET_BINS = 15
+        bin_w = max(15.0, round(max_r / TARGET_BINS))
         edges = list(range(0, int(max_r) + int(bin_w) + 1, int(bin_w)))
         edges = sorted(set(edges))                      # 去重 + 升序（pd.cut 要求严格递增）
         if len(edges) < 2:
             edges = [0, max(int(max_r), 0) + 1]
         bins = pd.cut(r_vals, bins=edges, right=False, include_lowest=True)
         dist = bins.value_counts().sort_index()
-        dist_data = [{"R_login区间(天)": str(iv), "人数": int(cnt)}
-                     for iv, cnt in dist.items()]
+        # 长尾合并：超过流失阈值 R_churn 的尾部区间合并为一根 "≥X天" 尾巴桶，
+        # 既压柱数又突出"流失危险区"整体体量
+        tail_label = f"≥{R_churn:.2f}天"
+        merged_tail = 0
+        rows: list = []
+        for iv, cnt in dist.items():
+            if iv.left >= R_churn:
+                merged_tail += int(cnt)
+            else:
+                rows.append({"距上次活跃天数区间(天)": f"{int(iv.left):g}", "人数": int(cnt)})
+        if merged_tail > 0:
+            rows.append({"距上次活跃天数区间(天)": tail_label, "人数": merged_tail})
         charts.append(ChartData(
             slot="r_login_dist", chart_type="bar",
-            title="用户距上次活跃天数(R_login)分布",
-            x="R_login区间(天)", y="人数", data=dist_data,
+            title="用户距上次活跃天数分布",
+            x="距上次活跃天数区间(天)", y="人数", data=rows,
+            chart_config={"threshold": float(R_churn), "threshold_label": "流失阈值"},
         ))
 
         insights = []
@@ -561,7 +585,7 @@ class ChurnRuleModel(AnalysisModel):
         # ⑦ 进阶 F：流失归因（单一图族：每维度一张横向偏移图）
         f_result = _advanced_f(df, user_level)
         if f_result["triggered"]:
-            charts.append(f_result["chart"])
+            charts.extend(f_result["charts"])
             if f_result.get("top_flag") is not None:
                 user_level["流失集中维度TOP"] = f_result["top_flag"]
             insights.append(

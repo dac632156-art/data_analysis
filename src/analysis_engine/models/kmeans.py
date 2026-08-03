@@ -592,7 +592,7 @@ def _name_clusters(df_feat: pd.DataFrame, labels: np.ndarray, cfg: KMeansModuleC
             lab = cfg.feature_labels.get(f, {})
             words.append(lab.get(sig[f], sig[f]))
         name = ("".join(words) + cfg.entity_word) if words else f"均衡{cfg.entity_word}"
-        names[c] = f"C{c}_{name}"
+        names[c] = name
     return names
 
 
@@ -635,12 +635,15 @@ def _cluster_cell(val: float, vals: List[float], higher_is_better: bool):
 def _build_charts(df_feat, labels, names, cfg):
     """仅产出【簇画像雷达图】作为业务主图。
 
-    每簇一条 series（series.name = 簇键 C{k}_{B方案描述}，仅作辅助标注）；
+    每簇一条 series（series.name = B方案业务描述，仅作辅助标注）；
     indicator = 本模块特征（展示名含单位），动态取不写死；
     用途是业务一眼看各自然群特征形态差异，不在图内做好坏判断。
     选K折线 / 簇规模 / 散点 三图已删除（其背后的 _select_k / _is_separable 早退仍保留在 run_kmeans）。
     """
     charts: List[ChartData] = []
+    # 流失风险聚类不产出雷达图（业务主图）
+    if cfg.name == "churn_seg":
+        return charts
     radar_feats = [f for f in cfg.name_features if f in df_feat.columns]
     if len(radar_feats) >= 2:
         radar_rows = []

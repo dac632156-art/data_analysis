@@ -34,7 +34,11 @@ from src.analysis_engine.registry import register_model
 COLUMN_ALIASES = {
     "订单ID": ["订单id", "订单号", "订单编号", "交易id", "交易号", "order_id", "orderid", "order no", "order_no", "transaction_id", "tid"],
     "商品ID": ["商品id", "货号", "产品id", "sku", "skuid", "item_id", "itemid", "product_id", "productid", "goods_id", "goodsid"],
-    "商品类目": ["品类", "类目", "类别", "商品类别", "category", "cat", "cate", "item_category", "product_category", "type"],
+    "商品类目": ["品类", "类目", "类别", "商品类别", "一级类目", "category", "cat", "cate", "item_category", "product_category", "type"],
+    # 细类目（二级类目 / 子类别）：介于「商品名称」与「商品类目（一级）」之间
+    "细类目": ["二级类目", "子类别", "子类目", "细分类目", "细类", "次级类目", "sub_category", "subcategory", "sub_cat", "category2", "cat2", "category_l2"],
+    # 商品名称（最细、最具体、天然带中文名，如「纯牛奶」「玻璃水杯」）
+    "商品名称": ["产品名称", "品名", "商品名", "货品名称", "goods_name", "product_name", "item_name", "product", "name"],
     "商品毛利": ["毛利", "利润", "边际利润", "margin", "profit", "gross_margin"],
     "商品单价": ["单价", "价格", "售价", "price", "unit_price", "sale_price"],
     "折扣金额": ["折扣", "优惠", "discount", "discount_amount", "coupon"],
@@ -208,20 +212,99 @@ def _significant_dedup(rules, min_lift: float = 1.0):
     return out
 
 
-def _cooccurrence_graph_chart(slot: str, title: str, rules, top: int = 40) -> ChartData:
-    """构造关系网络图 ChartData：每行是一条商品对连线。
+def _aggregate_to_category(rules, name_map: dict, top: int = 40):
+    """将商品级关联规则聚合成「命名级」网络边表（节点 = 最细可用的中文命名）。
 
-    数据行键：source(商品A), target(商品B), value(共现次数), lift(提升度)。
-    ChartRenderer 会把 data 转成 DataFrame，列名即 source/target/value/lift，
-    create_graph 直接读取这些列（无需 x/y 占位键重命名）。
+    name_map: 商品ID → 展示名（已是最终最细中文名：商品名称 / 细类目 / 大类目）。
+    聚合规则（与节点粒度无关，统一适用）：
+      - 商品ID → 展示名（经 name_map 映射）；name_map 未覆盖的货号回退到原 ID 值；
+      - 相同节点名 (source == target) 丢弃（自环无意义，无论粒度）；
+      - 跨节点对 (X, Y) 合并：共现次数累加、提升度取两两中的最大值；
+      - 返回边表 [{source, target, value, lift}]，节点名即中文命名（绝不含货号 Sxxx）。
     """
-    selected = rules[:top]
-    data = [{
-        "source": r["antecedent"],
-        "target": r["consequent"],
-        "value": r.get("count", 0),
-        "lift": round(r["lift"], 3),
-    } for r in selected]
+    merged: dict = {}
+    for r in rules:
+        a = name_map.get(r["antecedent"], r["antecedent"])
+        b = name_map.get(r["consequent"], r["consequent"])
+        if a == b:
+            continue  # 同一节点（自环）丢弃
+        # 统一无向顺序（节点A, 节点B）避免 X→Y 与 Y→X 双写
+        key = tuple(sorted((a, b)))
+        cnt = r.get("count", 0)
+        lift = r.get("lift", 0) or 0
+        if key not in merged:
+            merged[key] = {"value": 0, "lift": 0.0}
+        merged[key]["value"] += cnt
+        merged[key]["lift"] = max(merged[key]["lift"], lift)
+
+    edges = [
+        {"source": k[0], "target": k[1],
+         "value": v["value"], "lift": round(v["lift"], 3)}
+        for k, v in merged.items()
+    ]
+    edges.sort(key=lambda e: e["value"], reverse=True)
+    return edges[:top]
+
+
+def _build_name_map(work: pd.DataFrame, cols: set) -> dict | None:
+    """构造 商品ID → 最细中文命名 的映射，按优先级选取命名列。
+
+    优先级（从高到低，命中第一个可用的即作为节点命名列）：
+      1. 商品名称（最细：纯牛奶、玻璃水杯…）
+      2. 细类目（二级类目：蔬菜、水果…）
+      3. 商品类目（一级大类：食品生鲜、手机数码…）
+
+    返回 dict（商品ID→展示中文名）或 None：
+      - 三列均无 → 返回 None（调用方据此不画网络图，铁律：货号不进图）；
+      - 有命名列 → 逐行取该列的值；值缺失/空的行回退为原商品ID（仍可能含货号，
+        但此分支仅当该命名列部分缺失时出现，调用方聚合后会以中文名为主节点）。
+    """
+    name_col = None
+    for cand in ("商品名称", "细类目", "商品类目"):
+        if cand in cols:
+            name_col = cand
+            break
+    if name_col is None:
+        return None  # 无任命名列，不画货号图
+
+    id_col = work["商品ID"]
+    name_series = work[name_col]
+    mp: dict = {}
+    for gid, nm in zip(id_col, name_series):
+        if gid is None or gid == "" or gid in mp:
+            continue
+        nm = nm if (nm is not None and nm != "") else gid
+        mp[gid] = str(nm)
+    return mp
+
+
+def _cooccurrence_graph_chart(slot: str, title: str, rules, top: int = 40,
+                               name_map: dict | None = None) -> ChartData:
+    """构造关系网络图 ChartData：每行是一条（命名节点）对连线。
+
+    数据行键：source, target, value(共现次数), lift(提升度)。
+    ChartRenderer 会把 data 转成 DataFrame，列名即 source/target/value/lift，
+    create_graph 直接读取这些列。
+
+    命名策略（name_map 由调用方按「商品名称 > 细类目 > 大类目」优先级构造）：
+      - 节点名 = 最细可用的中文命名（如 纯牛奶 / 蔬菜 / 食品生鲜），图上绝无商品货号；
+      - name_map 为 None（数据无任何命名列、只有货号）时不画此图（铁律：货号不进图）。
+    """
+    name_map = name_map or {}
+
+    if name_map:
+        # 命名级聚合：节点直接是中文命名，图上不再出现商品ID
+        data = _aggregate_to_category(rules, name_map, top=top)
+    else:
+        # 退化为纯商品ID（无命名列，按铁律不画此图；保留分支仅作防御）
+        selected = rules[:top]
+        data = [{
+            "source": r["antecedent"],
+            "target": r["consequent"],
+            "value": r.get("count", 0),
+            "lift": round(r["lift"], 3),
+        } for r in selected]
+
     return ChartData(slot=slot, chart_type="graph", title=title,
                      x="source", y="target", data=data)
 
@@ -359,10 +442,15 @@ class AssociationRulesModel(AnalysisModel):
 
         charts = []
         if has_significant:
-            charts.append(_cooccurrence_graph_chart(
-                "ar_network",
-                "商品关联网络图（节点=商品，连线=常一起购买，线越粗=共现越多，金色=真关联）",
-                significant, top=40))
+            # 构建 商品ID→最细中文命名 映射（按「商品名称 > 细类目 > 大类目」优先级）。
+            # 有任一命名列 → 节点画中文命名（最细可用），图上绝无货号；
+            # 三列都无（只有货号）→ name_map 为 None → 不画网络图（铁律：货号不进图）。
+            name_map = _build_name_map(work, cols)
+            if name_map:
+                charts.append(_cooccurrence_graph_chart(
+                    "ar_network",
+                    "商品关联网络图（节点=最细品类，连线=常一起购买，线越粗=共现越多，金色=真关联）",
+                    significant, top=40, name_map=name_map))
         if cat_chart is not None:
             charts.append(cat_chart)
         if margin_chart is not None:

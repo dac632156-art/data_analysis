@@ -302,15 +302,15 @@ def _build_nested_funnel_option(
             "textStyle": {"color": "#F8FAFC", "fontSize": 16},
         },
         "legend": {
-            "data": ["总转化", "当场转化(同会话30分钟内)"],
+            "data": ["总转化（全链路）", "当场转化（同会话30分钟内）"],
             "top": 30,
-            "textStyle": {"color": "#F8FAFC"},
+            "textStyle": {"color": "#0F172A"},
         },
         "tooltip": {"trigger": "item", "formatter": "{a}<br/>{b}: {c} 人"},
         "series": [
-            _funnel_layer(standard_data, max_val, "总转化", _FUNNEL_BLUE, "inside"),
+            _funnel_layer(standard_data, max_val, "总转化（全链路）", _FUNNEL_BLUE, "inside"),
             _funnel_layer(
-                fast_data, max_val, "当场转化(同会话30分钟内)", _FUNNEL_CYAN, "inside",
+                fast_data, max_val, "当场转化（同会话30分钟内）", _FUNNEL_CYAN, "inside",
                 border_color="rgba(248,250,252,0.35)",
                 border_width=2,
             ),
@@ -668,11 +668,11 @@ def _advanced_c(
     steps: List[str],
     step_users: pd.DataFrame,
     config: Optional[dict] = None,
-) -> Tuple[Optional[ChartItem], List[str]]:
-    """分支 C：终点 GMV 挂载。
+) -> Tuple[Optional[KPIItem], List[str]]:
+    """分支 C：末档 GMV 挂载。
 
     触发条件：有"订单实付金额"列。
-    计算终点客单价 AOV，低于基线 70% 标红。
+    计算末档客单价 AOV，低于基线 70% 标红。
     """
     config = config or {}
     n = len(steps)
@@ -711,41 +711,25 @@ def _advanced_c(
             threshold = DEFAULT_ALERT_AOV_LOW
 
     is_warning = aov < threshold
-    action = "低净值流量预警(Low_Quality_Traffic_Alert)" if is_warning else "高价值转化(High_Value_Funnel)"
 
-    data_rows = [{
-        "漏斗": steps[-1] if steps else "终点",
-        "AOV": aov,
-        "System_Action": action,
-    }]
-
-    option = _build_bar_option(
-        data_rows=data_rows,
-        x="漏斗",
-        y="AOV",
-        orientation="v",
-        title="终点客单价 (AOV)",
-    )
-
-    chart_item = ChartItem(
-        slot="funnel_aov",
-        chart_type="bar",
-        title="终点客单价 (AOV)",
-        option=option,
+    kpi_item = KPIItem(
+        label="末档平均客单价",
+        value=f"¥{aov}",
+        kpi_type="number",
     )
 
     insights = []
     if is_warning:
         insights.append(
-            f"低净值流量预警：到达终点用户平均客单价仅 {aov} 元，低于红线 {threshold} 元，"
+            f"低净值流量预警：到达末档用户平均客单价仅 {aov} 元，低于红线 {threshold} 元，"
             f"可能存在高转化低客单价的羊毛党陷阱，建议排查该漏斗流量商业价值"
         )
     else:
         insights.append(
-            f"高价值转化：终点客单价 {aov} 元，高于红线 {threshold} 元，转化流量商业价值健康"
+            f"高价值转化：末档客单价 {aov} 元，高于红线 {threshold} 元，转化流量商业价值健康"
         )
 
-    return chart_item, insights
+    return kpi_item, insights
 
 
 # ===== 5. FunnelAnalysisModel 类 =====
@@ -914,7 +898,7 @@ class FunnelAnalysisModel(AnalysisModel):
             df, steps, step_users, config
         )
         if chart_c is not None:
-            pkg.charts.append(chart_c)
+            pkg.kpis.append(chart_c)
         if insights_c:
             pkg.insights.extend(insights_c)
 

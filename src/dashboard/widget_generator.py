@@ -197,11 +197,13 @@ class WidgetGenerator:
         4. 兜底：从配置文件取，配置文件也没有 → INSIGHT
         """
         chart_data = getattr(pkg, "chart_data", []) or []
+        # V3 新字段：charts（ChartItem 列表，含 option），与 chart_data 并行
+        charts = getattr(pkg, "charts", []) or []
         tables = getattr(pkg, "tables", []) or []
         kpis = getattr(pkg, "kpis", []) or []
 
         # 1) 有图表 → chart（最直观的展示方式）
-        if chart_data:
+        if chart_data or charts:
             return WidgetType.CHART
 
         # 2) 有表格但无图表 → table（用户勾选了表类型分析）
@@ -224,8 +226,10 @@ class WidgetGenerator:
         config_chart = self._config.get("chart_type")
         if config_chart:
             return str(config_chart)
-        # 从 chart_data 取第一个
+        # 从 chart_data 或 charts 取第一个
         chart_data = getattr(pkg, "chart_data", []) or []
+        if not chart_data:
+            chart_data = getattr(pkg, "charts", []) or []
         if chart_data:
             first = chart_data[0]
             if hasattr(first, "chart_type"):

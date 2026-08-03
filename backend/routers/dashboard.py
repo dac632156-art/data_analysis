@@ -275,6 +275,26 @@ async def api_dashboard_echarts(req: DashboardChartRequest):
                 except Exception as e:
                     logger.warning(f"词云重算失败，沿用已保存 option: {e}")
 
+            # ★ RFM 双轴图专项（2026-08-03 修复「Avg.Profit Margin 离谱」）：
+            #   已保存包里的 rfm_dual option 是旧版代码生成的（左轴错填人数、
+            #   y 字段错配），前端按 金额÷金额 算毛利率会产生万倍率。
+            #   rfm.py 已修好 dual_rows 真值（人数/净GMV/净毛利），但 DashboardPage
+            #   默认复用已保存 option 不重算 → 屏幕上仍显示旧数字。
+            #   故对 dual_axis + slot==rfm_dual 始终用当前 RFMModel 重算，
+            #   保证下发的 option 来自当前修正后的逻辑。
+            if chart_type == 'dual_axis' and cfg.get('slot') == 'rfm_dual':
+                try:
+                    from src.analysis_engine.models.rfm import RFMModel
+                    from src.chart_renderer import ChartRenderer
+                    pkg = RFMModel().compute(df)
+                    new_cd = next((c for c in pkg.chart_data if c.slot == 'rfm_dual'), None)
+                    if new_cd:
+                        regen = ChartRenderer().render(new_cd)
+                        if regen:
+                            existing_option = regen.option
+                except Exception as e:
+                    logger.warning(f"RFM 双轴重算失败，沿用已保存 option: {e}")
+
             if existing_option:
                 result.append({
                     "title": title_str,

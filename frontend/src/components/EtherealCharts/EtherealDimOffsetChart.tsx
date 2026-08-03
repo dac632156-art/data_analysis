@@ -48,56 +48,100 @@ export const EtherealDimOffsetChart: React.FC<Props> = ({
 
     const dimsConfig = ((chartNode?.chart_config as Record<string, unknown> | undefined)?.dims as string[]) || [];
 
-    const dimGroups: Record<string, Array<{ name: string; value: number }>> = {};
+    // 把 y 轴技术拼接串转成人话：
+    // 连续维度区间 "(32.958, 39.0]" -> "32~39岁"；分类维度原样保留
+    const humanizeLabel = (raw: string): string => {
+      const m = raw.match(/^\(([-\d.]+),\s*([-\d.]+)\]$/);
+      if (m) {
+        const lo = Number(m[1]).toFixed(0);
+        const hi = Number(m[2]).toFixed(0);
+        return `${lo}~${hi}岁`;
+      }
+      // 形如 "商品类目|美妆个护" -> "美妆个护"
+      const pipe = raw.indexOf('|');
+      if (pipe >= 0) return raw.slice(pipe + 1);
+      return raw;
+    };
+
+    const dimGroups: Record<string, Array<{
+      name: string; value: number; rawName: string;
+      churnPct: number; normalPct: number;
+    }>> = {};
     rawData.forEach((item) => {
       const dim = String(item['维度'] || '未知');
       if (!dimGroups[dim]) dimGroups[dim] = [];
+      const rawName = String(item['维度取值'] || '');
       dimGroups[dim].push({
-        name: String(item['维度取值'] || ''),
+        name: humanizeLabel(rawName),
+        rawName,
         value: Number(item['偏移值'] ?? 0),
+        churnPct: Number(item['流失占比'] ?? 0),
+        normalPct: Number(item['正常占比'] ?? 0),
       });
     });
 
     const orderedDims = dimsConfig.length > 0 ? dimsConfig.filter((d) => dimGroups[d]) : Object.keys(dimGroups);
 
-    const seriesData: Array<{ category: string; value: number; dimension: string; dimIndex: number }> = [];
+    const seriesData: Array<{
+      category: string; rawName: string; value: number;
+      dimension: string; dimIndex: number; churnPct: number; normalPct: number;
+    }> = [];
     orderedDims.forEach((dimName, dimIdx) => {
       (dimGroups[dimName] || []).forEach((item) => {
-        seriesData.push({ category: item.name, value: item.value, dimension: dimName, dimIndex: dimIdx });
+        seriesData.push({
+          category: item.name, rawName: item.rawName, value: item.value,
+          dimension: dimName, dimIndex: dimIdx,
+          churnPct: item.churnPct, normalPct: item.normalPct,
+        });
       });
     });
 
+    // 按原始偏移值降序（易流失在前），但显示时翻转方向：
+    // 易流失（偏移>0）→ 红色、画在左侧（value 取负）；更稳定（偏移<0）→ 绿色、画在右侧
     seriesData.sort((a, b) => b.value - a.value);
     const sortedCategories = seriesData.map((d) => d.category);
-    const sortedValues = seriesData.map((d) => d.value);
+    const sortedRawNames = seriesData.map((d) => d.rawName);
+    const sortedValues = seriesData.map((d) => -d.value); // 翻转：易流失落负轴(左)
     const sortedDims = seriesData.map((d) => d.dimension);
+    const sortedChurn = seriesData.map((d) => d.churnPct);
+    const sortedNormal = seriesData.map((d) => d.normalPct);
 
     const dimPalette = ['#FCCDDF', '#C8E1F5', '#D7EFE5', '#E2C9F3', '#FCDDC8', '#BAC2F0'];
-    const NEG_COLOR = '#A7E6D7';
-    const POS_COLOR = '#FCCDDF';
+    // 重配色（做法1）：红=易流失(危险)、绿=更稳定(安全)
+    const RISK_COLOR = '#FCA5A5'; // 红（易流失）
+    const SAFE_COLOR = '#A7E6D7'; // 绿（更稳定）
 
     const getDimColor = (dimName: string) => dimPalette[orderedDims.indexOf(dimName) % dimPalette.length];
 
-    const barData = sortedValues.map((val) => {
-      const isPositive = val >= 0;
-      const barColor = isPositive ? POS_COLOR : NEG_COLOR;
+    const barData = sortedValues.map((val, i) => {
+      // val 已取负：val<0 表示原始偏移>0 → 易流失；val>0 表示原始偏移<0 → 更稳定
+      const isRisk = val < 0;
+      const barColor = isRisk ? RISK_COLOR : SAFE_COLOR;
+      const churnPct = sortedChurn[i];
+      const normalPct = sortedNormal[i];
+      const verdict = isRisk ? '更易流失' : (val > 0 ? '更稳定' : '持平');
+      // 标签：柱顶显示带正负号的偏移值（与 X 轴 +10pp/-5pp 风格一致）
+      // 负值柱(易流失)→ 标签在柱子右端外侧靠近 0pp；正值柱(更稳定)→ 标签在柱子右端外侧远 0pp
+      const sign = val > 0 ? '+' : (val < 0 ? '-' : '');
+      const labelText = `${sign}${Math.round(Math.abs(val))}pp`;
+      const labelColor = isRisk ? '#DC2626' : (val > 0 ? '#059669' : '#64748B');
       return {
         value: val,
         itemStyle: {
           color: barColor,
-          opacity: 0.85,
-          borderRadius: isPositive ? [0, 6, 6, 0] : [6, 0, 0, 6],
+          opacity: 0.9,
+          borderRadius: isRisk ? [6, 0, 0, 6] : [0, 6, 6, 0],
           borderColor: 'rgba(255,255,255,0.5)',
           borderWidth: 1,
         },
         label: {
           show: true,
-          position: isPositive ? 'right' : 'left',
-          color: isPositive ? '#E11D48' : '#059669',
-          fontWeight: 700,
+          position: 'outside',
+          formatter: labelText,
+          color: labelColor,
           fontSize: 12,
-          distance: 8,
-          formatter: (p: { value: number }) => (p.value >= 0 ? '+' : '') + p.value.toFixed(1),
+          fontWeight: 700,
+          distance: 6,
         },
       };
     });
@@ -135,34 +179,40 @@ export const EtherealDimOffsetChart: React.FC<Props> = ({
         formatter: (params: Array<{ name: string; value: number; dataIndex: number }>) => {
           const p = params[0];
           const dimName = sortedDims[p.dataIndex];
-          const color = getDimColor(dimName);
-          const val = p.value;
-          const sign = val >= 0 ? '+' : '';
+          const churnPct = sortedChurn[p.dataIndex];
+          const normalPct = sortedNormal[p.dataIndex];
+          // p.value 已翻转：<0 表示原始偏移>0 → 易流失
+          const isRisk = p.value < 0;
+          const offset = Math.abs(p.value).toFixed(1);
+          const verdict = isRisk ? '更容易流失' : (p.value > 0 ? '更稳定' : '持平');
+          const verdictColor = isRisk ? '#DC2626' : (p.value > 0 ? '#059669' : '#64748B');
           return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-              <span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${color};"></span>
               <span style="font-weight:700;">${p.name}</span>
               <span style="color:#94A3B8;font-size:11px;">(${dimName})</span>
           </div>
-          <div style="margin-top:4px;padding-top:4px;border-top:1px solid #E2E8F0;">
-              偏移值: <b style="color:${val >= 0 ? '#059669' : '#DC2626'}">${sign}${val.toFixed(1)}pp</b>
+          <div style="margin-top:4px;padding-top:4px;border-top:1px solid #E2E8F0;line-height:1.6;">
+            已流失人群中占比：<b style="color:#DC2626">${churnPct.toFixed(1)}%</b><br/>
+            正常人群中占比：<b style="color:#059669">${normalPct.toFixed(1)}%</b><br/>
+            相差 <b>${offset}pp</b> → <b style="color:${verdictColor}">${verdict}</b>
           </div>`;
         },
       },
+      legend: { show: false },
       toolbox: {
         right: 20,
-        top: 10,
+        top: 44,
         z: 9999,
         feature: {
           saveAsImage: { title: '下载图片', show: true },
         },
       },
-      grid: { top: 56, left: 100, right: 56, bottom: 24, containLabel: false },
+      grid: { top: 56, left: 110, right: 120, bottom: 50, containLabel: false },
       xAxis: {
         type: 'value',
         position: 'top',
         min: (value: { min: number }) => Math.min(value.min, -30),
         max: (value: { max: number }) => Math.max(value.max, 40),
-        axisLabel: { color: '#64748B', fontWeight: 500, fontSize: 12, formatter: (v: number) => `${v}` },
+        axisLabel: { color: '#64748B', fontWeight: 500, fontSize: 12, formatter: (v: number) => `${v > 0 ? '+' : ''}${v}pp` },
         axisLine: { show: false },
         axisTick: { show: false },
         splitLine: { show: true, lineStyle: { type: 'dashed', color: 'rgba(148,163,184,0.25)' } },
@@ -203,6 +253,36 @@ export const EtherealDimOffsetChart: React.FC<Props> = ({
             label: { show: false },
           },
         },
+      ],
+      graphic: [
+        // 右上角装饰性图例（红=更易流失 / 绿=更稳定），与截图风格一致
+        {
+          type: 'rect',
+          right: 168,
+          top: 14,
+          shape: { width: 14, height: 14, r: 3 },
+          style: { fill: RISK_COLOR },
+        },
+        {
+          type: 'text',
+          right: 110,
+          top: 15,
+          style: { text: '更易流失', fill: '#64748B', fontSize: 12, fontWeight: 500 },
+        },
+        {
+          type: 'rect',
+          right: 60,
+          top: 14,
+          shape: { width: 14, height: 14, r: 3 },
+          style: { fill: SAFE_COLOR },
+        },
+        {
+          type: 'text',
+          right: 8,
+          top: 15,
+          style: { text: '更稳定', fill: '#64748B', fontSize: 12, fontWeight: 500 },
+        },
+
       ],
     } as echarts.EChartsCoreOption);
 

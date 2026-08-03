@@ -12,12 +12,14 @@ import { EtherealLineChart } from './EtherealLineChart';
 import { EtherealBarChart } from './EtherealBarChart';
 import { EtherealRadarChart } from './EtherealRadarChart';
 import { EtherealBubbleChart } from './EtherealBubbleChart';
+import { EtherealNetworkChart } from './EtherealNetworkChart';
 import { EtherealRankChart } from './EtherealRankChart';
 import { EtherealDimOffsetChart } from './EtherealDimOffsetChart';
 import { EtherealRetentionMatrix } from './EtherealRetentionMatrix';
 import { EtherealMetricCard } from './EtherealMetricCard';
 import { EtherealTable } from './EtherealTable';
 import { EtherealDualAxisChart } from './EtherealDualAxisChart';
+import { EtherealFunnelChart } from './EtherealFunnelChart';
 import EChartView from '../EChartView';
 
 interface Props {
@@ -36,7 +38,7 @@ interface Props {
 }
 
 /** 已实现的仙气组件类型 */
-const IMPLEMENTED = new Set(['pie', 'bar', 'line', 'radar', 'dual_axis', 'heatmap', 'hbar', 'bubble', 'ranking', 'table', 'metric']);
+const IMPLEMENTED = new Set(['pie', 'bar', 'line', 'radar', 'dual_axis', 'heatmap', 'hbar', 'bubble', 'ranking', 'table', 'metric', 'graph', 'funnel']);
 
 /** 把后端五花八门的 chart_type 归一化为有限的仙气组件类型；
  * 未实现的类型（funnel/ranking/sankey/graph 等）原样返回，由调用方显式报错，不静默兜底。 */
@@ -49,11 +51,13 @@ function normalizeChartType(t: string): string {
   if (s === 'dual_axis') return 'dual_axis';
   if (s === 'heatmap' || s === 'cohort_heatmap') return 'heatmap';
   if (s === 'bubble_matrix') return 'bubble';
+  if (s === 'graph' || s === 'chord' || s === 'chord_diagram') return 'graph';
   if (s === 'hbar_family') return 'hbar';
   if (s === 'ranking' || s === 'horizontal_bar' || s === 'h_bar' || s === 'hbar_rank') return 'ranking';
   if (s === 'table') return 'table';
   if (s === 'metric' || s === 'card') return 'metric';
-  return s; // funnel/sankey/graph 等未实现组件，原样返回走报错分支
+  if (s === 'funnel') return 'funnel';
+  return s; // sankey/graph 等未实现组件，原样返回走报错分支
 }
 
 /**
@@ -154,6 +158,20 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
         });
       }
       return <EtherealBubbleChart chartNode={{ ...chartNode, data: bubbleData }} title={title} cardBgUrl={cardBgUrl} />;
+    }
+    case 'graph': {
+      // 关联图（和弦图）：商品关联网络图走自研关联图组件，替换默认 ECharts graph 节点连线。
+      // 数据来源三层兜底：data prop（边表，含 lift）→ chartNode.data（边表）→ option.series[0]（节点/边），
+      // 组件内部再自动去重构建节点表（对齐模板库 关联图组件.js 第 71-96 行）。
+      const netData = (raw && raw.length > 0)
+        ? raw
+        : ((chartNode?.data as Array<Record<string, unknown>>) || []);
+      return <EtherealNetworkChart chartNode={{ ...chartNode, data: netData }} title={title} cardBgUrl={cardBgUrl} />;
+    }
+    case 'funnel': {
+      // 转化漏斗图：数据来自后端 funnel.py → option.series[0].data = [{name,value}]
+      // 与可视化模板库/漏斗图组件.js 渲染逻辑一致（淡彩渐变 + 右侧 CTR 标签）
+      return <EtherealFunnelChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} />;
     }
     default:
       // 暂无量身定制的仙气组件，直接用原生 ECharts 渲染（保证图表永远可见，不退化成占位）

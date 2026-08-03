@@ -28,7 +28,8 @@
 
     <script>
         const myChart = echarts.init(document.getElementById('chart-container'));
-        const pastelColors = ['#F1C0E8', '#A3C4F3']; 
+        // 仙气水彩色板：取自气泡图组件.js 的 BASE_COLORS（同套柔彩体系），扩到 4 色避免多系列撞色
+        const pastelColors = ['#A3C4F3', '#F1C0E8', '#A78BFA', '#FB7185']; // 蓝、粉、淡紫、玫瑰粉
 
         function createPureWatercolorPattern(img, hexColor) {
             const canvas = document.createElement('canvas');
@@ -108,8 +109,14 @@
                     option.radar.splitLine = { lineStyle: { color: ['#F1F5F9', '#E2E8F0'], width: 1.5 } };
                     option.radar.axisLine = { lineStyle: { color: '#E2E8F0', type: 'dashed' } };
                     
-                    // 保证蓝色(C1)渲染在最后
-                    option.series.sort((a, b) => a.name.includes('高单价') ? -1 : 1);
+                    // 图层顺序修复：按均值从大到小排序，大图先画、小图最后画浮在最上层
+                    // （原逻辑把高单价排最前导致大粉图压住小蓝图）
+                    option.series.forEach((s) => {
+                        const dataArr = Array.isArray(s.data) ? s.data[0] : null;
+                        const vals = (dataArr && Array.isArray(dataArr.value)) ? dataArr.value : [];
+                        s._mean = vals.length ? vals.reduce((a, b) => a + (b || 0), 0) / vals.length : 0;
+                    });
+                    option.series.sort((a, b) => (b._mean || 0) - (a._mean || 0));
 
                     option.series.forEach((s, idx) => {
                         const color = pastelColors[idx % pastelColors.length];
