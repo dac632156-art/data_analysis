@@ -403,19 +403,10 @@ export default function DashboardPage() {
     const md = provider?.model;
 
     try {
-      // ★ 无状态：优先携带 localStorage 中的分析包副本（Render 重启/休眠也不丢），
-      //   后端优先使用它生成报告，不再强依赖后端 session.saved_packages。
-      let localPackages: Array<Record<string, unknown>> | undefined;
-      try {
-        const raw = localStorage.getItem('savedPackages');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) localPackages = parsed;
-        }
-      } catch { /* localStorage 解析失败则回退后端 session */ }
-
+      // 已保存分析包以「后端 session.saved_packages」为唯一真相源，generateAIReport 后端自读兜底，
+      // 不再从 localStorage 携带副本（report.py 中 packages 缺省时回退 manager.get_saved_packages）。
       // ★ 异步提交 + 轮询（内部规避 Render 50s HTTP 超时）
-      const result = await api.generateAIReport(ds.sessionId, pk, bu, md, localPackages);
+      const result = await api.generateAIReport(ds.sessionId, pk, bu, md, undefined);
       // 记录降级说明：AI 接口超时/不可达导致降级时，向体验者透明展示原因（与报告能力脱钩）
       setReportDegraded(result.degradation?.degraded ? result.degradation : null);
       const sections: Array<{

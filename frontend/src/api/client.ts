@@ -84,6 +84,11 @@ export const createSession = async (): Promise<string> => {
   return data.session_id;
 };
 
+/** 结束会话：级联清空该会话全部数据（落盘 + SQLite 数据集/分析包 + 已保存图表），释放插槽 */
+export const clearData = async (sessionId: string): Promise<void> => {
+  await api.post('/session/clear', null, { params: { session_id: sessionId } });
+};
+
 /* ===== 文件上传 ===== */
 export const uploadFile = async (
   file: File,
@@ -461,6 +466,17 @@ export const processDatasets = async (
 /** 轮询处理进度 */
 export const getProcessStatus = async (taskId: string): Promise<ProcessStatusResponse> => {
   const { data } = await api.get<ProcessStatusResponse>(`/analysis/process-datasets/status/${taskId}`);
+  return data;
+};
+
+/** 读取已落库的数据洞察分析包（process-datasets 生成结果），用于切换模块回来恢复 */
+export const getDatasetPackages = async (
+  sessionId: string,
+  datasetId: string,
+): Promise<{ packages: Record<string, any> }> => {
+  const { data } = await api.get<{ packages: Record<string, any> }>(`/analysis/dataset-packages`, {
+    params: { session_id: sessionId, dataset_id: datasetId },
+  });
   return data;
 };
 

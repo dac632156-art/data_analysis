@@ -336,6 +336,21 @@ async def api_process_datasets(session_id: str, req: Optional[ProcessDatasetsReq
     return {"task_id": task_id, "total": len(process_items)}
 
 
+@router.get("/analysis/dataset-packages")
+async def api_dataset_packages(session_id: str, dataset_id: str):
+    """读取已落库的数据洞察分析包（process-datasets 生成的结果）。
+
+    用于前端切换模块回来后，把当前数据集的数据洞察结果重新拉回渲染，
+    无需用户重新生成、也无需点「保存到看板」。
+    """
+    pkgs = manager.get_dataset_packages(session_id, dataset_id)
+    # 转为可序列化结构：{pkg_id: payload}
+    result = {}
+    for pid, pkg in (pkgs or {}).items():
+        result[pid] = pkg.payload if hasattr(pkg, "payload") else pkg
+    return {"packages": sanitize_json(result)}
+
+
 @router.get("/analysis/process-datasets/status/{task_id}")
 async def api_process_status(task_id: str):
     """轮询处理进度：running / done / error / 404(过期)"""

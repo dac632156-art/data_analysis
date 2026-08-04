@@ -24,6 +24,11 @@ Thumbs.db
 # Upload sessions (runtime data, not source code)
 backend/uploads/
 
+# SQLite 持久化数据库（运行时生成，含用户数据，不进 git；遵循 30MB 上传限制纪律）
+# 仅保留 data/.gitkeep 占位，确保目录结构进 git。
+data/
+!data/.gitkeep
+
 # Python virtual env
 venv/
 .venv/

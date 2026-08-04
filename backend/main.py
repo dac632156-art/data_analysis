@@ -14,7 +14,7 @@ sys.path.insert(0, project_root)
 from dotenv import load_dotenv
 load_dotenv(os.path.join(project_root, ".env"))
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, Response
@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse, FileResponse, Response
 # 导入路由
 from backend.routers import upload, data, clean, chart, dashboard, insights, report, analysis
 from backend.services.session_manager import manager
+from backend.db.connection import init_db
 
 # ===== 强制 UTF-8 编码，避免 Windows 环境下 print() 中文报错 =====
 import sys as _sys
@@ -37,6 +38,33 @@ app = FastAPI(
     description="数据分析智能体 API",
     version="1.0.0",
 )
+
+@app.on_event("startup")
+def _startup_init_db():
+    """启动时确保 SQLite 表结构存在（幂等建表）。"""
+    try:
+        init_db()
+    except Exception as exc:  # 建表失败不应阻断启动，但需记录
+        import logging as _logging
+        _logging.getLogger("uvicorn.error").error(f"数据库初始化失败: {exc}", exc_info=True)
+
+    # 已知脏会话一次性清理：旧版（建库前 bug 版）把 AnalysisPackage 对象经
+    # json.dumps(default=str) 序列化成了字符串落库，重启读回后无法还原，
+    # 既刷屏又导致分析列表为空。该会话的已有分析产物已确认丢弃，用户需重新上传。
+    try:
+        from backend.db import crud as _crud
+        _DIRTY_SESSIONS = ["fd22be77-80d3-4867-9619-5e6259ea8826"]
+        for _sid in _DIRTY_SESSIONS:
+            _crud.delete_session(_sid)
+        if _DIRTY_SESSIONS:
+            import logging as _logging
+            _logging.getLogger("uvicorn.error").info(
+                f"已清理 {len(_DIRTY_SESSIONS)} 个历史脏会话的 SQLite state"
+            )
+    except Exception as exc:
+        import logging as _logging
+        _logging.getLogger("uvicorn.error").warning(f"清理历史脏会话失败(可忽略): {exc}")
+
 
 # CORS 配置 - 演示阶段允许所有来源（生产环境应限制）
 app.add_middleware(
@@ -86,6 +114,13 @@ async def new_session():
     """创建新会话"""
     session_id = manager.create_session()
     return {"session_id": session_id, "success": True}
+
+
+@app.post("/api/session/clear")
+async def clear_session(session_id: str = Query(...)):
+    """结束会话：级联清空该会话全部数据（落盘文件 + SQLite 数据集/分析包 + 已保存图表），释放插槽"""
+    manager.clear_data(session_id)
+    return {"status": "ok"}
 
 
 # 前端构建产物目录（Render 部署时随仓库提交 frontend/dist，由后端直接托管）

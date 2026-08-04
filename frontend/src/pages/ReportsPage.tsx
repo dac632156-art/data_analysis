@@ -35,20 +35,13 @@ export default function ReportsPage() {
     setStatusText('🔍 正在进行数据统计分析（阶段1-3）...');
     try {
       const provider = AI_PROVIDERS.find((p) => p.id === state.aiProvider);
-      let localPackages: Array<Record<string, unknown>> | undefined;
-      try {
-        const raw = localStorage.getItem('savedPackages');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) localPackages = parsed;
-        }
-      } catch { /* ignore */ }
+      // 已保存分析包以「后端 session.saved_packages」为唯一真相源，后端自读兜底，不携带 localStorage 副本。
       const result = await api.generateAIReport(
         state.sessionId,
         state.apiKey,
         provider?.baseUrl,
         provider?.model,
-        localPackages,
+        undefined,
       );
       if (reqId !== reqRef.current) return;
       setSections(result.sections || []);

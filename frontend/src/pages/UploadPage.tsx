@@ -6,7 +6,7 @@ import DataTable from '../components/DataTable';
 import { useData } from '../contexts/DataContext';
 import { formatBytes } from '../utils/format';
 import {
-  uploadFile, listDatasets, removeDataset, selectDataset, releaseUploadSlot,
+  uploadFile, listDatasets, removeDataset, selectDataset, clearData,
 } from '../api/client';
 import type { DatasetInfo } from '../types/api';
 
@@ -14,7 +14,7 @@ const QUOTA_DEFAULT = 30 * 1024 * 1024;
 const ACCEPT = '.csv, .xlsx, .xls, .json, .sqlite, .db';
 
 export default function UploadPage() {
-  const { state, dispatch } = useData();
+  const { state, dispatch, ensureValidSession } = useData();
   const navigate = useNavigate();
   const { sessionId, datasets, activeDatasetId, usedBytes, quotaBytes, fileName, rows, columns, preview, columnInfo } = state;
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -95,10 +95,13 @@ export default function UploadPage() {
   }, [sessionId]);
 
   const handleRelease = async () => {
-    if (!confirm('确定释放插槽？所有已上传报表与额度将被清空。')) return;
-    await releaseUploadSlot(sessionId);
+    if (!confirm('确定结束会话？该会话的全部数据（上传数据、清洗结果、分析产物、已保存图表）将被彻底清空。')) return;
+    await clearData(sessionId);
     dispatch({ type: 'CLEAR_DATA' });
     dispatch({ type: 'SET_QUOTA', usedBytes: 0, quotaBytes: 0 });
+    // 结束后自动创建新会话，避免死守已清空的旧 id
+    const newId = await ensureValidSession();
+    alert(`会话已结束，已创建新会话 ${newId}`);
   };
 
   const handleDeleteAll = useCallback(async () => {

@@ -1,22 +1,23 @@
 /* Settings - 会话与会话配置（浅色玻璃主题） */
 import React from 'react';
 import { useData } from '../contexts/DataContext';
-import { releaseUploadSlot } from '../api/client';
+import { clearData } from '../api/client';
 import { FiSettings, FiRefreshCw, FiCpu, FiDatabase } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 
 export default function SettingsPage() {
-  const { state, dispatch } = useData();
+  const { state, dispatch, ensureValidSession } = useData();
   const navigate = useNavigate();
 
   const handleRelease = async () => {
-    if (!confirm('确定释放会话？所有已上传数据与额度将被清空。')) return;
+    if (!confirm('确定结束会话？该会话的全部数据（上传数据、清洗结果、分析产物、已保存图表）将被彻底清空。')) return;
     try {
-      await releaseUploadSlot(state.sessionId);
+      await clearData(state.sessionId);
     } catch { /* ignore */ }
     dispatch({ type: 'CLEAR_DATA' });
     dispatch({ type: 'SET_QUOTA', usedBytes: 0, quotaBytes: 0 });
-    alert('会话已释放，将自动创建新会话。');
+    await ensureValidSession();
+    alert('会话已结束，已自动创建新会话。');
   };
 
   const info = [

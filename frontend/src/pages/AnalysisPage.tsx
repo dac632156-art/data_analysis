@@ -144,6 +144,39 @@ export default function AnalysisPage() {
     }
   }, [ds.columnInfo]);
 
+  // 切换模块回来后，从后端把当前数据集已落库的数据洞察分析包重新拉回渲染
+  // （process-datasets 生成即落库，无需点「保存到看板」）。仅当本地暂无分析结果时才填充，避免覆盖刚生成的。
+  useEffect(() => {
+    const sid = ds.sessionId;
+    // activeDatasetId 在切模块回来时可能为空（DataContext 未持久化它），用 datasets 列表第一个兜底
+    const did = ds.activeDatasetId || (ds.datasets[0] && ds.datasets[0].dataset_id) || '';
+    console.log('[restore] start: sid=', sid, 'did=', did, 'datasets.length=', ds.datasets.length, 'active=', ds.activeDatasetId);
+    if (!sid || !did) {
+      console.warn('[restore] skip: sid=', sid, 'did=', did);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.getDatasetPackages(sid, did);
+        const pkgs = Object.values(res.packages || {}) as Array<Record<string, unknown>>;
+        const valid = pkgs.filter((p) => p && p.can_run !== false);
+        console.log('[restore] sid=', sid, 'did=', did, 'restored count=', valid.length);
+        if (cancelled || valid.length === 0) return;
+        // 仅当本地暂无分析结果时填充；VisualizationRenderer 会自行按 pkg.charts 渲染图表，
+        // 这里不要再去 setChartFigure（会触发对已销毁 ECharts 实例的 setOption 报错）。
+        setAnalysisPackages((prev) => {
+          if (prev.length > 0) return prev;
+          setSelectedPkgIndex(0);
+          return valid;
+        });
+      } catch (e) {
+        console.error('[restore] failed to load dataset-packages:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [ds.sessionId, ds.activeDatasetId, ds.datasets]);
+
 
 
   const CHART_TYPES = ['bar','stacked_bar','line','area','scatter','bubble','pie','histogram','box','heatmap','radar','waterfall','treemap','gl_map'];
@@ -415,27 +448,8 @@ export default function AnalysisPage() {
   const handleSavePackages = async (pkgIds: string[]) => {
     try {
       const res = await api.saveAnalysis(ds.sessionId, pkgIds);
-      // ★ 无状态报告：把选中的分析包副本存入 localStorage，供仪表盘生成报告时携带，
-      //   使报告生成不依赖后端 session（Render 重启/休眠也不丢）。
-      //   剥离庞大的 charts[].option（报告 LLM 不需要，仅保留元信息），控制体积远低于 5MB。
-      try {
-        const selected = analysisPackages
-          .filter(p => p.id && pkgIds.includes(p.id as string))
-          .map(p => {
-            const slim: Record<string, unknown> = { ...p };
-            const charts = (p as { charts?: unknown }).charts;
-            if (Array.isArray(charts)) {
-              slim.charts = charts.map((c) => {
-                const cc = c as Record<string, unknown>;
-                return { slot: cc?.slot, chart_type: cc?.chart_type, title: cc?.title, role: cc?.role };
-              });
-            }
-            return slim;
-          });
-        localStorage.setItem('savedPackages', JSON.stringify(selected));
-      } catch (e) {
-        console.warn('保存分析包副本到本地失败（不影响后端保存与仪表盘展示）：', e);
-      }
+      // 已保存分析包以「后端 session.saved_packages」为唯一真相源（report.py 生成报告时自读兜底），
+      // 不再写 localStorage 冗余副本，避免与后端数据不一致。
       alert(`已保存 ${res.saved_count} 个分析结果到仪表盘`);
     } catch (err) {
       alert('保存失败: ' + (err instanceof Error ? err.message : '未知错误'));

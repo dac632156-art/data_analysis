@@ -1,6 +1,6 @@
 /* DataMind AI - 全局数据状态管理 */
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { createSession } from '../api/client';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
+import { createSession, listDatasets } from '../api/client';
 import type { ColumnInfo, DataInfo, CleaningStep } from '../types';
 
 export interface AiProviderConfig {
@@ -203,18 +203,28 @@ function dataReducer(state: DataState, action: Action): DataState {
       return next;
     }
     case 'SET_DATASETS': {
-      // 刷新拉回：替换列表；若 active 仍在列表则回放其字段
-      const ds = action.datasets.find(d => d.dataset_id === state.activeDatasetId);
+      // 刷新拉回：替换列表。优先用后端标记的 is_active 挑 active；
+      // 若本地已知 activeDatasetId 且它仍在列表里，则以本地为准（兼容多 sheet 切换场景）。
+      const localActive = state.activeDatasetId
+        ? action.datasets.find(d => d.dataset_id === state.activeDatasetId)
+        : undefined;
+      const ds = localActive || action.datasets.find(d => d.is_active) || undefined;
+      const activeDatasetId = ds ? ds.dataset_id : state.activeDatasetId;
       return {
         ...state,
         datasets: action.datasets,
+        activeDatasetId,
         ...replayToTop(state, ds),
       };
     }
     case 'SET_QUOTA':
       return { ...state, usedBytes: action.usedBytes, quotaBytes: action.quotaBytes };
     case 'CLEAR_DATA':
-      return { ...initialState, sessionId: state.sessionId, apiKey: state.apiKey, aiProvider: state.aiProvider, customModel: state.customModel, customBaseUrl: state.customBaseUrl };
+      // 结束会话：清掉 localStorage 里的旧 sessionId，让 ensureValidSession 自然创建全新会话，
+      // 避免沿用「已被后端 clear_data 删除」的旧 id（否则 ensureValidSession 直接返回旧 id、新会话语义失效）。
+      // 本地 AI 配置（apiKey/aiProvider/customModel/customBaseUrl）跨会话保留，不在此清空。
+      localStorage.removeItem('sessionId');
+      return { ...initialState, apiKey: state.apiKey, aiProvider: state.aiProvider, customModel: state.customModel, customBaseUrl: state.customBaseUrl };
     default:
       return state;
   }
@@ -223,6 +233,9 @@ function dataReducer(state: DataState, action: Action): DataState {
 interface DataContextType {
   state: DataState;
   dispatch: React.Dispatch<Action>;
+  /** 确保当前有有效 sessionId：有则保留，无则创建新会话并写入 localStorage。
+   *  不在初始化 effect 中盲目换新，避免死守旧 id 或误换新 id。 */
+  ensureValidSession: () => Promise<string>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -230,21 +243,42 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export function DataProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
 
-  // 初始化：从 localStorage 恢复 session 或创建新 session
-  useEffect(() => {
-    const savedSession = localStorage.getItem('sessionId');
-    if (savedSession) {
-      dispatch({ type: 'SET_SESSION', sessionId: savedSession });
-    } else {
-      createSession().then((sid) => {
-        dispatch({ type: 'SET_SESSION', sessionId: sid });
-        localStorage.setItem('sessionId', sid);
-      });
+  // 确保当前有有效 sessionId：有则保留，无则创建新会话并写入 localStorage。
+  // 注意：不在挂载时盲目换新 id，仅当 localStorage 无记录时才创建（避免误丢数据）。
+  const ensureValidSession = useCallback(async (): Promise<string> => {
+    const existing = state.sessionId || localStorage.getItem('sessionId');
+    if (existing) {
+      if (!state.sessionId) dispatch({ type: 'SET_SESSION', sessionId: existing });
+      return existing;
     }
-  }, []);
+    const sid = await createSession();
+    dispatch({ type: 'SET_SESSION', sessionId: sid });
+    localStorage.setItem('sessionId', sid);
+    return sid;
+  }, [state.sessionId, dispatch]);
+
+  // 初始化：从 localStorage 恢复 session 或创建新 session，并全局拉回已上传数据集，
+  // 使任意页面（仪表盘/分析/清洗/AI报告）刷新后无需先进入上传页即可拿到 hasData 所需数据。
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const sid = await ensureValidSession();
+      if (!alive || !sid) return;
+      try {
+        const res = await listDatasets(sid);
+        if (!alive) return;
+        dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
+        const active = res.datasets.find((d) => d.is_active);
+        if (active) dispatch({ type: 'SELECT_DATASET', datasetId: active.dataset_id });
+      } catch {
+        // 会话暂无数据集，忽略；任由页面展示空态
+      }
+    })();
+    return () => { alive = false; };
+  }, [ensureValidSession, dispatch]);
 
   return (
-    <DataContext.Provider value={{ state, dispatch }}>
+    <DataContext.Provider value={{ state, dispatch, ensureValidSession }}>
       {children}
     </DataContext.Provider>
   );

@@ -6,6 +6,7 @@
 import os
 import uuid
 import time
+import json
 import tempfile
 import logging
 import dataclasses
@@ -13,7 +14,40 @@ import pandas as pd
 from typing import Dict, Optional, List, Any
 from threading import RLock, Thread
 from config import QUOTA_BYTES
+from backend.db import crud
 logger = logging.getLogger(__name__)
+
+
+def _safe_payload(pkg):
+    """把分析包统一转成可序列化 dict；无法转换的脏数据返回 None（跳过）。"""
+    if pkg is None:
+        return None
+    if isinstance(pkg, dict):
+        return pkg
+    # 治本兜底：历史脏 state 里残留 JSON 字符串（如旧版把整个包 repr 成字符串落库），
+    # 这里尝试还原为 dict，避免刷屏、并救回旧会话的分析列表。
+    if isinstance(pkg, str):
+        try:
+            obj = json.loads(pkg)
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+        logger.debug("跳过无法解析的分析包字符串(历史脏数据): %s",
+                     (pkg[:40] + "..." if len(pkg) > 40 else pkg))
+        return None
+    if dataclasses.is_dataclass(pkg):
+        return dataclasses.asdict(pkg)
+    try:
+        return dict(pkg)
+    except Exception:
+        # 只打印包的身份标识，避免 repr() 整个包（含图表数据点）刷屏
+        try:
+            ident = getattr(pkg, "id", None) or getattr(pkg, "analysis_type", None) or type(pkg).__name__
+        except Exception:
+            ident = type(pkg).__name__
+        logger.warning("跳过无法序列化的分析包: %s", ident)
+        return None
 
 
 @dataclasses.dataclass
@@ -117,13 +151,16 @@ class SessionData:
 class SessionManager:
     """会话管理器，线程安全的内存存储"""
     
-    def __init__(self, max_sessions: int = 5, session_timeout: int = 3600):
+    def __init__(self, max_sessions: int = 5, session_timeout: int = 604800):
         self._sessions: Dict[str, SessionData] = {}
         self._lock = RLock()
         self._max_sessions = max_sessions
         self._session_timeout = session_timeout
-        # 原始数据落盘目录（临时盘，重启即丢 —— 属预期的优雅降级）
-        self._original_dir = os.path.join(tempfile.gettempdir(), "datamind_original")
+        # 原始数据落盘目录（持久化到 data/，重启后可按路径 reload，不再丢失）
+        # 注：data/ 已加入根 .gitignore，防大文件进仓库（遵循 30MB 上传限制纪律）。
+        self._original_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "data", "originals"
+        )
         os.makedirs(self._original_dir, exist_ok=True)
         # P2（内存画像结论五）：后台定时清理线程，主动回收过期会话（弥补惰性清理短板）。
         # 间隔跟随 timeout：max(60, timeout//12) → 默认 3600//12 = 300s。
@@ -134,9 +171,175 @@ class SessionManager:
         self._promoted: Dict[str, str] = {}             # ticket_id -> session_id（已晋升等待上传）
         self._QUEUE_TTL = 300                           # 排队票据最长等待（秒），超时丢弃
         self._RESERVE_TTL = 120                         # 预约插槽但未上传的最长保留（秒），超时释放
-        self._slot_idle_timeout = 600                   # 已加载数据的插槽空闲超时（秒）：释放 df + 内存，腾位给排队者
+        self._slot_idle_timeout = 600                   # 未保存会话空闲超时（秒）：释放内存+删落盘+让槽
+        self._saved_idle_timeout = 3600                 # 已保存会话更长空闲阈值（秒）：仅释放内存+让槽、保留落盘
         self._start_background_cleanup()
     
+    # ===== 持久化（SQLite）：内存缓存 + 落库，保留全部公共方法签名 =====
+    def _normalize_package_value(self, pkg):
+        """规范化单个分析包 value 为可序列化 dict；无法转换返回 None（丢弃脏数据）。
+
+        覆盖：AnalysisPackage 对象→asdict、dict→原样、JSON 字符串→解析还原、
+        其他→None。保证写进 SQLite state 的永远是干净 dict，杜绝重启后字符串复现。
+        """
+        if pkg is None:
+            return None
+        if isinstance(pkg, dict):
+            return pkg
+        if isinstance(pkg, str):
+            try:
+                obj = json.loads(pkg)
+                if isinstance(obj, dict):
+                    return obj
+            except Exception:
+                pass
+            return None
+        if dataclasses.is_dataclass(pkg):
+            return dataclasses.asdict(pkg)
+        try:
+            d = dict(pkg)
+            return d
+        except Exception:
+            return None
+
+    def _serialize_session(self, session: "SessionData") -> Dict[str, Any]:
+        """将 SessionData 中可序列化的轻量状态抽出（不含 DataFrame 本体）。
+
+        落库前把 dataset_packages/analysis_packages/saved_packages 三个包字段的
+        value 规范化为干净 dict，避免 AnalysisPackage 对象或 JSON 字符串被整体塞进
+        state 表、重启后还原成字符串导致刷屏与列表为空（治本）。
+        """
+        norm_dataset_packages = {}
+        for did, bucket in (session.dataset_packages or {}).items():
+            if isinstance(bucket, dict):
+                norm_bucket = {pid: self._normalize_package_value(pkg) for pid, pkg in bucket.items()}
+                norm_bucket = {pid: p for pid, p in norm_bucket.items() if p is not None}
+                if norm_bucket:
+                    norm_dataset_packages[did] = norm_bucket
+            else:
+                norm_bucket = self._normalize_package_value(bucket)
+                if norm_bucket is not None:
+                    norm_dataset_packages[did] = {"_single": norm_bucket}
+        norm_analysis = {
+            pid: p for pid, p in (
+                (pid, self._normalize_package_value(pkg))
+                for pid, pkg in (session.analysis_packages or {}).items()
+            ) if p is not None
+        }
+        norm_saved = [p for p in (session.saved_packages or []) if isinstance(p, dict)]
+        return {
+            "active_dataset_id": session.active_dataset_id,
+            "uploaded_bytes": session.uploaded_bytes,
+            "dataset_packages": norm_dataset_packages,
+            "analysis_packages": norm_analysis,
+            "saved_packages": norm_saved,
+            "api_key": session.api_key,
+            "custom_title": session.custom_title,
+            "holds_slot": session.holds_slot,
+            "reserved_at": session.reserved_at,
+            "cleaning_history": session.cleaning_history,
+            "analysis_history": session.analysis_history,
+            "saved_charts": session.saved_charts,
+            "df_undo_stack": session.df_undo_stack,
+            "created_at": session.created_at,
+            "last_access": session.last_access,
+        }
+
+    def _hydrate_session(self, session: "SessionData", state: Dict[str, Any]) -> None:
+        """用从库读取的 state 填充 SessionData（不含 DataFrame）。"""
+        session.active_dataset_id = state.get("active_dataset_id")
+        session.uploaded_bytes = state.get("uploaded_bytes", 0)
+        session.dataset_packages = state.get("dataset_packages", {}) or {}
+        session.analysis_packages = state.get("analysis_packages", {}) or {}
+        session.saved_packages = state.get("saved_packages", []) or []
+        session.api_key = state.get("api_key", "")
+        session.custom_title = state.get("custom_title", "")
+        session.holds_slot = state.get("holds_slot", False)
+        session.reserved_at = state.get("reserved_at", 0.0)
+        session.cleaning_history = state.get("cleaning_history", []) or []
+        session.analysis_history = state.get("analysis_history", []) or []
+        session.saved_charts = state.get("saved_charts", []) or []
+        session.df_undo_stack = state.get("df_undo_stack", []) or []
+        if state.get("_created_at") is not None:
+            session.created_at = state["_created_at"]
+        if state.get("_last_access") is not None:
+            session.last_access = state["_last_access"]
+
+    def _persist_session(self, session_id: str) -> None:
+        """将内存会话状态与数据集/分析包落库（在锁内调用）。"""
+        session = self._sessions.get(session_id)
+        if session is None:
+            return
+        # 1) 数据集元信息 + 落盘路径
+        for ds in session.datasets.values():
+            crud.save_dataset(
+                session_id, ds.dataset_id,
+                {
+                    "file_name": ds.file_name,
+                    "file_size_bytes": ds.file_size_bytes,
+                    "rows": ds.rows,
+                    "columns": ds.columns,
+                    "column_info": ds.column_info,
+                    "preview": ds.preview,
+                    "is_merged": ds.is_merged,
+                    "sources": ds.sources,
+                    "merge_keys": ds.merge_keys,
+                    "uploaded_at": ds.uploaded_at,
+                },
+                ds.original_path or "",
+                1 if ds.dataset_id == session.active_dataset_id else 0,
+                ds.uploaded_at or time.time(),
+            )
+        # 2) 分析包
+        for bucket in session.dataset_packages.values():
+            if isinstance(bucket, dict):
+                for pid, pkg in bucket.items():
+                    payload = _safe_payload(pkg)
+                    if payload is not None:
+                        crud.save_package(pid, session_id, "", payload, None, time.time())
+        for pid, pkg in (session.analysis_packages or {}).items():
+            payload = _safe_payload(pkg)
+            if payload is not None:
+                crud.save_package(pid, session_id, "", payload, None, time.time())
+        for pkg in session.saved_packages:
+            pid = pkg.get("id")
+            if pid:
+                crud.save_package(pid, session_id, "", pkg, pkg.get("saved_at"), time.time())
+        # 3) 会话轻量状态
+        crud.save_session_state(
+            session_id, self._serialize_session(session),
+            session.created_at, session.last_access,
+        )
+
+    def _load_session_from_db(self, session_id: str) -> Optional["SessionData"]:
+        """会话不在内存时，尝试从 SQLite 重建（不含 DataFrame，需按需 reload）。"""
+        state = crud.load_session_state(session_id)
+        if state is None:
+            return None
+        session = SessionData()
+        self._hydrate_session(session, state)
+        # 重建数据集对象（含 original_path，DataFrame 按需 reload）
+        for ds_meta in crud._all_dataset_metas(session_id):
+            ds = Dataset(
+                dataset_id=ds_meta["dataset_id"],
+                file_name=ds_meta.get("file_name", ""),
+                file_size_bytes=ds_meta.get("file_size_bytes", 0),
+                original_path=ds_meta.get("original_path", ""),
+                rows=ds_meta.get("rows", 0),
+                columns=ds_meta.get("columns", []),
+                column_info=ds_meta.get("column_info", []),
+                preview=ds_meta.get("preview", []),
+                is_merged=ds_meta.get("is_merged", False),
+                sources=ds_meta.get("sources", []),
+                merge_keys=ds_meta.get("merge_keys", []),
+                uploaded_at=ds_meta.get("uploaded_at", 0.0),
+            )
+            session.datasets[ds.dataset_id] = ds
+        # 兜底：脏会话 datasets 字段为 JSON null 时重建后为 None，遍历会 500（fd22be77 根因）
+        session.datasets = _safe_dict(session.datasets)
+        self._sessions[session_id] = session
+        return session
+
     # ===== 限流：数据插槽预约 / 排队 / 晋升 =====
     def _slot_count(self) -> int:
         """当前已占用数据插槽的会话数（锁内调用）"""
@@ -270,11 +473,14 @@ class SessionManager:
         return session_id
     
     def get_session(self, session_id: str) -> Optional[SessionData]:
-        """获取会话数据"""
+        """获取会话数据；内存未命中时尝试从 SQLite 重建（含数据集与落盘路径）。"""
         with self._lock:
             session = self._sessions.get(session_id)
+            if session is None:
+                session = self._load_session_from_db(session_id)
             if session:
                 session.last_access = time.time()
+                crud.touch_session(session_id, session.last_access)
             return session
     
     def add_dataset(self, session_id: str, df: pd.DataFrame, *, file_name: str,
@@ -326,8 +532,10 @@ class SessionManager:
                     if other.dataset_id != did and other.df is not None:
                         other.df = None
                 # 闭环：新数据集成为 active，同步其（可能为空）产物
-                session.analysis_packages = dict(session.dataset_packages.get(did, {}))
+                _bucket = session.dataset_packages.get(did, {})
+                session.analysis_packages = dict(_bucket) if isinstance(_bucket, dict) else {}
             session.last_access = time.time()
+            self._persist_session(session_id)
             return did
 
     def _compute_meta(self, df: "pd.DataFrame"):
@@ -430,6 +638,7 @@ class SessionManager:
             session.datasets[did] = ds
             # 不抢占当前 active 视图、不驱逐、不计额度
             session.last_access = time.time()
+            self._persist_session(session_id)
             return did
 
     def set_data(self, session_id: str, df: pd.DataFrame):
@@ -539,6 +748,7 @@ class SessionManager:
                 if other.dataset_id != dataset_id and other.df is not None:
                     other.df = None
             session.last_access = time.time()
+            self._persist_session(session_id)
             return True
 
     def get_datasets(self, session_id: str) -> List[Dict[str, Any]]:
@@ -547,7 +757,7 @@ class SessionManager:
         if session is None:
             return []
         result = []
-        for ds in session.datasets.values():
+        for ds in _safe_dict(session.datasets).values():
             try:
                 result.append({
                     "dataset_id": ds.dataset_id,
@@ -610,6 +820,8 @@ class SessionManager:
                     session.active_dataset_id = None
                     session.analysis_packages = {}
             session.last_access = time.time()
+            crud.delete_dataset(session_id, dataset_id)
+            self._persist_session(session_id)
             return True
 
     def set_dataset_packages(self, session_id: str, dataset_id: str, package_map: Dict[str, Any]):
@@ -624,13 +836,14 @@ class SessionManager:
             if session.active_dataset_id == dataset_id:
                 session.analysis_packages = dict(package_map)
             session.last_access = time.time()
+            self._persist_session(session_id)
 
     def get_dataset_packages(self, session_id: str, dataset_id: str) -> Dict[str, Any]:
         """获取指定数据集的分析产物（分桶）"""
         session = self.get_session(session_id)
         if session is None:
             return {}
-        return dict(session.dataset_packages.get(dataset_id, {}))
+        return dict(_safe_dict(session.dataset_packages).get(dataset_id, {}))
 
     def update_data(self, session_id: str, df: pd.DataFrame):
         """更新当前 DataFrame（清洗后），如果 session 不存在则自动创建"""
@@ -651,6 +864,7 @@ class SessionManager:
                 self._sessions[session_id] = session
             session.cleaning_history.append(step)
             session.last_access = time.time()
+            self._persist_session(session_id)
     
     def get_cleaning_history(self, session_id: str) -> List[Dict]:
         """获取清洗历史"""
@@ -666,6 +880,7 @@ class SessionManager:
                 self._sessions[session_id] = session
             session.api_key = api_key
             session.last_access = time.time()
+            self._persist_session(session_id)
     
     def get_api_key(self, session_id: str) -> str:
         """获取 API Key"""
@@ -681,6 +896,7 @@ class SessionManager:
                 self._sessions[session_id] = session
             session.custom_title = title
             session.last_access = time.time()
+            self._persist_session(session_id)
 
     def get_custom_title(self, session_id: str) -> str:
         """获取用户手动编辑的仪表盘标题"""
@@ -699,6 +915,7 @@ class SessionManager:
             if session.active_dataset_id:
                 session.dataset_packages[session.active_dataset_id] = packages
             session.last_access = time.time()
+            self._persist_session(session_id)
     
     def push_undo_state(self, session_id: str):
         """保存当前状态到撤销栈（最多 20 步）"""
@@ -711,6 +928,7 @@ class SessionManager:
             if len(session.df_undo_stack) > 20:
                 session.df_undo_stack.pop(0)
             session.last_access = time.time()
+            self._persist_session(session_id)
 
     def undo_last_action(self, session_id: str) -> Optional[pd.DataFrame]:
         """撤销上一步操作，返回恢复后的 DataFrame"""
@@ -721,6 +939,7 @@ class SessionManager:
             prev_df = session.df_undo_stack.pop()
             session.df = prev_df.copy()
             session.last_access = time.time()
+            self._persist_session(session_id)
             return session.df
 
     def get_undo_count(self, session_id: str) -> int:
@@ -738,6 +957,7 @@ class SessionManager:
             chart["saved_at"] = time.time()
             session.saved_charts.append(chart)
             session.last_access = time.time()
+            self._persist_session(session_id)
 
     def get_saved_charts(self, session_id: str) -> List[Dict[str, Any]]:
         """获取所有已保存的图表"""
@@ -751,6 +971,7 @@ class SessionManager:
             if session and 0 <= index < len(session.saved_charts):
                 session.saved_charts.pop(index)
                 session.last_access = time.time()
+                self._persist_session(session_id)
                 return True
             return False
 
@@ -761,6 +982,7 @@ class SessionManager:
             if session:
                 session.saved_charts.clear()
                 session.last_access = time.time()
+                self._persist_session(session_id)
 
     # ===== V2 分析包操作 =====
     def save_packages(self, session_id: str, package_ids: List[str]):
@@ -788,6 +1010,7 @@ class SessionManager:
                     if not any(p.get("id") == pkg_id for p in session.saved_packages):
                         session.saved_packages.append(pkg)
             session.last_access = time.time()
+            self._persist_session(session_id)
 
     def get_saved_packages(self, session_id: str) -> List[Dict[str, Any]]:
         """获取所有已保存的分析包"""
@@ -812,10 +1035,11 @@ class SessionManager:
         return full_packages
 
     def clear_data(self, session_id: str):
-        """清除会话数据（同步删除落盘的原始文件）；释放插槽后晋升队首"""
+        """清除会话数据（同步删除落盘的原始文件 + SQLite 记录）；释放插槽后晋升队首"""
         with self._lock:
             self._remove_original_file(session_id)
             self._sessions.pop(session_id, None)
+            crud.delete_session(session_id)
             self._promote_head()
     
     def _cleanup_sync(self):
@@ -832,17 +1056,33 @@ class SessionManager:
         ]
         for sid in expired:
             self._remove_original_file(sid)
+            crud.delete_session(sid)
             del self._sessions[sid]
         # 2) 预约超时未上传（占槽空会话）：释放插槽，避免长期占槽
         for sid, sdata in list(self._sessions.items()):
             if sdata.holds_slot and sdata.df is None and (now - sdata.reserved_at) > self._RESERVE_TTL:
                 self._remove_original_file(sid)
+                crud.delete_session(sid)
                 del self._sessions[sid]
-        # 2.5) 已加载数据但空闲超时（_slot_idle_timeout）的插槽：释放 df + 内存，腾出插槽给排队者
-        # 仅释放插槽、保留会话对象，待整体超时 _session_timeout 才删除，避免丢失用户配置。
+        # 2.5) 已加载数据但空闲超时的插槽：分层释放，避免「刷新后数据悄悄没了」
+        # - 已保存过图表/分析的会话（有持久价值）：超过 _saved_idle_timeout 仅释放内存(df=None)
+        #   + 释放插槽(holds_slot=False)，但保留落盘原始文件（回来可从落盘 reload）与 SQLite 配置；
+        #   严格不碰 active_dataset_id，保证用户回来仍能重新上传/清洗。
+        # - 未保存会话（无持久价值）：超过 _slot_idle_timeout 走原 _release_slot_inner
+        #   （释放内存+删落盘+让槽），彻底清。
         for sid, sdata in list(self._sessions.items()):
-            if sdata.holds_slot and sdata.df is not None and (now - sdata.last_access) > self._slot_idle_timeout:
-                self._release_slot_inner(sid)
+            if not sdata.holds_slot or sdata.df is None:
+                continue
+            idle = now - sdata.last_access
+            has_saved = bool(sdata.saved_charts or sdata.saved_packages)
+            if has_saved:
+                if idle > self._saved_idle_timeout:
+                    sdata.df = None            # 仅释放内存
+                    sdata.holds_slot = False   # 让槽，不永久占槽
+                    # 注意：不调 _remove_original_file，保留落盘；不碰 active_dataset_id
+            else:
+                if idle > self._slot_idle_timeout:
+                    self._release_slot_inner(sid)  # 原逻辑：释放内存+删落盘+让槽
         # 3) 排队票据超时丢弃
         self._queue = [it for it in self._queue if now - it["created_at"] <= self._QUEUE_TTL]
         # 4) 腾出插槽后晋升队首
@@ -871,6 +1111,13 @@ class SessionManager:
                     pass
         t = Thread(target=_loop, name="session-cleanup", daemon=True)
         t.start()
+
+
+def _safe_dict(v, default=None):
+    """会话字段 None 兜底，避免遍历 None 触发 500（脏会话 datasets 为 JSON null 时）。"""
+    if v is None:
+        return default if default is not None else {}
+    return v
 
 
 # 全局单例
