@@ -259,3 +259,52 @@ export interface WidgetError {
   message: string;
   timestamp: number;
 }
+
+// ============================================================
+// 智能排版大屏（LLM 驱动，复用经典网格数据源）
+// 对应后端 POST /dashboard/smart-layout
+// ============================================================
+
+export interface SmartLayoutItem {
+  slot: string;
+  title: string;
+  chart_type: string;
+  analysis_type: string;
+  /** 后端先验业务价值分 0~1 */
+  suggested_business_value: number;
+  /** LLM 给出的语义注意力分 0~1 */
+  llm_weight: number;
+  /** 融合后最终权重（决定落位档位） */
+  attention_weight: number;
+  // ★ 阶段B：LLM 直接输出的形状-槽位绑定（无则 undefined，computeLayout 按 attention_weight 兜底路由）
+  shape?: string | null;          // kpi / hero_square / side_strip / hero_wide / side_square / full_width
+  slot_id?: string | null;        // 蓝图槽位 id
+  dims: number;
+  series_count: number;
+  row_count: number;
+  metric_hint: string;
+  value_hint: string;
+  is_aggregated: boolean;
+}
+
+export interface SmartLayoutChart {
+  slot: string;
+  title: string;
+  chart_type: string;
+  option: Record<string, unknown> | null;
+  table_data?: Record<string, unknown> | null;
+  raw_data?: Record<string, unknown>[] | null;
+  x: string;
+  y: string;
+  analysis_type: string;
+}
+
+export interface SmartLayoutResponse {
+  success: boolean;
+  /** "llm" | "fallback" | "empty" */
+  source: string;
+  model: string;
+  note: string;
+  items: SmartLayoutItem[];
+  charts: SmartLayoutChart[];
+}

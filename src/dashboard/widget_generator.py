@@ -660,12 +660,48 @@ class WidgetGenerator:
                     config["columns"] = list(getattr(first_table, "columns", []))
                 elif isinstance(first_table, dict):
                     config["columns"] = list(first_table.get("columns", []))
+
+                # 取 rows（兼容 dataclass 和 dict 形态的 first_table）
+                rows_src: list = []
                 if hasattr(first_table, "rows"):
-                    rows = getattr(first_table, "rows", [])
-                    # 确保每行是 list 格式（TableData.rows 可能是 list[list]）
-                    config["rows"] = [list(r) if isinstance(r, (list, tuple)) else r for r in (rows or [])]
+                    rows_src = list(getattr(first_table, "rows", []) or [])
                 elif isinstance(first_table, dict):
-                    config["rows"] = first_table.get("rows", [])
+                    rows_src = list(first_table.get("rows", []) or [])
+
+                cols = list(config.get("columns", []) or [])
+
+                def _row_to_list(r):
+                    # 已经是 list/tuple → 直接转 list
+                    if isinstance(r, (list, tuple)):
+                        return list(r)
+                    # dict：按 columns 顺序取值；没 columns 就拿 values
+                    if isinstance(r, dict):
+                        if cols:
+                            return [r.get(c) for c in cols]
+                        return list(r.values())
+                    # 其他类型（None/str/数字）→ 兜底为单格
+                    return [r]
+
+                def _flatten_cell(v):
+                    # 单元格里 pandas 序列化常出现 {"value": x, "format": ...} 或 {"x": ..., "y": ...}
+                    # 递归取出"叶子"值，避免前端 String(dict) → [object Object]
+                    if v is None or isinstance(v, (str, int, float, bool)):
+                        return v
+                    if isinstance(v, dict):
+                        if "value" in v and len(v) <= 4:
+                            return _flatten_cell(v["value"])
+                        if "text" in v and len(v) <= 4:
+                            return _flatten_cell(v["text"])
+                        # 多字段 dict（特征向量等）→ 转紧凑字符串
+                        try:
+                            return ", ".join(f"{k}={_flatten_cell(vv)}" for k, vv in v.items() if vv is not None)
+                        except Exception:
+                            return str(v)
+                    if isinstance(v, (list, tuple)):
+                        return ", ".join(str(_flatten_cell(x)) for x in v)
+                    return v
+
+                config["rows"] = [[_flatten_cell(c) for c in _row_to_list(r)] for r in rows_src]
                 config["table_type"] = (
                     str(getattr(first_table, "table_type", ""))
                     if hasattr(first_table, "table_type")

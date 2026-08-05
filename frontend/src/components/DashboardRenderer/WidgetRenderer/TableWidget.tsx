@@ -12,6 +12,31 @@ const FIELD_KEYWORDS: Record<string, string[]> = {
   time: ['日期', '时间', '月份', 'date', 'month', 'year'],
 };
 
+// 单元格安全渲染：避免 dict/array 形态被 String() → "[object Object]"
+function formatCell(v: unknown): string {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+    return String(v);
+  }
+  if (Array.isArray(v)) {
+    return v.map((x) => formatCell(x)).join(', ');
+  }
+  if (typeof v === 'object') {
+    const obj = v as Record<string, unknown>;
+    if ('value' in obj && obj.value !== undefined) return formatCell(obj.value);
+    if ('text' in obj && obj.text !== undefined) return formatCell(obj.text);
+    // 多键对象 → 紧凑展示（kmeans 特征向量等场景）
+    try {
+      return Object.entries(obj)
+        .map(([k, vv]) => `${k}=${formatCell(vv)}`)
+        .join(', ');
+    } catch {
+      return String(v);
+    }
+  }
+  return String(v);
+}
+
 function classifyField(col: string): string {
   const lower = String(col).toLowerCase();
   for (const [field, kws] of Object.entries(FIELD_KEYWORDS)) {
@@ -40,7 +65,25 @@ export const TableWidget: React.FC<TableWidgetProps> = memo(({ widget, highlight
   });
 
   const columns = (widget.chart_config?.columns as string[]) || [];
-  const rows = (widget.chart_config?.rows as Record<string, unknown>[][]) || [];
+  const rawRows = (widget.chart_config?.rows as unknown) ?? [];
+
+  // 归一化行：后端有些 TableData 的 rows 是 List[dict]（按 column 名取值），
+  // 有些是 List[list]（按列顺序）。这里统一成 List[Array<cell>]。
+  const rows = useMemo<Array<Array<unknown>>>(() => {
+    if (!Array.isArray(rawRows)) return [];
+    return rawRows
+      .map((r): Array<unknown> | null => {
+        if (Array.isArray(r)) return r;
+        if (r && typeof r === 'object') {
+          if (columns.length) {
+            return columns.map((c) => (r as Record<string, unknown>)[c]);
+          }
+          return Object.values(r as Record<string, unknown>);
+        }
+        return null;
+      })
+      .filter((r): r is Array<unknown> => r !== null);
+  }, [rawRows, columns]);
 
   // ===== 全局筛选器高亮（命中行高亮、其余变淡） =====
   const activeFilters = useMemo(() => {
@@ -112,7 +155,7 @@ export const TableWidget: React.FC<TableWidgetProps> = memo(({ widget, highlight
                 >
                   {row.map((cell, ci) => (
                     <td key={ci} className="px-4 py-1.5 border-b border-white/[0.02]">
-                      {String(cell ?? '—')}
+                      {formatCell(cell)}
                     </td>
                   ))}
                 </tr>

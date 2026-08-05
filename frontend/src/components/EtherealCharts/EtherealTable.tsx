@@ -57,20 +57,21 @@ const defaultBadge = { bg: '#E2C9F3', text: '#4C1D95' };
 
 /** 从任意形态的单元格抽取 {文本, 胶囊色, 方向箭头} */
 function extractCell(raw: unknown): { text: string; color?: string; direction?: string; isObject: boolean } {
-  if (raw == null) return { text: '-', isObject: false };
-  // 结构化单元格 {value, color, direction, ...}
+  if (raw == null) return { text: '—', isObject: false };
   if (typeof raw === 'object') {
     const c = raw as RenderedCell;
-    const v = c.value;
+    let v: unknown = c.value;
+    // 空值兜底：空串/NaN/undefined 都视为缺值
+    if (v === '' || v === undefined || v === null || (typeof v === 'number' && Number.isNaN(v))) v = null;
     let text: string;
-    if (v == null) text = '-';
+    if (v == null) text = '—';
     else if (typeof v === 'number') text = Number.isInteger(v) ? v.toLocaleString() : v.toFixed(2);
     else text = String(v);
     return { text, color: c.color, direction: c.direction, isObject: true };
   }
-  // 纯值
   let text: string;
-  if (typeof raw === 'number') text = Number.isInteger(raw) ? raw.toLocaleString() : raw.toFixed(2);
+  if (raw === '' || (typeof raw === 'number' && Number.isNaN(raw as number))) text = '—';
+  else if (typeof raw === 'number') text = Number.isInteger(raw as number) ? (raw as number).toLocaleString() : (raw as number).toFixed(2);
   else text = String(raw);
   return { text, isObject: false };
 }
@@ -93,8 +94,32 @@ export const EtherealTable: React.FC<Props> = ({
 }) => {
   const node = chartNode || {};
   const titleText = title || node.title || '数据汇总表';
-  const columns = columnsProp || node.columns || [];
-  const rawRows: unknown[] = node.rows || [];
+
+  // ★ 数据读取层增强：兼容三种来源（统一全站表格出口）
+  //   1) 纯 {columns, rows} dict 行  → node.columns / node.rows
+  //   2) 含 {value} 包装的 dict 行   → 同上
+  //   3) 后端 ECharts option 形态（table 系列未填 table_data 时，数据落在 option.series）
+  //        a. series[].{columns, rows}        （ECharts table 标准）
+  //        b. series[].{header, data}          （table_data / 扁平二维数组）
+  //   兜底：无论 table_data 为 null，只要 option 是表格形态都能渲染，解决「表格类图片不显示」。
+  const seriesTable = Array.isArray(node.series)
+    ? (node.series as unknown[]).find(
+        (s) => s && typeof s === 'object' && (s as Record<string, unknown>).type === 'table',
+      ) as Record<string, unknown> | undefined
+    : undefined;
+
+  const columns: string[] =
+    columnsProp ||
+    node.columns ||
+    (seriesTable && (seriesTable.columns as string[])) ||
+    (seriesTable && (seriesTable.header as string[])) ||
+    [];
+
+  const rawRows: unknown[] =
+    node.rows ||
+    (seriesTable && (seriesTable.rows as unknown[])) ||
+    (seriesTable && (seriesTable.data as unknown[])) ||
+    [];
 
   // 判断 rows 形态：二维数组（每个元素是数组）→ RenderedCell[][] 形态；否则 dict 行数组
   const is2D = rawRows.length > 0 && rawRows.every((r) => Array.isArray(r));
@@ -106,7 +131,33 @@ export const EtherealTable: React.FC<Props> = ({
       return arr[ci];
     }
     const obj = (row as Record<string, unknown>) || {};
-    return obj[colName] ?? obj[ci];
+    // ★ 直接命中
+    if (colName in obj) return obj[colName];
+    // ★ 列名模糊匹配：dict 的 key 可能是 "首单月" 而 columns 是 "首单月分布"
+    const keys = Object.keys(obj);
+    if (colName && keys.length) {
+      const cn = String(colName).trim();
+      // 1) 列名包含某个 key，或 key 包含列名
+      const hit = keys.find((k) => k && (k.includes(cn) || cn.includes(k)));
+      if (hit) return obj[hit];
+      // 2) 同义词典（前后端字段命名不一致时兜底）
+      const SYNONYMS: Record<string, string[]> = {
+        '首单月': ['first_order_month','首单月份','首购月','firstOrderMonth'],
+        '人数': ['count','qty','n','人数/用户数'],
+        '占比': ['percent','pct','ratio','share','占比%','百分比'],
+        '客户数': ['count','qty','人数'],
+        '留存人数': ['count','留存数'],
+        '用户数': ['count','users','num_users'],
+        '金额': ['amount','gmv','营收'],
+        '毛利率': ['margin_rate','gross_margin'],
+      };
+      for (const [col, arr] of Object.entries(SYNONYMS)) {
+        if ((col === cn) || cn.endsWith(col)) {
+          for (const k of arr) if (k in obj) return obj[k];
+        }
+      }
+    }
+    return obj[ci];
   };
 
   // 渲染用列（是否带序号列）
@@ -116,6 +167,8 @@ export const EtherealTable: React.FC<Props> = ({
     <div
       style={{
         position: 'relative',
+        height: '100%',
+        width: '100%',
         background: `url('${cardBgUrl}') center / cover fixed`,
         borderRadius: 24,
         boxShadow: '0 20px 40px -10px rgba(99,102,241,0.05), 0 0 0 1px rgba(255,255,255,0.8)',
@@ -125,7 +178,6 @@ export const EtherealTable: React.FC<Props> = ({
         display: 'flex',
         flexDirection: 'column',
         gap: 30,
-        width: '100%',
       }}
     >
       <style>{`
@@ -141,20 +193,45 @@ export const EtherealTable: React.FC<Props> = ({
         .dir-up { color: #16A34A; }
         .dir-down { color: #DC2626; }
         .dir-flat { color: #94A3B8; }
+
+        /* ★ 表格滚动容器：行数多时让整张表可纵向滚动。
+           只冻结首行（列表头），不冻结首列。
+           冻结行的背景用 transparent，让卡片本身的渐变/纹理自然透过，
+           避免「突然冒出一行纯白横条」破坏卡片整体质感。仅保留最弱的一道分割阴影
+           作为「分层感」提示。 */
+        .ethereal-table-shell {
+          flex: 1 1 auto;
+          min-height: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+          padding-right: 4px;
+        }
+        .ethereal-table-shell::-webkit-scrollbar { width: 6px; }
+        .ethereal-table-shell::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.25); border-radius: 3px; }
+        .ethereal-table-shell::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.45); }
+        /* 仅首行(表头) sticky-top，背景透明贴合卡片 */
+        .ethereal-table-wrap thead th {
+          position: sticky;
+          top: 0;
+          z-index: 3;
+          background: transparent;
+          box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+        }
       `}</style>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontSize: 24, fontWeight: 600, color: '#1E293B', letterSpacing: '0.5px' }}>{titleText}</div>
       </div>
-      <table className="ethereal-table-wrap">
-        <thead>
-          <tr>
-            {renderColumns.map((col, index) => (
-              <th key={index} className={index === 0 ? 'segment-header' : ''}>{col}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rawRows.map((row, ri) => {
+      <div className="ethereal-table-shell">
+        <table className="ethereal-table-wrap">
+          <thead>
+            <tr>
+              {renderColumns.map((col, index) => (
+                <th key={index} className={index === 0 ? 'segment-header' : ''}>{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rawRows.map((row, ri) => {
             // 序号列偏移：若 showIndex，真实数据列从 ci=1 开始
             const dataStart = showIndex ? 1 : 0;
             return (
@@ -201,6 +278,7 @@ export const EtherealTable: React.FC<Props> = ({
           })}
         </tbody>
       </table>
+    </div>
     </div>
   );
 };

@@ -56,6 +56,48 @@ class RenderedConclusion:
 
 
 # ===== KPI =====
+# 业务价值关键词（与 dashboard/importance_engine.py 保持一致，避免重复定义走偏）
+_KPI_HIGH_VALUE_KW = ["销售", "营收", "收入", "利润", "GMV", "revenue", "sales", "毛利", "净利", "客单价"]
+_KPI_MEDIUM_VALUE_KW = ["客户", "用户", "复购", "留存", "customer", "retention", "生命周期", "人均", "流失率", "转化率"]
+_KPI_LOW_VALUE_KW = ["HHI", "CR", "偏度", "峰度", "标准差", "concentration"]
+
+
+def _kpi_business_value(label: str, value: Any) -> float:
+    """估算单条 KPI 的业务价值分（0~1），用于 KPI 卡片排序，
+    让高业务价值的 KPI 优先展示在前 4 个槽位（[3,3,3,3]）。
+
+    评分：
+    - 命中高价值关键词（销售/GMV/利润/客单价等）+0.35
+    - 命中中价值关键词（客户/留存/转化率/流失率等）+0.2
+    - 命中低价值关键词（HHI/偏度/标准差等）-0.2
+    - 数值大（>=1000 或 >=10000，含百分号视为百分比中性 0.05）-0.05~+0.15
+    """
+    s = str(label or "").strip()
+    if not s:
+        return 0.0
+    sl = s.lower()
+    score = 0.5  # 基础分
+    # 关键词加分（与 dashboard/importance_engine.MetricValueScorer 对齐）
+    if any(kw.lower() in sl for kw in _KPI_HIGH_VALUE_KW):
+        score += 0.35
+    elif any(kw.lower() in sl for kw in _KPI_MEDIUM_VALUE_KW):
+        score += 0.2
+    elif any(kw.lower() in sl for kw in _KPI_LOW_VALUE_KW):
+        score -= 0.2
+    # 数值大小（数值越大业务量越大 = 越值得展示）
+    try:
+        v = float(str(value).replace(",", "").replace("%", ""))
+        if v >= 10000:
+            score += 0.15
+        elif v >= 1000:
+            score += 0.10
+        elif v >= 100:
+            score += 0.05
+    except (TypeError, ValueError):
+        pass
+    return score
+
+
 def render_kpis(kpis_raw) -> List[dict]:
     out = []
     for k in (kpis_raw or []):
@@ -66,13 +108,40 @@ def render_kpis(kpis_raw) -> List[dict]:
         else:
             continue
         trend = _infer_trend(item.change) if item.change else ""
-        out.append(asdict(RenderedKPI(
-            label=item.label,
-            value=item.value,
-            change=item.change or "",
-            trend=trend,
-            kpi_type=item.kpi_type,
-        )))
+        out.append({
+            "label": item.label,
+            "value": item.value,
+            "change": item.change or "",
+            "trend": trend,
+            "kpi_type": item.kpi_type,
+            # ★ 业务价值评分：与 dashboard/importance_engine.MetricValueScorer 对齐，
+            #   前端 SmartDashboard 可按此字段降序选择 hero KPI（4 个槽位给最值得看的）。
+            "business_value": _kpi_business_value(item.label, item.value),
+        })
+    # ★ 按业务价值降序：高业务价值的 KPI 排到前面，被前端 4 个 [3,3,3,3] 槽位优先选中
+    out.sort(key=lambda x: x.get("business_value", 0.0), reverse=True)
+
+    # ★ 调试日志：让用户重启后端+重新分析后能在 backend/logs/*.log 里看到每个 KPI 的业务价值分，
+    #   验证排序是否生效（前 4 名应包含 GMV/客单价/净利润/留存率等高价值 KPI）。
+    try:
+        import logging
+        _log = logging.getLogger("package_render")
+        if not _log.handlers:
+            _h = logging.StreamHandler()
+            _h.setFormatter(logging.Formatter("[%(name)s] %(message)s"))
+            _log.addHandler(_h)
+            _log.setLevel(logging.INFO)
+        _log.info(
+            "render_kpis -> %d KPIs (top-8 by business_value): %s",
+            len(out),
+            [
+                f"{k['label']}={k['business_value']:.2f}"
+                for k in out[:8]
+            ],
+        )
+    except Exception:
+        pass
+
     return out
 
 

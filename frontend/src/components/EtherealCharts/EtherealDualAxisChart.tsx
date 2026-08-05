@@ -11,7 +11,7 @@ const CARD_BG_URL = new URL('../../assets/ethereal/背景.png', import.meta.url)
 interface Props {
   chartNode?: Record<string, unknown>;
   title?: string;
-  height?: number;
+  height?: number | string;
   cardBgUrl?: string;
 }
 
@@ -24,7 +24,7 @@ export const EtherealDualAxisChart: React.FC<Props> = ({ chartNode, title, heigh
     if (!chartRef.current) return;
     const chartDom = chartRef.current;
     chartDom.style.width = '100%';
-    chartDom.style.height = '380px';
+    chartDom.style.height = '100%';
 
     let xAxisData: string[] = [];
     let gmvData: number[] = [];
@@ -185,8 +185,11 @@ export const EtherealDualAxisChart: React.FC<Props> = ({ chartNode, title, heigh
 
     const onResize = () => innerChart.resize();
     window.addEventListener('resize', onResize);
+    const ro = new ResizeObserver(onResize);
+    ro.observe(chartDom);
     return () => {
       window.removeEventListener('resize', onResize);
+      ro.disconnect();
       innerChart.dispose();
     };
   }, [chartNode, title]);
@@ -194,24 +197,29 @@ export const EtherealDualAxisChart: React.FC<Props> = ({ chartNode, title, heigh
   return (
     <div
       style={{
-        background: 'rgba(255,255,255,0.45)',
+        // ★ 与「活跃趋势（折线）组件」保持一致的仙气玻璃卡风格：同款背景图 + 玻璃白 + 大圆角
+        //   修复双轴图与折线图并排时背景/圆角风格突兀的问题
+        backgroundImage: `url(${CARD_BG_URL})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.45)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
-        border: '1px solid rgba(255,255,255,0.8)',
+        border: '1px solid rgba(255, 255, 255, 0.8)',
         borderRadius: 24,
-        boxShadow: '0 20px 40px -10px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9)',
-        padding: 30,
+        boxShadow: '0 10px 30px rgba(31, 41, 55, 0.18)',
+        padding: 24,
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
-        gap: 20,
+        gap: 16,
         width: '100%',
         height,
       }}
     >
       <div ref={headerRef} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.05)', paddingBottom: 15 }} />
       <div ref={kpiRowRef} style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', padding: '5px 20px 0' }} />
-      <div ref={chartRef} />
+      <div ref={chartRef} style={{ flex: '1 1 auto', minHeight: 0, width: '100%' }} />
     </div>
   );
 };

@@ -11,7 +11,7 @@ echarts.use([CustomChart, TooltipComponent, TitleComponent, CanvasRenderer]);
 
 interface Props {
   chartNode: Record<string, unknown>;
-  height?: number;
+  height?: number | string;
   /** 标题（来自 EtherealChart 透传的 chart.title，优先于 chartNode.title） */
   title?: string;
 }

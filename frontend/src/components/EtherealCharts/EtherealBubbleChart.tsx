@@ -18,7 +18,7 @@ const yOrder = ['已流失', '流失预警'];
 
 interface Props {
   chartNode: Record<string, unknown>;
-  height?: number;
+  height?: number | string;
 }
 
 export const EtherealBubbleChart: React.FC<Props> = ({ chartNode, height = 420 }) => {

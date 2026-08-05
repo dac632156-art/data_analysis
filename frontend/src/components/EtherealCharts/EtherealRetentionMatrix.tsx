@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
+import 背景 from '../../assets/ethereal/背景.png';
 
 /**
  * 同期群（下三角）热力矩阵 — 完全复刻「可视化模板库/同期群分析/下三角热力图组件.js」的白底仙气粉蓝风。
@@ -146,13 +147,13 @@ const EtherealRetentionMatrix: React.FC<RetentionMatrixProps> = ({
           return `${yMonth} <br/> W${p.value[0]} 留存率: <span style="color:#FCB8D7">${(p.value[2] * 100).toFixed(2)}%</span>`;
         },
       },
-      grid: { top: '20%', bottom: '5%', left: '13%', right: '7%', containLabel: false },
+      grid: { top: '20%', bottom: '8%', left: '11%', right: '5%', containLabel: true },
       xAxis: {
         type: 'category',
         position: 'bottom',
         data: xAxisData,
         splitArea: { show: false },
-        axisLabel: { color: '#64748B', fontWeight: 'bold', fontSize: 14, margin: 12 },
+        axisLabel: { color: '#64748B', fontWeight: 'bold', fontSize: 13, margin: 10, interval: 0, hideOverlap: false },
         axisLine: { show: false },
         axisTick: { show: false },
       },
@@ -231,9 +232,12 @@ const EtherealRetentionMatrix: React.FC<RetentionMatrixProps> = ({
     if (onReady) onReady(myChart);
     const handleResize = () => myChart.resize();
     window.addEventListener('resize', handleResize);
+    const ro = new ResizeObserver(handleResize);
+    ro.observe(chartRef.current);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      ro.disconnect();
       myChart.dispose();
       instRef.current = null;
     };
@@ -248,10 +252,16 @@ const EtherealRetentionMatrix: React.FC<RetentionMatrixProps> = ({
         height: height,
         borderRadius: 24,
         overflow: 'hidden',
-        background: cardBgUrl
-          ? `url(${cardBgUrl}) center/cover no-repeat`
-          : 'linear-gradient(135deg, #FDF2F8, #EEF2FF, #ECFEFF)',
-        boxShadow: '0 18px 50px -12px rgba(168, 162, 196, 0.45)',
+        // ★ 与「活跃趋势（折线）/双轴图」保持一致的仙气玻璃卡：同款背景图 + 玻璃白底
+        //   cardBgUrl 缺省时回退到导入的「背景.png」，并补 backgroundColor 挡住外层 bg-white/55，避免被冲淡
+        backgroundImage: `url(${cardBgUrl || 背景})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.45)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: '1px solid rgba(255, 255, 255, 0.8)',
+        boxShadow: '0 10px 30px rgba(31, 41, 55, 0.18)',
         padding: 16,
       }}
     >

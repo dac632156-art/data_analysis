@@ -170,18 +170,19 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
         })}
       </div>
 
-      {/* ★ 图表网格 - 一行一张图（整行独占），不并排；每个坑位固定宽度 900px 并居中，
-          图组件内部 width:100% 撑满的是这个固定坑位，宽度不被整行拉宽（高度仍由组件自定）。
-          GL 地图 span 逻辑保留。不挂 flex-1/overflow-auto，避免高度被父级压死。 */}
-      <div className="grid gap-4 p-6 justify-items-center" style={{ gridTemplateColumns: '1fr' }}>
+      {/* ★ 图表网格 - 6+6 经典网格：每行 2 张卡，各占 6 列宽（父列 50%）。
+          只影响「经典网格」Tab，不影响数据看板（SmartDashboard）与表格/地图整行布局。
+          表格类（analysis_table）已在上方的表格网格单独整行渲染，不进入此网格。
+          GL 地图 span 2 占满整行（原整行独占的宽幅语义保留）。 */}
+      <div className="grid gap-4 p-6" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
         {echarts.filter((c) => !(c.chart_type === 'analysis_table' && c.table_data)).length > 0 ? (
           echarts.filter((c) => !(c.chart_type === 'analysis_table' && c.table_data)).map((chart, i) => {
             const isGL = isGLOption(chart.option);
-            const gridSpan = isGL ? { gridColumn: 'span 3' } : {};
+            const gridSpan = isGL ? { gridColumn: 'span 2' } : {};
 
             return (
-              <div key={i} style={{ ...gridSpan, width: 900, maxWidth: '100%' }}>
-                <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '6px' }}>
+              <div key={i} style={{ ...gridSpan, width: '100%', height: 460, display: 'flex' }}>
+                <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '6px', width: '100%', height: '100%' }}>
                   {isGL ? (
                     <GLMapView option={chart.option} height={520} title={hideChartTitle ? undefined : chart.title} />
                   ) : (

@@ -541,8 +541,13 @@ class SessionManager:
                     if other.dataset_id != did and other.df is not None:
                         other.df = None
                 # 闭环：新数据集成为 active，同步其（可能为空）产物
-                _bucket = session.dataset_packages.get(did, {})
-                session.analysis_packages = dict(_bucket) if isinstance(_bucket, dict) else {}
+                session.analysis_packages = dict(session.dataset_packages.get(did, {}))
+                # ★ 新数据集激活时，清理基于旧 df 的 saved_packages / saved_charts，
+                #   避免「上传新文件后仪表盘仍然显示旧测试数据的 KPI/charts」问题。
+                #   SELECT_DATASET 切回旧数据集不清空，仍可看到该数据集已保存的分析结果。
+                session.saved_packages = []
+                session.saved_charts = []
+                session.analysis_packages = {}
             session.last_access = time.time()
             self._persist_session(session_id)
             return did
