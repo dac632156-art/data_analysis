@@ -95,39 +95,58 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
     slot; // slot 本身有时也含类型线索（如 rfm_pie / cohort_a_line）
   let type = normalizeChartType(rawType);
 
-  // ★ 后置重定向：bar/hbar 类图表根据「数据形态 + slot 语义」决定走哪个组件，而不是看 title 关键词。
-  //   - 数据含「偏移值 / 流失占比 / 正常占比」字段，或 slot 含「dim_offset」语义 → 维度偏移图
-  //     （流失归因，走 EtherealDimOffsetChart 仙气胶囊版本）
-  //   - slot 是「clv_* / hbar_*」横向条形场景（含按值排序的排行榜）→ 统一走 EtherealRankChart 仙气排行版，
-  //     即使 chart_type 被后端标成 bar 也能正确渲染（不再被错误地画成普通柱状图）
-  //   - 其余 hbar（渠道对比 / TopN 排行 / 价值榜等）→ 统一走渐变排行组件 EtherealRankChart
-  //   - 其余 bar（普通柱状图）→ 走 EtherealBarChart
-  //   这样不同路径下发的 chart_type（bar/hbar/ranking）都能识别出同一类可视化语义，
-  //   不会出现"排行图被柱状图替换"或"维度偏移图渲染失败"之类不一致。
+  // ★ 关键：所有归属于「bar_rank_channel」「bar_rank_stage」桶的图，后端 chart_type='bar'，
+  //   此时 EtherealChart 必须按 slot 或 raw_data 形态把它归一到 'ranking' → EtherealRankChart，
+  //   而不是交给 'EtherealBarChart' 变成彩色竖向柱状图（用户已多次反馈该问题）。
+  //   判定策略（按可信度从高到低）：
+  //     (1) raw_data 是 [{维度, 数值}] 形态、且非 dim_offset 数据 → ranking
+  //     (2) slot 包含 'clv_'、'hbar_'、'dim_offset'、'rank'、'top_n' 前缀/子串 → ranking/hbar
+  //   不再用「chart_type 是否是 'hbar'」这样的后端字段依赖（clv_advanced 全标 bar，必须后端不确定也能救回）。
+
+  // 旧逻辑（保留兜底）
   if (type === 'hbar' || type === 'bar') {
     const slotStr = String(slot || '').toLowerCase();
     const isDimOffsetSlot = slotStr.includes('dim_offset');
     const isClvOrHbarSlot = slotStr.startsWith('clv_') || slotStr.startsWith('hbar_');
+
     const hbarRaw =
       (data && data.length > 0 ? data : (chartNode?.data as Array<Record<string, unknown>>) || []) as Array<Record<string, unknown>>;
     const isDimOffsetData = hbarRaw.some(
       (r) =>
         r && (r['偏移值'] !== undefined || r['流失占比'] !== undefined || r['正常占比'] !== undefined),
     );
+
+    // ★ 数据形态识别：扁平 [{string, number}, ...]，且只有 2 个 key（一列维度、一列数值），
+    //   且数值列字段名不是"偏移/流失/占比/客户生命周期价值"等同源聚合 → 走 ranking
+    const looksLikeRankingData =
+      Array.isArray(data) && data.length >= 2 &&
+      data.every(
+        (r) =>
+          r && typeof r === 'object' &&
+          Object.keys(r).length === 2 &&
+          Object.values(r).every((v) => typeof v === 'string' || typeof v === 'number'),
+      ) &&
+      !isDimOffsetData;
+
     if (isDimOffsetData || isDimOffsetSlot) {
-      type = 'hbar'; // 走维度偏移图（case 'hbar' → EtherealDimOffsetChart）
-    } else if (isClvOrHbarSlot) {
-      type = 'ranking'; // 横向条形/排行（clv_a_* / hbar__*_top_n 等）→ EtherealRankChart
+      type = 'hbar'; // → EtherealDimOffsetChart
+    } else if (looksLikeRankingData || isClvOrHbarSlot) {
+      type = 'ranking'; // → EtherealRankChart
     } else if (type === 'hbar') {
       type = 'ranking';
     }
   }
 
-  // ★ 调试钩子：window.__datamind_chart_debug__ = true 时把每张图的归一结果打到 console
-  //   排查"为什么某张图走错组件"问题的最快办法：用户开启后直接看 type / slot / data[0]。
+  // ★ 调试钩子：默认关闭（生产），打开方式：浏览器 console 执行
+  //   window.__datamind_chart_debug__ = true; 刷新后所有归一结果会打印到 console
   if (typeof window !== 'undefined' && (window as Record<string, unknown>).__datamind_chart_debug__) {
     // eslint-disable-next-line no-console
     console.log('[EC]', { rawType, slot, finalType: type, dataSample: (Array.isArray(data) && data[0]) || null });
+    // ★ 额外：把排名图被错误路径渲染的关键日志也打到 console，方便定位
+    if (rawType === 'bar' && /客户生命周期价值|客渠道|商品类目|流量来源/.test(String(slot || '') + (chartNode?.title as string || ''))) {
+      // eslint-disable-next-line no-console
+      console.warn('[EC] CLV图路由异常', { rawType, slot, finalType: type, chartType: rawType, chartNode });
+    }
   }
 
   // ★ 默认让组件继承父容器高度（parent 自适应），仅在调用方显式传 height 时硬编码。
