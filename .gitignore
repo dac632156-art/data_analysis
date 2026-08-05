@@ -55,3 +55,35 @@ logs_e2e*.txt
 **/*.bak
 /-w
 backend/-w
+
+# Build output (local only)
+frontend/dist/
+frontend/dist-buildcheck/
+*.flag
+
+# Logs
+*.log
+*_err.log
+*.err
+_vite*.log
+
+# Debug / temp scripts and dumps
+_*.py
+_*.txt
+_*.json
+_*.csv
+_*.ts
+_client_old.ts
+_api_diff_stat.txt
+_apitype_stat.txt
+_diff_egrid.txt
+_csv_inspect.*
+_default_cfg.json
+_diag_*.txt
+_diag_*.py
+_debug_echarts.txt
+
+# Tool/agent skill bundles (not project source)
+.claude/
+.agents/
+.codebuddy/skills/

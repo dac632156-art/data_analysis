@@ -21,7 +21,7 @@ const CARD_BG_URL = new URL('../../assets/ethereal/背景.png', import.meta.url)
 interface Props {
   chartNode?: Record<string, unknown>;
   title?: string;
-  height?: number;
+  height?: number | string;
   cardBgUrl?: string;
 }
 
@@ -77,6 +77,8 @@ export const EtherealFunnelChart: React.FC<Props> = ({
     let myChart: echarts.ECharts | null = null;
     const onResize = () => myChart?.resize();
     window.addEventListener('resize', onResize);
+    const ro = new ResizeObserver(onResize);
+    ro.observe(container);
 
     const rafId = requestAnimationFrame(() => {
       // 清空容器，避免 re-render 时旧 canvas 残留导致图形不更新/空白
@@ -300,6 +302,7 @@ export const EtherealFunnelChart: React.FC<Props> = ({
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', onResize);
+      ro.disconnect();
       myChart?.dispose();
     };
   }, [chartNode, title]);

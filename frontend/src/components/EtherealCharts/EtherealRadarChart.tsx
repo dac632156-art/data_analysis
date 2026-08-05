@@ -50,7 +50,7 @@ interface RadarSeriesItem {
 }
 interface Props {
   chartNode: Record<string, unknown>;
-  height?: number;
+  height?: number | string;
 }
 
 export const EtherealRadarChart: React.FC<Props> = ({ chartNode, height = 420 }) => {

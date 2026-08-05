@@ -10,6 +10,7 @@ import type {
   AICleanSubmitResponse, AICleanStatusResponse,
 } from '../types/api';
 import type { ChartConfig } from '../types';
+import type { SmartLayoutResponse } from './../types/dashboard';
 
 // 部署时通过环境变量指定后端地址，本地开发走 Vite proxy
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -397,6 +398,30 @@ export const saveDashboardTitle = async (
     session_id: sessionId,
     title,
     action,
+  });
+  return data;
+};
+
+/* ===== 智能排版大屏（LLM 驱动） ===== */
+export interface SmartLayoutRequestParams {
+  session_id: string;
+  api_key?: string;
+  base_url?: string;
+  model?: string;
+  top_n?: number;
+  refresh?: boolean;
+}
+
+export const getSmartLayout = async (
+  params: SmartLayoutRequestParams,
+): Promise<SmartLayoutResponse> => {
+  const { data } = await api.post<SmartLayoutResponse>('/dashboard/smart-layout', {
+    session_id: params.session_id,
+    api_key: params.api_key || '',
+    base_url: params.base_url || null,
+    model: params.model || 'gpt-3.5-turbo',
+    top_n: params.top_n ?? 12,
+    refresh: params.refresh ?? false,
   });
   return data;
 };

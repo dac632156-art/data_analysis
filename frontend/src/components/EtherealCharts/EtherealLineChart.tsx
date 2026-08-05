@@ -14,7 +14,7 @@ const customPalette = ['#FCCDDF', '#C8E1F5', '#E2C9F3', '#D7EFE5', '#FCDDC8', '#
 interface Props {
   chartNode: Record<string, unknown>;
   title?: string;
-  height?: number;
+  height?: number | string;
 }
 
 function normalizeTitle(node: Record<string, unknown>, propTitle?: string): string {
@@ -140,6 +140,42 @@ export const EtherealLineChart: React.FC<Props> = ({ chartNode, title, height = 
       });
     }
 
+    // ── 图例自适应：series 越多 / 名称越长，越需要滚动式图例并让出更多空间 ──
+    const seriesNames = series.map((s) => String((s as { name?: string }).name || ''));
+    const legendCount = seriesNames.length;
+    const maxNameLen = seriesNames.reduce((m, n) => Math.max(m, n.length), 0);
+    // 粗略估算图例总宽度（px）：每字 ~12px + icon 与间距 ~30px
+    const estLegendWidth = seriesNames.reduce((sum, n) => sum + n.length * 12 + 30, 0);
+    const needScroll = legendCount > 4 || estLegendWidth > 520 || maxNameLen > 8;
+    // 图例占用的行高：滚动式单行，普通式按估算宽度折行
+    const legendRows = needScroll ? 1 : Math.max(1, Math.ceil(estLegendWidth / 460));
+    const legendHeight = legendRows * 22;
+
+    const legendOption = needScroll
+      ? {
+          type: 'scroll' as const,
+          top: titleText ? 40 : 12,
+          left: 'center' as const,
+          width: '86%',
+          textStyle: { color: '#475569', fontSize: 11, fontWeight: 600 },
+          itemGap: 12,
+          itemWidth: 14,
+          itemHeight: 8,
+          icon: 'circle',
+          pageIconSize: 10,
+          pageTextStyle: { color: '#64748B', fontSize: 10 },
+        }
+      : {
+          top: titleText ? 40 : 12,
+          left: 'center' as const,
+          textStyle: { color: '#475569', fontSize: 12, fontWeight: 600 },
+          itemGap: 16,
+          icon: 'circle',
+        };
+
+    // 图例移到顶部后，grid.top 需容纳「标题 + 图例」，bottom 只留 x 轴标签空间
+    const gridTop = (titleText ? 44 : 14) + legendHeight + 12;
+
     const option: EChartsCoreOption = {
       backgroundColor: 'transparent',
       title: titleText
@@ -170,13 +206,8 @@ export const EtherealLineChart: React.FC<Props> = ({ chartNode, title, height = 
           },
         },
       },
-      legend: {
-        bottom: 4,
-        textStyle: { color: '#475569', fontSize: 12, fontWeight: 600 },
-        itemGap: 16,
-        icon: 'circle',
-      },
-      grid: { left: 56, right: 32, top: titleText ? 64 : 40, bottom: 48, containLabel: true },
+      legend: legendOption,
+      grid: { left: 56, right: 32, top: gridTop, bottom: 28, containLabel: true },
       xAxis: {
         type: 'category',
         data: xAxisData,
@@ -218,9 +249,15 @@ export const EtherealLineChart: React.FC<Props> = ({ chartNode, title, height = 
         borderRadius: 24,
         boxShadow: '0 10px 30px rgba(31, 41, 55, 0.18)',
         padding: 30,
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        boxSizing: 'border-box',
       }}
     >
-      <div ref={ref} style={{ width: '100%', height, borderRadius: 16 }} />
+      <div ref={ref} style={{ width: '100%', flex: '1 1 auto', minHeight: 0, borderRadius: 16 }} />
     </div>
   );
 };

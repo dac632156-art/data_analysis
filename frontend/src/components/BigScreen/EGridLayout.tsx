@@ -180,8 +180,8 @@ export default function EGridLayout({ kpis, echarts, title = '数据分析看板
             const gridSpan = isGL ? { gridColumn: 'span 3' } : {};
 
             return (
-              <div key={i} style={{ ...gridSpan, width: 900, maxWidth: '100%' }}>
-                <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '6px' }}>
+              <div key={i} style={{ ...gridSpan, width: 900, maxWidth: '100%', height: 460, display: 'flex' }}>
+                <BorderBox1 color={['#7DD3FC', '#38BDF8']} style={{ padding: '6px', width: '100%', height: '100%' }}>
                   {isGL ? (
                     <GLMapView option={chart.option} height={520} title={hideChartTitle ? undefined : chart.title} />
                   ) : (

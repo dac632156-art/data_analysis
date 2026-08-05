@@ -230,17 +230,14 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export function DataProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(dataReducer, initialState);
 
-  // 初始化：从 localStorage 恢复 session 或创建新 session
+  // 初始化：每次刷新都创建全新会话（不持久化 sessionId）。
+  // 旧会话数据留在后端，约 1 小时后自动超时清理。
+  // 刷新后前端用空会话调用 listDatasets，之前上传的真实数据不再显示，即"缓存消失"。
   useEffect(() => {
-    const savedSession = localStorage.getItem('sessionId');
-    if (savedSession) {
-      dispatch({ type: 'SET_SESSION', sessionId: savedSession });
-    } else {
-      createSession().then((sid) => {
-        dispatch({ type: 'SET_SESSION', sessionId: sid });
-        localStorage.setItem('sessionId', sid);
-      });
-    }
+    localStorage.removeItem('sessionId');
+    createSession().then((sid) => {
+      dispatch({ type: 'SET_SESSION', sessionId: sid });
+    });
   }, []);
 
   return (

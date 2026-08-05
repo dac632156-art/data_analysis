@@ -104,7 +104,7 @@ interface Props {
   /** 直接传扁平数据（优先于 option） */
   data?: Array<{ name: string; value: number }>;
   title?: string;
-  height?: number;
+  height?: number | string;
   /** 卡片外层水墨背景图地址（默认 背景.png） */
   cardBgUrl?: string;
   /** 扇区内部水墨纹理底图地址（默认 bg5.png） */
@@ -231,9 +231,12 @@ export const EtherealPieChart: React.FC<Props> = ({
 
     const onResize = () => myChart.resize();
     window.addEventListener('resize', onResize);
+    const ro = new ResizeObserver(onResize);
+    ro.observe(chartDom);
 
     return () => {
       window.removeEventListener('resize', onResize);
+      ro.disconnect();
       myChart.dispose();
     };
   }, [option, data, title, sliceTextureUrl]);

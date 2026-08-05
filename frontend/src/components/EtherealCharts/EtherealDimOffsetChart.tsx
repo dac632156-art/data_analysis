@@ -11,7 +11,7 @@ const CARD_BG_URL = new URL('../../assets/ethereal/背景.png', import.meta.url)
 interface Props {
   chartNode?: Record<string, unknown>;
   title?: string;
-  height?: number;
+  height?: number | string;
   /** 维度筛选，如 { 维度: '城市' } */
   filter?: Record<string, string>;
   cardBgUrl?: string;
@@ -199,14 +199,14 @@ export const EtherealDimOffsetChart: React.FC<Props> = ({
       },
       legend: { show: false },
       toolbox: {
-        right: 20,
-        top: 44,
+        right: 12,
+        top: 6,
         z: 9999,
         feature: {
           saveAsImage: { title: '下载图片', show: true },
         },
       },
-      grid: { top: 56, left: 110, right: 120, bottom: 50, containLabel: false },
+      grid: { top: 62, left: 110, right: 40, bottom: 40, containLabel: false },
       xAxis: {
         type: 'value',
         position: 'top',
@@ -254,42 +254,52 @@ export const EtherealDimOffsetChart: React.FC<Props> = ({
           },
         },
       ],
+      // 图例整体作为一个 group 放在标题「下方」独立一行，右对齐；
+      // group 内部用相对坐标排布，容器变窄时整体平移而不会与标题重叠。
       graphic: [
-        // 右上角装饰性图例（红=更易流失 / 绿=更稳定），与截图风格一致
         {
-          type: 'rect',
-          right: 168,
-          top: 14,
-          shape: { width: 14, height: 14, r: 3 },
-          style: { fill: RISK_COLOR },
+          type: 'group',
+          right: 12,
+          top: 32,
+          children: [
+            {
+              type: 'rect',
+              left: 0,
+              top: 1,
+              shape: { width: 12, height: 12, r: 3 },
+              style: { fill: RISK_COLOR },
+            },
+            {
+              type: 'text',
+              left: 18,
+              top: 2,
+              style: { text: '更易流失', fill: '#64748B', fontSize: 11, fontWeight: 500 },
+            },
+            {
+              type: 'rect',
+              left: 76,
+              top: 1,
+              shape: { width: 12, height: 12, r: 3 },
+              style: { fill: SAFE_COLOR },
+            },
+            {
+              type: 'text',
+              left: 94,
+              top: 2,
+              style: { text: '更稳定', fill: '#64748B', fontSize: 11, fontWeight: 500 },
+            },
+          ],
         },
-        {
-          type: 'text',
-          right: 110,
-          top: 15,
-          style: { text: '更易流失', fill: '#64748B', fontSize: 12, fontWeight: 500 },
-        },
-        {
-          type: 'rect',
-          right: 60,
-          top: 14,
-          shape: { width: 14, height: 14, r: 3 },
-          style: { fill: SAFE_COLOR },
-        },
-        {
-          type: 'text',
-          right: 8,
-          top: 15,
-          style: { text: '更稳定', fill: '#64748B', fontSize: 12, fontWeight: 500 },
-        },
-
       ],
     } as echarts.EChartsCoreOption);
 
     const onResize = () => myChart.resize();
     window.addEventListener('resize', onResize);
+    const ro = new ResizeObserver(() => myChart.resize());
+    ro.observe(container);
     return () => {
       window.removeEventListener('resize', onResize);
+      ro.disconnect();
       myChart.dispose();
     };
   }, [chartNode, title, filter]);

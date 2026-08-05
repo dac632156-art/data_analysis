@@ -44,20 +44,29 @@ const IMPLEMENTED = new Set(['pie', 'bar', 'line', 'radar', 'dual_axis', 'heatma
  * 未实现的类型（funnel/ranking/sankey/graph 等）原样返回，由调用方显式报错，不静默兜底。 */
 function normalizeChartType(t: string): string {
   const s = (t || '').toLowerCase();
-  if (s === 'pie') return 'pie';
-  if (s === 'bar') return 'bar';
-  if (s === 'line' || s.endsWith('_line') || s.endsWith('_trend') || s === 'rfm_line') return 'line';
+  if (s === 'pie' || s === 'ring' || s === 'pie_chart' || s === 'donut') return 'pie';
+  if (s === 'bar' || s.startsWith('bar_') || s.endsWith('_bar') || s === 'vertical_bar' || s === 'v_bar') return 'bar';
+  if (
+    s === 'line' ||
+    s.startsWith('line_') ||
+    s.endsWith('_line') ||
+    s.endsWith('_trend') ||
+    s === 'rfm_line' ||
+    s === 'area' ||
+    s === 'area_chart'
+  ) return 'line';
   if (s === 'radar') return 'radar';
-  if (s === 'dual_axis') return 'dual_axis';
+  if (s === 'dual_axis' || s === 'dual' || s === 'dualbar_line' || s === 'dual_axis_chart') return 'dual_axis';
   if (s === 'heatmap' || s === 'cohort_heatmap') return 'heatmap';
-  if (s === 'bubble_matrix') return 'bubble';
+  if (s === 'bubble_matrix' || s === 'bubble') return 'bubble';
   if (s === 'graph' || s === 'chord' || s === 'chord_diagram') return 'graph';
-  if (s === 'hbar_family') return 'hbar';
+  if (s === 'hbar_family' || s === 'dim_offset' || s === 'dim2_offset') return 'hbar';
   if (s === 'ranking' || s === 'horizontal_bar' || s === 'h_bar' || s === 'hbar_rank') return 'ranking';
-  if (s === 'table') return 'table';
-  if (s === 'metric' || s === 'card') return 'metric';
-  if (s === 'funnel') return 'funnel';
-  return s; // sankey/graph 等未实现组件，原样返回走报错分支
+  if (s === 'table' || s === 'cohort_table' || s === 'rank_table' || s === 'analysis_table') return 'table';
+  if (s === 'metric' || s === 'kpi' || s === 'card' || s === 'metric_card') return 'metric';
+  if (s === 'funnel' || s === 'funnel_chart') return 'funnel';
+  // 未实现的类型（sankey/waterfall/word_cloud）原样返回走报错分支
+  return s;
 }
 
 /**
@@ -84,11 +93,29 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
     chartType ||
     (chartNode?.chart_type as string) ||
     slot; // slot 本身有时也含类型线索（如 rfm_pie / cohort_a_line）
-  const type = normalizeChartType(rawType);
+  let type = normalizeChartType(rawType);
 
+  // ★ 后置重定向：hbar 类图表根据「数据形态」决定走哪个组件，而不是看 title 关键词。
+  //   - 数据含「偏移值 / 流失占比 / 正常占比」字段 → 维度偏移图（流失归因，走 EtherealDimOffsetChart）
+  //   - 其余 hbar（渠道对比 / TopN 排行 / 价值榜等）→ 统一走渐变排行组件 EtherealRankChart
+  //   这样"同一个 chart_type=hbar"不会因为 title 不同而分流到两套组件、出现一个成功一个失败。
+  if (type === 'hbar') {
+    const hbarRaw =
+      (data && data.length > 0 ? data : (chartNode?.data as Array<Record<string, unknown>>) || []) as Array<Record<string, unknown>>;
+    const isDimOffset = hbarRaw.some(
+      (r) =>
+        r && (r['偏移值'] !== undefined || r['流失占比'] !== undefined || r['正常占比'] !== undefined),
+    );
+    if (!isDimOffset) {
+      type = 'ranking';
+    }
+  }
+
+  // ★ 默认让组件继承父容器高度（parent 自适应），仅在调用方显式传 height 时硬编码。
+  const wrapperHeight: number | string = '100%';
   switch (type) {
     case 'pie':
-      return <EtherealPieChart option={chartNode as Record<string, unknown>} title={title} cardBgUrl={cardBgUrl} />;
+      return <EtherealPieChart option={chartNode as Record<string, unknown>} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     case 'heatmap': {
       // 两种数据来源，最终都用仙气矩阵组件渲染（不回退老组件）：
       // 1) 分析包路径：扁平清单在 chartNode.data 或 raw(=chart.raw_data)；
@@ -105,18 +132,18 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
           value: v,
         }));
       }
-      return <EtherealRetentionMatrix chartNode={chartNode} rawData={matrixData} title={title} cardBgUrl={cardBgUrl} valueFormat={resolveValueFormat(rawType, slot, valueFormat)} />;
+      return <EtherealRetentionMatrix chartNode={chartNode} rawData={matrixData} title={title} cardBgUrl={cardBgUrl} valueFormat={resolveValueFormat(rawType, slot, valueFormat)} height={wrapperHeight} />;
     }
     case 'bar':
-      return <EtherealBarChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} />;
+      return <EtherealBarChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     case 'line':
-      return <EtherealLineChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} />;
+      return <EtherealLineChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     case 'metric':
       return <EtherealMetricCard metricData={chartNode as { title?: string; label?: string; value?: number | string; change?: number | string; unit?: string }} />;
     case 'dual_axis':
-      return <EtherealDualAxisChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} />;
+      return <EtherealDualAxisChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     case 'radar':
-      return <EtherealRadarChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} />;
+      return <EtherealRadarChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     case 'table':
       return <EtherealTable chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} />;
     case 'hbar': {
@@ -125,24 +152,15 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
       const hbarData = (data && data.length > 0)
         ? data
         : (chartNode?.data as Array<Record<string, unknown>>) || [];
-      return <EtherealDimOffsetChart chartNode={{ ...chartNode, data: hbarData }} title={title} filter={filter} cardBgUrl={cardBgUrl} />;
+      return <EtherealDimOffsetChart chartNode={{ ...chartNode, data: hbarData }} title={title} filter={filter} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     }
     case 'ranking': {
-      // 横向排行图统一走仙气排行组件（适配漏斗渠道/CLV TOP 等所有 ranking 类型）。
-      // 数据来源三层兜底：chartNode.data（分析包扁平清单）→ data prop（仪表盘 raw_data）→
-      //   chartNode.option 反推（ECharts 标准 option，无扁平清单时也能渲染）。
-      // funnel_channel 也走此分支：EtherealRankChart 已专门支持 {渠道, CR_overall, System_Action} 形态。
       const rankData = (data && data.length > 0)
         ? data
         : (chartNode?.data as Array<Record<string, unknown>>) || [];
-      return <EtherealRankChart chartNode={{ ...chartNode, data: rankData }} title={title} cardBgUrl={cardBgUrl} />;
+      return <EtherealRankChart chartNode={{ ...chartNode, data: rankData }} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     }
     case 'bubble': {
-      // 三层数据源（从富到穷，保留后端元信息最完整的）：
-      //  1) data prop = VisualizationRenderer 传入的 chart.raw_data（4 列完整：价值层/流失状态/挽回优先级/人数）
-      //  2) chartNode.data（EtherealPreview / 预览页直接传扁平清单）
-      //  3) chartNode.series[0].data 反推（仪表盘/大屏旧 option 路径，仅 3 元 value，丢失「挽回优先级」维度，
-      //     仅作兜底；反推出的标签命名为「标签/聚类/人数」+ 空优先级，此时图例退化为按价值层涂色）。
       let bubbleData = (raw && raw.length > 0)
         ? raw
         : ((chartNode?.data as Array<Record<string, unknown>>) || []);
@@ -157,25 +175,31 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
           };
         });
       }
-      return <EtherealBubbleChart chartNode={{ ...chartNode, data: bubbleData }} title={title} cardBgUrl={cardBgUrl} />;
+      return <EtherealBubbleChart chartNode={{ ...chartNode, data: bubbleData }} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     }
     case 'graph': {
-      // 关联图（和弦图）：商品关联网络图走自研关联图组件，替换默认 ECharts graph 节点连线。
-      // 数据来源三层兜底：data prop（边表，含 lift）→ chartNode.data（边表）→ option.series[0]（节点/边），
-      // 组件内部再自动去重构建节点表（对齐模板库 关联图组件.js 第 71-96 行）。
       const netData = (raw && raw.length > 0)
         ? raw
         : ((chartNode?.data as Array<Record<string, unknown>>) || []);
-      return <EtherealNetworkChart chartNode={{ ...chartNode, data: netData }} title={title} cardBgUrl={cardBgUrl} />;
+      return <EtherealNetworkChart chartNode={{ ...chartNode, data: netData }} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     }
     case 'funnel': {
-      // 转化漏斗图：数据来自后端 funnel.py → option.series[0].data = [{name,value}]
-      // 与可视化模板库/漏斗图组件.js 渲染逻辑一致（淡彩渐变 + 右侧 CTR 标签）
-      return <EtherealFunnelChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} />;
+      return <EtherealFunnelChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     }
-    default:
+    default: {
       // 暂无量身定制的仙气组件，直接用原生 ECharts 渲染（保证图表永远可见，不退化成占位）
-      return <EChartView option={chartNode as never} title={title} hideTitle />;
+      // option 不合法时（无 series / xAxis/yAxis 缺失）静默回退为占位卡片，避免污染其他图表渲染
+      const opt = chartNode as Record<string, unknown> | undefined;
+      const hasSeries = Array.isArray(opt?.series) && (opt!.series as unknown[]).length > 0;
+      if (!hasSeries) {
+        return (
+          <div className="flex items-center justify-center w-full h-full text-slate-400 text-xs">
+            暂不支持的图表类型：{rawType}
+          </div>
+        );
+      }
+      return <EChartView option={opt as never} title={title} hideTitle />;
+    }
   }
 };
 

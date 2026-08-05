@@ -1,11 +1,13 @@
 /* DashboardPage - 大屏仪表盘（3模板 + AI推荐 + ECharts引擎） */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
 import { FiDownload, FiFileText, FiGrid, FiRadio, FiActivity, FiSave, FiLayout } from 'react-icons/fi';
 import EGridLayout from '../components/BigScreen/EGridLayout';
 import CommandScreen from '../components/BigScreen/CommandScreen';
 import MedicalDashboard from '../components/BigScreen/MedicalDashboard';
 import { DashboardRenderer } from '../components/DashboardRenderer';
+import SmartDashboard from '../components/BigScreen/SmartDashboard';
 import type { CardItem, CardMeta } from '../components/cardTypes';
 import KPICards, { type KPIItem } from '../components/KPICards';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
@@ -65,6 +67,8 @@ const SCHEMA_LAYOUT = 'wide';
 
 export default function DashboardPage() {
   const { state: ds } = useData();
+  const [searchParams] = useSearchParams();
+  const isMock = searchParams.get('mock') === '1';
   const [template, setTemplate] = useState<TemplateType>('grid');
   const [kpis, setKpis] = useState<KPIItem[]>([]);
   const [echarts, setECharts] = useState<EChartItem[]>([]);
@@ -526,6 +530,11 @@ export default function DashboardPage() {
   const displayTitle = inferIndustryTitle(ds.preview?.[0] ? Object.keys(ds.preview[0]) : ds.columnInfo?.map(c => c.name) || [])
     || '数据分析看板';
 
+  // ★ mock=1 模式：跳转到 SmartDashboard 三模式预览（用真实已保存图表驱动）
+  if (isMock) {
+    return <SmartDashboard sessionId={ds.sessionId} mock={true} />;
+  }
+
   if (!hasData) {
     return (
       <div className="page-enter">
@@ -606,7 +615,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 大屏内容 */}
-      <div className="flex-1 overflow-hidden" ref={screenRef}>
+      <div className="flex-1 min-h-0 overflow-auto relative" ref={screenRef}>
         {template === 'schema' ? (
           /* ══════════ 第5选项：Schema 看板（独立新链路，不干扰旧三模板） ══════════ */
           <DashboardRenderer
@@ -620,11 +629,7 @@ export default function DashboardPage() {
         ) : template === 'command' ? (
             <CommandScreen kpis={kpis} dataPreview={ds.preview} echarts={echarts} />
         ) : template === 'medical' ? (
-            cardsLoading ? (
-              <div className="flex items-center justify-center h-full"><div className="w-8 h-8 rounded-full border-2 border-[#8B5CF6] border-t-transparent animate-spin" /></div>
-            ) : (
-              <MedicalDashboard cards={cards} meta={cardsMeta} title={displayTitle} />
-            )
+            <SmartDashboard sessionId={ds.sessionId} mode="A" />
         ) : template === 'report' ? (
           /* 分析报告生成面板 */
           <div className="flex-1 flex items-center justify-center p-8 bg-transparent">

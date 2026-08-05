@@ -127,6 +127,7 @@ def _extract_chart_configs_from_packages(packages: list) -> list:
     返回格式与 get_default_echart_configs 兼容（额外携带 option 字段）。
     """
     configs = []
+    seen_slots: Dict[str, int] = {}   # 防 slot 重复：analysis 包可能复用同一 slot
     for pkg in packages:
         if not isinstance(pkg, dict):
             continue
@@ -147,9 +148,23 @@ def _extract_chart_configs_from_packages(packages: list) -> list:
             # 原样携带已渲染 option（空则留空，由 api_dashboard_echarts 回退 create_echart）
             option = chart.get("option", "") or ""
             chart_slot = chart.get("slot", "")
+            # ★ 兜底：pkg.charts 里若没 slot，按 (analysis_type, chart_type, x, y, title) 生成稳定 id
+            if not chart_slot:
+                import hashlib
+                seed = f"{analysis_type}|{ct}|{x}|{y}|{title}".encode("utf-8")
+                chart_slot = "pkg_" + hashlib.md5(seed).hexdigest()[:10]
+            # ★ 防重复：analysis 包里可能有多张图复用同一 slot（如 hbar__attr_dim_offset），
+            #   导致前端 chartMap 覆盖 + React key 冲突。强制追加全局序号保证唯一。
+            base_slot = chart_slot
+            dup = seen_slots.get(base_slot, 0)
+            seen_slots[base_slot] = dup + 1
+            chart_slot = base_slot if dup == 0 else f"{base_slot}_{dup}"
             # ★ 从 chart_data 补齐 data/color/right_col（用于重渲染兜底）
-            cd = chart_data_map.get(chart_slot, {})
+            #   注意：chart_data_map 的 key 是「原始 slot」（未加 _dup 后缀），
+            #   所以必须用 base_slot 而不是 chart_slot 查，否则永远查不到。
+            cd = chart_data_map.get(base_slot, {})
             cfg = {
+                "slot": chart_slot,                # 智能排版前端按 slot 查 chartMap 必须有
                 "chart_type": ct,
                 "x": x,
                 "y": y,
@@ -164,14 +179,94 @@ def _extract_chart_configs_from_packages(packages: list) -> list:
                 cfg["color"] = cd["color"]
             if cd.get("right_col"):
                 cfg["right_col"] = cd["right_col"]
+            configs.append(cfg)
+    return configs
 
 
-            # 去重：同类型同 X 同 Y 的同名图只保留一个。
-            # ★ 修复：必须带上 title（或 slot）——同期群三张热力图 x/y 均为空，
-            #   若仅按 (chart_type, x, y) 去重会把留存率/ARPU/净毛利三张图误并成一张。
-            key = (ct, x, y, title)
-            if not any((c.get("chart_type"), c.get("x"), c.get("y"), c.get("title")) == key for c in configs):
-                configs.append(cfg)
+def _pick_columns(df: Any, name_keywords: List[str]) -> Optional[str]:
+    """根据关键字列表从 df 列名里挑一个最匹配的列（大小写不敏感、子串命中）。"""
+    if df is None or not hasattr(df, "columns"):
+        return None
+    cols = list(getattr(df, "columns", []))
+    low = {str(c).lower(): c for c in cols}
+    for kw in name_keywords:
+        kw_l = kw.lower()
+        for c in cols:
+            if kw_l in str(c).lower():
+                return c
+    return None
+
+
+def _build_default_configs_from_df(df: Any, max_n: int = 8) -> list:
+    """基于 df 列名智能生成默认 ECharts 图表配置（用于 saved/analysis 都为空时的兜底）。
+
+    目的：让 LLM 排版引擎始终能拿到候选清单（哪怕用户没跑过 analysis），
+    同时让经典网格/智能排版都至少能看到几张基础图。
+
+    规则（按列名关键字匹配，匹配不到就跳过）：
+    - 时间列（日期/时间/order_date/month）   → line（销售金额/利润金额）
+    - 类别列（地区/省份/产品类别/产品名称/渠道）→ pie（销售金额）+ bar（销售金额）
+    - 数值列（销售金额/利润金额/客户数量）   → hbar / ranking
+    - 数量 vs 金额                              → dual_axis
+    """
+    configs: list = []
+    if df is None or not hasattr(df, "columns") or len(getattr(df, "columns", [])) == 0:
+        return configs
+    try:
+        cols = list(df.columns)
+    except Exception:
+        return configs
+
+    time_col = _pick_columns(df, ["日期", "时间", "date", "month", "下单时间"])
+    cat_col = _pick_columns(df, ["产品类别", "产品名称", "省份", "地区", "渠道"])
+    revenue_col = _pick_columns(df, ["销售金额", "销售额", "GMV", "amount", "revenue"])
+    profit_col = _pick_columns(df, ["利润金额", "利润", "profit", "毛利"])
+    qty_col = _pick_columns(df, ["销售数量", "数量", "qty", "quantity"])
+    cust_col = _pick_columns(df, ["客户数量", "客户数", "客户", "users"])
+    returns_col = _pick_columns(df, ["退货数", "退货", "return"])
+
+    # 优先级推荐表
+    recommendations: List[Dict[str, Any]] = []
+    if time_col and revenue_col:
+        recommendations.append({"chart_type": "line", "x": time_col, "y": revenue_col, "title": f"{revenue_col}趋势（按{time_col}）"})
+        recommendations.append({"chart_type": "line", "x": time_col, "y": profit_col or revenue_col, "title": f"{profit_col or revenue_col}趋势"})
+    if cat_col and revenue_col:
+        recommendations.append({"chart_type": "pie", "x": cat_col, "y": revenue_col, "title": f"{cat_col}销售额占比"})
+        recommendations.append({"chart_type": "bar", "x": cat_col, "y": revenue_col, "title": f"{cat_col}销售额排名"})
+    if revenue_col:
+        recommendations.append({"chart_type": "ranking", "x": cat_col or time_col or "", "y": revenue_col, "title": f"{revenue_col}排行榜"})
+    if profit_col and revenue_col:
+        recommendations.append({"chart_type": "dual_axis", "x": cat_col or time_col or "", "y": revenue_col, "title": f"{revenue_col} vs {profit_col}", "right_col": profit_col})
+    if returns_col and cat_col:
+        recommendations.append({"chart_type": "bar", "x": cat_col, "y": returns_col, "title": f"{cat_col}{returns_col}"})
+    if cust_col and cat_col:
+        recommendations.append({"chart_type": "hbar", "x": cat_col, "y": cust_col, "title": f"{cat_col}客户数"})
+
+    # 调 create_chart 渲染 option；失败则跳过
+    for rec in recommendations[:max_n]:
+        try:
+            kwargs = {"x": rec["x"], "title": rec["title"]}
+            if rec.get("y"):
+                kwargs["y"] = rec["y"]
+            if rec.get("right_col"):
+                kwargs["right_col"] = rec["right_col"]
+            option = create_echart(df, rec["chart_type"], **kwargs)
+        except Exception:
+            option = None
+        if not option:
+            continue
+        cfg = {
+            "chart_type": rec["chart_type"],
+            "type": rec["chart_type"],
+            "x": rec.get("x", ""),
+            "y": rec.get("y", ""),
+            "title": rec["title"],
+            "option": option,
+            "analysis_type": "default",
+            "slot": f"default_{rec['chart_type']}_{len(configs)}",
+        }
+        configs.append(cfg)
+
     return configs
 
 
@@ -189,6 +284,17 @@ class DashboardRecommendRequest(DashboardRequest):
     model: Optional[str] = None
 
 
+class SmartLayoutRequest(DashboardRequest):
+    """智能排版请求：复用 /dashboard/echarts 的数据源（已保存分析包的图表配置），
+    不直接传 charts；LLM 配置由前端透传。"""
+    api_key: Optional[str] = ""
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    top_n: Optional[int] = 12
+    refresh: Optional[bool] = False     # True=强制 LLM 重新排版（忽略任何缓存）
+
+
+
 class SaveChartRequest(DashboardRequest):
     title: str
     option: dict
@@ -202,14 +308,23 @@ class DeleteSavedChartRequest(DashboardRequest):
 
 @router.post("/dashboard/kpis")
 async def api_kpis(req: DashboardRequest):
-    """获取 KPI 指标（统一取自已保存分析包，数据源为 AnalysisPackage）。"""
+    """获取 KPI 指标。
+
+    数据源严格只来自 saved_packages（用户主动保存的分析结果）。
+    未保存分析时返回空列表，让前端显示「暂无图表，请先在数据分析页生成并收藏」。
+    这样彻底避免「上传新数据后仪表盘显示旧测试 KPI」和「未分析自动出现兜底 KPI」两类问题。
+    """
     packages = manager.get_saved_packages_full(req.session_id) or []
     kpis = []
     for pkg in packages:
         for k in (pkg.get("rendered_kpis") or []):
             if isinstance(k, dict) and k.get("label"):
                 kpis.append(k)
+
     return sanitize_json({"success": True, "kpis": kpis})
+
+
+
 
 
 @router.post("/dashboard/echarts")
@@ -232,9 +347,8 @@ async def api_dashboard_echarts(req: DashboardChartRequest):
         # ★ 优先使用已保存的分析结果中的图表数据
         packages = manager.get_saved_packages_full(req.session_id) or []
         configs = _extract_chart_configs_from_packages(packages)
-        # 没有分析结果时，返回空配置（新流程：先运行分析再取图表）
-        if not configs:
-            configs = []
+        # ★ 不再做 df 兜底：未保存分析时返回空 configs，让前端显示空状态，
+        #   彻底避免「上传新数据后仪表盘自动出现非用户主动分析的内容」。
 
     # ★ 地图配置预处理：自动修正 X 轴 + 去重
     configs = _normalize_map_configs(df, configs)
@@ -353,13 +467,244 @@ async def api_dashboard_echarts(req: DashboardChartRequest):
     return sanitize_json({"success": True, "tabs": tabs, "charts": result})
 
 
+# ===== 智能排版（LLM 驱动的经典网格大屏） =====
+
+@router.post("/dashboard/smart-layout")
+async def api_dashboard_smart_layout(req: SmartLayoutRequest):
+    """智能排版大屏：经典网格图表全量数据 → profiling 降噪 → LLM 选图+打分 → 排版 JSON。
+
+    复用 /dashboard/echarts 的数据源（已保存分析包的图表配置），但只对
+    _extract_chart_configs_from_packages 的结果做「元信息降噪」，不重复渲染 option。
+    返回 SmartLayoutResponse：items[]（含融合后的 attention_weight）+ charts（原始
+    渲染好的图表项，供前端按 slot 直接取 option 渲染）。
+
+    完全不影响 /dashboard/echarts 与 /dashboard/schema。
+    """
+    df = manager.get_data(req.session_id)
+    if df is None:
+        raise HTTPException(status_code=404, detail="未找到数据")
+
+    # 数据源：优先已保存分析包；若为空则聚合 analysis_packages / dataset_packages
+    # （避免「经典网格能出图、智能排版却空」——两者应同源）。
+    # 数据源：优先已保存分析包；若为空则聚合 analysis_packages / dataset_packages
+    # （避免「经典网格能出图、智能排版却空」——两者应同源）。
+    packages = manager.get_saved_packages_full(req.session_id) or []
+    configs = _extract_chart_configs_from_packages(packages)
+    if not configs:
+        session = manager.get_session(req.session_id)
+        if session:
+            raw_pkgs: Dict[str, Any] = {}
+            if isinstance(getattr(session, "analysis_packages", None), dict):
+                raw_pkgs.update(session.analysis_packages)
+            for bucket in getattr(session, "dataset_packages", {}).values():
+                if isinstance(bucket, dict):
+                    raw_pkgs.update(bucket)
+            configs = _extract_chart_configs_from_packages(list(raw_pkgs.values()))
+        # ★ 不再基于 df 生成默认图：未保存分析时返回空，让前端显示空状态。
+    if not configs:
+        # 仍为空：确实没有任何分析产出
+        return sanitize_json({"success": True, "source": "empty", "items": [], "charts": []})
+
+    # ① profiling 降噪 → 候选清单
+    #   - to_candidate_list_full：全量候选（用于全量 items 渲染，展示与经典网格相同数量的图）
+    #   - profile_full：全量 profile（携带 sbv，供融合与兜底）
+    #   - top_n 仅控制「LLM 精排窗口」大小（省 token），不再截断可见图表数量
+    from src.dashboard.profiling_engine import ProfilingEngine
+    profiler = ProfilingEngine(top_n=req.top_n or 12)
+    candidates = profiler.to_candidate_list_full(configs)   # 全量候选
+    profiles = profiler.profile_full(configs)              # 全量 profile（带 sbv）
+
+    # ② LLM 排版决策（仅 Top-N 精排，失败自动回退规则布局）
+    from src.dashboard.llm_layout_engine import LLMLayoutEngine
+    engine = LLMLayoutEngine(
+        api_key=req.api_key or "",
+        base_url=req.base_url,
+        model=req.model or "gpt-3.5-turbo",
+    )
+    resp = engine.layout(candidates, fallback_profiles=profiles, llm_top_n=req.top_n or 12)
+
+    # ★ 关键修复：把每个 AnalysisPackage.tables 转换成 chart_type='table' 的图，
+    #   否则后端 RFM/KMeans/CLV/UserProfile 等模型产出的明细表格（region_best /
+    #   summary / profile_overview / sort / cross / correlation 等 table_type）
+    #   会被丢弃，前端 ECharts 大屏永远看不到表格图。
+    #   转换规则：option 注入 ECharts table series（columns + rows），table_data 同步携带，
+    #   让前端 EtherealTable / ChartRegistry 兜底逻辑都能渲染（之前已修）。
+    table_charts: List[Dict[str, Any]] = []
+    for pkg in packages:
+        for tbl in (pkg.get("tables") or []):
+            if not isinstance(tbl, dict):
+                continue
+            cols = tbl.get("columns") or []
+            rows = tbl.get("rows") or []
+            if not cols and not rows:
+                continue
+            slot_id = tbl.get("slot") or f"tbl_{abs(hash(str(tbl.get('title','')))) % (10**8):08x}"
+            option = {
+                "title": tbl.get("title", ""),
+                "series": [{
+                    "type": "table",
+                    "columns": cols,
+                    "rows": rows,
+                    "table_type": tbl.get("table_type", ""),
+                }],
+            }
+            table_charts.append({
+                "slot": slot_id,
+                "title": tbl.get("title", ""),
+                "chart_type": "table",
+                "option": option,
+                "table_data": {
+                    "columns": cols,
+                    "rows": rows,
+                    "table_type": tbl.get("table_type", ""),
+                },
+                "raw_data": rows,
+                "x": "",
+                "y": "",
+                "analysis_type": pkg.get("analysis_type", "table"),
+            })
+
+    # ③ 组装前端可直接渲染的 charts（全量，按 slot 回查完整 option）
+    chart_lookup = profiler.build_lookup(configs)
+    smart_charts = []
+    for c in configs:
+        slot = c.get("slot") or ""
+        smart_charts.append({
+            "slot": slot,
+            "title": c.get("title", ""),
+            "chart_type": c.get("chart_type", "bar"),
+            "option": c.get("option"),
+            "table_data": c.get("table_data") or None,
+            # ★ 修复：所有 chart_type 都携带 raw_data（不只是 cohort_heatmap）。
+            #   hbar / ranking / line 等组件渲染需要原始扁平清单（如 [{维度, 维度取值, 偏移值}]），
+            #   仅靠 ECharts option 反推会丢字段。让前端能直接消费 cfg.data。
+            "raw_data": c.get("data"),
+            "x": c.get("x") or "",
+            "y": c.get("y") or "",
+            "analysis_type": c.get("analysis_type", ""),
+        })
+
+    # ★ 修复：把 saved_packages 里的 rendered_kpis 合并进 charts（chart_type="metric"），
+    #   解决「经典网格小卡片在智能排版大屏没有」。原本 kpis 和 charts 是两个独立列表，
+    #   前端 chartMap 只看 charts，导致 KPI 槽 blank。同时也再额外返回 kpis 字段
+    #   供前端兜底。
+    kpis_injected = []
+    for pkg in packages:
+        for k in (pkg.get("rendered_kpis") or []):
+            if not isinstance(k, dict):
+                continue
+            label = k.get("label") or k.get("title") or ""
+            value = k.get("value")
+            if not label or value is None:
+                continue
+            kpi_slot = f"kpi_{abs(hash(label)) % (10**8):08x}"
+            kpis_injected.append({
+                "slot": kpi_slot,
+                "title": str(label),
+                "chart_type": "metric",
+                # ★ 业务价值透传：来自 render_kpis 的 business_value 字段，
+                #   前端 SmartDashboard 按此字段降序选 hero KPI，
+                #   让高业务价值 KPI（GMV/利润/客单价）优先占据 4 个 [3,3,3,3] 槽位
+                "business_value": float(k.get("business_value") or 0.0),
+                "attention_weight": float(k.get("business_value") or 0.0),
+                "option": {
+                    "title": str(label),
+                    "data": [
+                        {
+                            "title": str(label),
+                            "value": value,
+                            "change": k.get("change"),
+                            "change_type": k.get("change_type"),
+                        },
+                    ],
+                    "value": value,
+                    "change": k.get("change"),
+                    "business_value": float(k.get("business_value") or 0.0),
+                },
+                "table_data": None,
+                "raw_data": [
+                    {
+                        "title": str(label),
+                        "value": value,
+                        "change": k.get("change"),
+                        "business_value": float(k.get("business_value") or 0.0),
+                    },
+                ],
+                "x": "",
+                "y": "",
+                "analysis_type": "metric",
+            })
+
+    # ★ 关键：把 kpis 和 table_charts 都 merge 进 smart_charts，前端 chartMap 才能找到它们。
+    #   同时保留 kpis 字段作为前端兜底。
+    smart_charts_all = list(smart_charts) + list(kpis_injected) + list(table_charts)
+
+    return sanitize_json({
+        "success": True,
+        "source": resp.source,
+        "model": resp.model,
+        "note": resp.note,
+        "items": [
+            {
+                "slot": it.slot,
+                "title": it.title,
+                "chart_type": it.chart_type,
+                "analysis_type": it.analysis_type,
+                "suggested_business_value": it.suggested_business_value,
+                "llm_weight": it.llm_weight,
+                "attention_weight": it.attention_weight,
+                "shape": it.shape,
+                "slot_id": it.slot_id,
+                "dims": it.dims,
+                "series_count": it.series_count,
+                "row_count": it.row_count,
+                "metric_hint": it.metric_hint,
+                "value_hint": it.value_hint,
+                "is_aggregated": it.is_aggregated,
+            }
+            for it in resp.items
+        ],
+        "charts": smart_charts_all,
+        "kpis": kpis_injected,
+    })
+
+
 # ===== V1 图表收藏（兼容旧前端） =====
 @router.post("/dashboard/save-chart")
 async def api_save_chart(req: SaveChartRequest):
-    """保存单个图表到仪表盘"""
+    """保存单个图表到仪表盘（同时写入 V1 saved_charts 与 V2 saved_packages，供模式A 大屏读取）"""
+    import time as _time
+    import random as _random
+
     chart = {"title": req.title, "option": req.option,
              "type": req.chart_type, "table_data": req.table_data}
     manager.save_chart(req.session_id, chart)
+
+    # 同步写入 V2 saved_packages，使 SmartDashboard 模式A 能读到
+    session = manager.get_session(req.session_id)
+    if session is not None:
+        pkg_id = f"v1_{int(_time.time() * 1000)}_{_random.randint(0, 9999)}"
+        pkg = {
+            "id": pkg_id,
+            "title": req.title or "未命名图表",
+            "analysis_type": req.chart_type or "chart",
+            "charts": [{
+                "title": req.title or "",
+                "type": req.chart_type,
+                "chart_type": req.chart_type,
+                "option": req.option,
+                "table_data": req.table_data,
+            }],
+            "kpis": [],
+            "tables": [],
+            "saved_at": _time.strftime("%Y-%m-%d %H:%M:%S"),
+            "_from": "v1_save_chart",
+        }
+        # 去重：避免重复保存同一标题的包
+        if not any(p.get("title") == pkg["title"] and p.get("_from") == "v1_save_chart"
+                   for p in session.saved_packages):
+            session.saved_packages.append(pkg)
+
     total = len(manager.get_saved_charts(req.session_id))
     return sanitize_json({"success": True, "saved": chart, "total": total, "message": f"已保存「{req.title}」"})
 
@@ -385,8 +730,58 @@ async def api_delete_saved_chart(req: DeleteSavedChartRequest):
 # ===== V2 分析包读取 =====
 @router.post("/dashboard/saved-packages")
 async def api_saved_packages(req: DashboardRequest):
-    """获取已保存的分析包（含渲染后的 KPI/Table/Chart/Insight/Conclusion）"""
+    """获取已保存的分析包（含渲染后的 KPI/Table/Chart/Insight/Conclusion）
+
+    ★ 与 /dashboard/smart-layout 保持一致：把每个 pkg.tables 展开成
+       chart_type='table' 的 charts，并合并到 charts 列表，否则前端 SmartDashboard
+       大屏永远看不到 RFM/KMeans/CLV/UserProfile 等模型产出的明细表格。
+    """
     packages = manager.get_saved_packages_full(req.session_id)
+    if packages:
+        for pkg in packages:
+            if not isinstance(pkg, dict):
+                continue
+            existing_charts = list(pkg.get("charts") or [])
+            existing_slots = {str(c.get("slot") or "") for c in existing_charts}
+            for tbl in (pkg.get("tables") or []):
+                if not isinstance(tbl, dict):
+                    continue
+                cols = tbl.get("columns") or []
+                rows = tbl.get("rows") or []
+                if not cols and not rows:
+                    continue
+                slot_id = tbl.get("slot") or f"tbl_{abs(hash(str(tbl.get('title','')))) % (10**8):08x}"
+                if slot_id in existing_slots:
+                    continue
+                existing_slots.add(slot_id)
+                existing_charts.append({
+                    "slot": slot_id,
+                    "title": tbl.get("title", ""),
+                    "chart_type": "table",
+                    "type": "table",
+                    "x": "",
+                    "y": "",
+                    "option": {
+                        "title": tbl.get("title", ""),
+                        "series": [{
+                            "type": "table",
+                            "columns": cols,
+                            "rows": rows,
+                            "table_type": tbl.get("table_type", ""),
+                        }],
+                    },
+                    "table_data": {
+                        "columns": cols,
+                        "rows": rows,
+                        "table_type": tbl.get("table_type", ""),
+                    },
+                    "raw_data": rows,
+                    "data": rows,
+                    "attention_weight": float(tbl.get("attention_weight") or 0.55),
+                    "business_value": float(tbl.get("attention_weight") or 0.55),
+                })
+            if existing_charts:
+                pkg["charts"] = existing_charts
     return sanitize_json({"success": True, "packages": packages, "total": len(packages)})
 
 

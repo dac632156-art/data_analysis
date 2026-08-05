@@ -1,0 +1,1047 @@
+{
+  "exported_at": "2026-08-03T03:27:04.181Z",
+  "total": 1,
+  "packages": [
+    {
+      "id": "funnel",
+      "analysis_type": "funnel",
+      "business_question": "转化漏斗分析（AARRR）",
+      "algorithm": "AARRR",
+      "dimension": "行为类型",
+      "metric": null,
+      "business_metrics": {},
+      "derived_metrics": {},
+      "findings": [],
+      "kpis": [
+        {
+          "label": "首步基数",
+          "value": "300",
+          "change": "",
+          "kpi_type": "count"
+        },
+        {
+          "label": "终点留存",
+          "value": "6",
+          "change": "",
+          "kpi_type": "count"
+        },
+        {
+          "label": "端到端转化率",
+          "value": "2.0%",
+          "change": "",
+          "kpi_type": "percentage"
+        },
+        {
+          "label": "末档平均客单价",
+          "value": "¥165.71",
+          "change": "",
+          "kpi_type": "number"
+        }
+      ],
+      "chart_data": [],
+      "charts": [
+        {
+          "slot": "funnel_core",
+          "chart_type": "funnel",
+          "title": "转化漏斗（AARRR）",
+          "role": "",
+          "option": {
+            "title": {
+              "text": "转化漏斗（AARRR）",
+              "left": "center",
+              "textStyle": {
+                "color": "#F8FAFC",
+                "fontSize": 16
+              }
+            },
+            "tooltip": {
+              "trigger": "item",
+              "formatter": "{b}: {c} 人"
+            },
+            "series": [
+              {
+                "type": "funnel",
+                "left": "10%",
+                "width": "80%",
+                "min": 0,
+                "max": 300,
+                "sort": "descending",
+                "gap": 2,
+                "label": {
+                  "show": true,
+                  "position": "inside",
+                  "color": "#F8FAFC",
+                  "fontSize": 13
+                },
+                "labelLine": {
+                  "length": 10,
+                  "lineStyle": {
+                    "width": 1,
+                    "type": "solid"
+                  }
+                },
+                "itemStyle": {
+                  "borderColor": "#0F172A",
+                  "borderWidth": 1
+                },
+                "emphasis": {
+                  "label": {
+                    "fontSize": 18
+                  }
+                },
+                "data": [
+                  {
+                    "name": "访问",
+                    "value": 300
+                  },
+                  {
+                    "name": "加购",
+                    "value": 123
+                  },
+                  {
+                    "name": "活跃",
+                    "value": 47
+                  },
+                  {
+                    "name": "支付",
+                    "value": 13
+                  },
+                  {
+                    "name": "分享",
+                    "value": 6
+                  }
+                ]
+              }
+            ]
+          },
+          "raw_data": []
+        },
+        {
+          "slot": "funnel_channel",
+          "chart_type": "ranking",
+          "title": "渠道转化质量对比",
+          "role": "",
+          "option": {
+            "title": {
+              "text": "渠道转化质量对比",
+              "left": "center",
+              "textStyle": {
+                "color": "#F8FAFC",
+                "fontSize": 16
+              }
+            },
+            "tooltip": {
+              "trigger": "axis",
+              "axisPointer": {
+                "type": "shadow"
+              },
+              "formatter": "{b}: {c}%"
+            },
+            "grid": {
+              "left": "3%",
+              "right": "10%",
+              "bottom": "3%",
+              "containLabel": true
+            },
+            "xAxis": {
+              "type": "value",
+              "name": "转化率 (%)",
+              "axisLabel": {
+                "color": "#94A3B8"
+              },
+              "nameTextStyle": {
+                "color": "#94A3B8"
+              },
+              "splitLine": {
+                "lineStyle": {
+                  "color": "rgba(148,163,184,0.15)"
+                }
+              }
+            },
+            "yAxis": {
+              "type": "category",
+              "data": [
+                "抖音",
+                "自然流量",
+                "微信",
+                "百度SEM",
+                "小红书"
+              ],
+              "axisLabel": {
+                "color": "#94A3B8"
+              }
+            },
+            "series": [
+              {
+                "type": "bar",
+                "data": [
+                  {
+                    "value": 0,
+                    "itemStyle": {
+                      "color": "#FB7185"
+                    }
+                  },
+                  {
+                    "value": 2.38,
+                    "itemStyle": {
+                      "color": "#34D399"
+                    }
+                  },
+                  {
+                    "value": 2.78,
+                    "itemStyle": {
+                      "color": "#34D399"
+                    }
+                  },
+                  {
+                    "value": 3.45,
+                    "itemStyle": {
+                      "color": "#34D399"
+                    }
+                  },
+                  {
+                    "value": 4,
+                    "itemStyle": {
+                      "color": "#34D399"
+                    }
+                  }
+                ],
+                "barWidth": "60%"
+              }
+            ]
+          },
+          "raw_data": [
+            {
+              "渠道": "抖音",
+              "CR_overall": 0,
+              "System_Action": "渠道质量预警(Channel_ROI_Warning)"
+            },
+            {
+              "渠道": "自然流量",
+              "CR_overall": 2.38,
+              "System_Action": "优质渠道(Healthy_Channel)"
+            },
+            {
+              "渠道": "微信",
+              "CR_overall": 2.78,
+              "System_Action": "优质渠道(Healthy_Channel)"
+            },
+            {
+              "渠道": "百度SEM",
+              "CR_overall": 3.45,
+              "System_Action": "优质渠道(Healthy_Channel)"
+            },
+            {
+              "渠道": "小红书",
+              "CR_overall": 4,
+              "System_Action": "优质渠道(Healthy_Channel)"
+            }
+          ]
+        },
+        {
+          "slot": "funnel_session",
+          "chart_type": "funnel",
+          "title": "转化漏斗：总转化 vs 当场转化(同会话30分钟内)",
+          "role": "",
+          "option": {
+            "title": {
+              "text": "转化漏斗：总转化 vs 当场转化(同会话30分钟内)",
+              "left": "center",
+              "textStyle": {
+                "color": "#F8FAFC",
+                "fontSize": 16
+              }
+            },
+            "legend": {
+              "data": [
+                "总转化（全链路）",
+                "当场转化（同会话30分钟内）"
+              ],
+              "top": 30,
+              "textStyle": {
+                "color": "#0F172A"
+              }
+            },
+            "tooltip": {
+              "trigger": "item",
+              "formatter": "{a}<br/>{b}: {c} 人"
+            },
+            "series": [
+              {
+                "name": "总转化（全链路）",
+                "type": "funnel",
+                "left": "10%",
+                "width": "80%",
+                "min": 0,
+                "max": 300,
+                "sort": "none",
+                "gap": 2,
+                "label": {
+                  "show": true,
+                  "position": "inside",
+                  "color": "#F8FAFC",
+                  "fontSize": 13
+                },
+                "labelLine": {
+                  "length": 10,
+                  "lineStyle": {
+                    "width": 1,
+                    "type": "solid"
+                  }
+                },
+                "itemStyle": {
+                  "color": "#38BDF8",
+                  "borderColor": "#0F172A",
+                  "borderWidth": 1
+                },
+                "emphasis": {
+                  "label": {
+                    "fontSize": 18
+                  }
+                },
+                "data": [
+                  {
+                    "name": "访问",
+                    "value": 300
+                  },
+                  {
+                    "name": "加购",
+                    "value": 123
+                  },
+                  {
+                    "name": "活跃",
+                    "value": 47
+                  },
+                  {
+                    "name": "支付",
+                    "value": 13
+                  },
+                  {
+                    "name": "分享",
+                    "value": 6
+                  }
+                ]
+              },
+              {
+                "name": "当场转化（同会话30分钟内）",
+                "type": "funnel",
+                "left": "10%",
+                "width": "80%",
+                "min": 0,
+                "max": 300,
+                "sort": "none",
+                "gap": 2,
+                "label": {
+                  "show": true,
+                  "position": "inside",
+                  "color": "#F8FAFC",
+                  "fontSize": 13
+                },
+                "labelLine": {
+                  "length": 10,
+                  "lineStyle": {
+                    "width": 1,
+                    "type": "solid"
+                  }
+                },
+                "itemStyle": {
+                  "color": "#FB923C",
+                  "borderColor": "rgba(248,250,252,0.35)",
+                  "borderWidth": 2
+                },
+                "emphasis": {
+                  "label": {
+                    "fontSize": 18
+                  }
+                },
+                "data": [
+                  {
+                    "name": "访问",
+                    "value": 300
+                  },
+                  {
+                    "name": "加购",
+                    "value": 36
+                  },
+                  {
+                    "name": "活跃",
+                    "value": 4
+                  },
+                  {
+                    "name": "支付",
+                    "value": 0
+                  },
+                  {
+                    "name": "分享",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "raw_data": []
+        }
+      ],
+      "tables": [
+        {
+          "slot": "funnel_detail",
+          "title": "转化率明细（AARRR）",
+          "table_type": "summary",
+          "columns": [
+            "步骤",
+            "留存人数",
+            "单步转化率",
+            "总体转化率"
+          ],
+          "rows": [
+            {
+              "步骤": "访问",
+              "留存人数": 300,
+              "单步转化率": "100.0%",
+              "总体转化率": "100.0%"
+            },
+            {
+              "步骤": "加购",
+              "留存人数": 123,
+              "单步转化率": "41.0%",
+              "总体转化率": "41.0%"
+            },
+            {
+              "步骤": "活跃",
+              "留存人数": 47,
+              "单步转化率": "38.21%",
+              "总体转化率": "15.67%"
+            },
+            {
+              "步骤": "支付",
+              "留存人数": 13,
+              "单步转化率": "27.66%",
+              "总体转化率": "4.33%"
+            },
+            {
+              "步骤": "分享",
+              "留存人数": 6,
+              "单步转化率": "46.15%",
+              "总体转化率": "2.0%"
+            }
+          ],
+          "chart_config": {}
+        }
+      ],
+      "insights": [
+        "漏斗模型：AARRR，共 5 步，首步基数 300 人，终点留存 6 人，端到端转化率 2.0%",
+        "⚠️ 第二步转化率仅 41.0%，首个转化断崖明显，建议重点优化「访问→加购」路径",
+        "渠道切片预警：抖音 等1个渠道端到端转化率低于红线 1.67%，建议暂停劣质渠道投放预算",
+        "当场转化缺口 100.0%：仅 0 人在 30 分钟内（同一会话）走完全程，相比总转化 6 人，用户当场被页面刺激转化的比例偏低，建议优化落地页 UX 收割力",
+        "高价值转化：末档客单价 165.71 元，高于红线 50 元，转化流量商业价值健康"
+      ],
+      "conclusions": [],
+      "recommendations": [],
+      "summary_cards": {},
+      "metadata": {},
+      "confidence": 1,
+      "calculator_used": "",
+      "template_used": "",
+      "execution_time": 0,
+      "can_run": true,
+      "fallback_from": null,
+      "fallback_reason": null,
+      "suggestion": "",
+      "saved_at": "2026-08-03 11:24:34",
+      "data_profile": {},
+      "rendered_kpis": [
+        {
+          "label": "首步基数",
+          "value": "300",
+          "change": "",
+          "trend": "",
+          "kpi_type": "count"
+        },
+        {
+          "label": "终点留存",
+          "value": "6",
+          "change": "",
+          "trend": "",
+          "kpi_type": "count"
+        },
+        {
+          "label": "端到端转化率",
+          "value": "2.0%",
+          "change": "",
+          "trend": "",
+          "kpi_type": "percentage"
+        },
+        {
+          "label": "末档平均客单价",
+          "value": "¥165.71",
+          "change": "",
+          "trend": "",
+          "kpi_type": "number"
+        }
+      ],
+      "rendered_tables": [
+        {
+          "slot": "funnel_detail",
+          "title": "转化率明细（AARRR）",
+          "table_type": "summary",
+          "columns": [
+            "步骤",
+            "留存人数",
+            "单步转化率",
+            "总体转化率"
+          ],
+          "rows": [
+            [
+              {
+                "value": "访问",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": 300,
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": "100.0%",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": "100.0%",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              }
+            ],
+            [
+              {
+                "value": "加购",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": 123,
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": "41.0%",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": "41.0%",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              }
+            ],
+            [
+              {
+                "value": "活跃",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": 47,
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": "38.21%",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": "15.67%",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              }
+            ],
+            [
+              {
+                "value": "支付",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": 13,
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": "27.66%",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": "4.33%",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              }
+            ],
+            [
+              {
+                "value": "分享",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": 6,
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": "46.15%",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              },
+              {
+                "value": "2.0%",
+                "highlight": false,
+                "color": null,
+                "rank": 0,
+                "direction": "neutral",
+                "cell_type": "text"
+              }
+            ]
+          ],
+          "sortable": true,
+          "highlight_col": null,
+          "chart_config": {}
+        }
+      ],
+      "rendered_charts": [
+        {
+          "slot": "funnel_core",
+          "chart_type": "funnel",
+          "title": "转化漏斗（AARRR）",
+          "role": "",
+          "option": {
+            "title": {
+              "text": "转化漏斗（AARRR）",
+              "left": "center",
+              "textStyle": {
+                "color": "#F8FAFC",
+                "fontSize": 16
+              }
+            },
+            "tooltip": {
+              "trigger": "item",
+              "formatter": "{b}: {c} 人"
+            },
+            "series": [
+              {
+                "type": "funnel",
+                "left": "10%",
+                "width": "80%",
+                "min": 0,
+                "max": 300,
+                "sort": "descending",
+                "gap": 2,
+                "label": {
+                  "show": true,
+                  "position": "inside",
+                  "color": "#F8FAFC",
+                  "fontSize": 13
+                },
+                "labelLine": {
+                  "length": 10,
+                  "lineStyle": {
+                    "width": 1,
+                    "type": "solid"
+                  }
+                },
+                "itemStyle": {
+                  "borderColor": "#0F172A",
+                  "borderWidth": 1
+                },
+                "emphasis": {
+                  "label": {
+                    "fontSize": 18
+                  }
+                },
+                "data": [
+                  {
+                    "name": "访问",
+                    "value": 300
+                  },
+                  {
+                    "name": "加购",
+                    "value": 123
+                  },
+                  {
+                    "name": "活跃",
+                    "value": 47
+                  },
+                  {
+                    "name": "支付",
+                    "value": 13
+                  },
+                  {
+                    "name": "分享",
+                    "value": 6
+                  }
+                ]
+              }
+            ]
+          },
+          "raw_data": []
+        },
+        {
+          "slot": "funnel_channel",
+          "chart_type": "ranking",
+          "title": "渠道转化质量对比",
+          "role": "",
+          "option": {
+            "title": {
+              "text": "渠道转化质量对比",
+              "left": "center",
+              "textStyle": {
+                "color": "#F8FAFC",
+                "fontSize": 16
+              }
+            },
+            "tooltip": {
+              "trigger": "axis",
+              "axisPointer": {
+                "type": "shadow"
+              },
+              "formatter": "{b}: {c}%"
+            },
+            "grid": {
+              "left": "3%",
+              "right": "10%",
+              "bottom": "3%",
+              "containLabel": true
+            },
+            "xAxis": {
+              "type": "value",
+              "name": "转化率 (%)",
+              "axisLabel": {
+                "color": "#94A3B8"
+              },
+              "nameTextStyle": {
+                "color": "#94A3B8"
+              },
+              "splitLine": {
+                "lineStyle": {
+                  "color": "rgba(148,163,184,0.15)"
+                }
+              }
+            },
+            "yAxis": {
+              "type": "category",
+              "data": [
+                "抖音",
+                "自然流量",
+                "微信",
+                "百度SEM",
+                "小红书"
+              ],
+              "axisLabel": {
+                "color": "#94A3B8"
+              }
+            },
+            "series": [
+              {
+                "type": "bar",
+                "data": [
+                  {
+                    "value": 0,
+                    "itemStyle": {
+                      "color": "#FB7185"
+                    }
+                  },
+                  {
+                    "value": 2.38,
+                    "itemStyle": {
+                      "color": "#34D399"
+                    }
+                  },
+                  {
+                    "value": 2.78,
+                    "itemStyle": {
+                      "color": "#34D399"
+                    }
+                  },
+                  {
+                    "value": 3.45,
+                    "itemStyle": {
+                      "color": "#34D399"
+                    }
+                  },
+                  {
+                    "value": 4,
+                    "itemStyle": {
+                      "color": "#34D399"
+                    }
+                  }
+                ],
+                "barWidth": "60%"
+              }
+            ]
+          },
+          "raw_data": [
+            {
+              "渠道": "抖音",
+              "CR_overall": 0,
+              "System_Action": "渠道质量预警(Channel_ROI_Warning)"
+            },
+            {
+              "渠道": "自然流量",
+              "CR_overall": 2.38,
+              "System_Action": "优质渠道(Healthy_Channel)"
+            },
+            {
+              "渠道": "微信",
+              "CR_overall": 2.78,
+              "System_Action": "优质渠道(Healthy_Channel)"
+            },
+            {
+              "渠道": "百度SEM",
+              "CR_overall": 3.45,
+              "System_Action": "优质渠道(Healthy_Channel)"
+            },
+            {
+              "渠道": "小红书",
+              "CR_overall": 4,
+              "System_Action": "优质渠道(Healthy_Channel)"
+            }
+          ]
+        },
+        {
+          "slot": "funnel_session",
+          "chart_type": "funnel",
+          "title": "转化漏斗：总转化 vs 当场转化(同会话30分钟内)",
+          "role": "",
+          "option": {
+            "title": {
+              "text": "转化漏斗：总转化 vs 当场转化(同会话30分钟内)",
+              "left": "center",
+              "textStyle": {
+                "color": "#F8FAFC",
+                "fontSize": 16
+              }
+            },
+            "legend": {
+              "data": [
+                "总转化（全链路）",
+                "当场转化（同会话30分钟内）"
+              ],
+              "top": 30,
+              "textStyle": {
+                "color": "#0F172A"
+              }
+            },
+            "tooltip": {
+              "trigger": "item",
+              "formatter": "{a}<br/>{b}: {c} 人"
+            },
+            "series": [
+              {
+                "name": "总转化（全链路）",
+                "type": "funnel",
+                "left": "10%",
+                "width": "80%",
+                "min": 0,
+                "max": 300,
+                "sort": "none",
+                "gap": 2,
+                "label": {
+                  "show": true,
+                  "position": "inside",
+                  "color": "#F8FAFC",
+                  "fontSize": 13
+                },
+                "labelLine": {
+                  "length": 10,
+                  "lineStyle": {
+                    "width": 1,
+                    "type": "solid"
+                  }
+                },
+                "itemStyle": {
+                  "color": "#38BDF8",
+                  "borderColor": "#0F172A",
+                  "borderWidth": 1
+                },
+                "emphasis": {
+                  "label": {
+                    "fontSize": 18
+                  }
+                },
+                "data": [
+                  {
+                    "name": "访问",
+                    "value": 300
+                  },
+                  {
+                    "name": "加购",
+                    "value": 123
+                  },
+                  {
+                    "name": "活跃",
+                    "value": 47
+                  },
+                  {
+                    "name": "支付",
+                    "value": 13
+                  },
+                  {
+                    "name": "分享",
+                    "value": 6
+                  }
+                ]
+              },
+              {
+                "name": "当场转化（同会话30分钟内）",
+                "type": "funnel",
+                "left": "10%",
+                "width": "80%",
+                "min": 0,
+                "max": 300,
+                "sort": "none",
+                "gap": 2,
+                "label": {
+                  "show": true,
+                  "position": "inside",
+                  "color": "#F8FAFC",
+                  "fontSize": 13
+                },
+                "labelLine": {
+                  "length": 10,
+                  "lineStyle": {
+                    "width": 1,
+                    "type": "solid"
+                  }
+                },
+                "itemStyle": {
+                  "color": "#FB923C",
+                  "borderColor": "rgba(248,250,252,0.35)",
+                  "borderWidth": 2
+                },
+                "emphasis": {
+                  "label": {
+                    "fontSize": 18
+                  }
+                },
+                "data": [
+                  {
+                    "name": "访问",
+                    "value": 300
+                  },
+                  {
+                    "name": "加购",
+                    "value": 36
+                  },
+                  {
+                    "name": "活跃",
+                    "value": 4
+                  },
+                  {
+                    "name": "支付",
+                    "value": 0
+                  },
+                  {
+                    "name": "分享",
+                    "value": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "raw_data": []
+        }
+      ],
+      "rendered_insights": [
+        {
+          "text": "漏斗模型：AARRR，共 5 步，首步基数 300 人，终点留存 6 人，端到端转化率 2.0%",
+          "priority": "high",
+          "label": ""
+        },
+        {
+          "text": "⚠️ 第二步转化率仅 41.0%，首个转化断崖明显，建议重点优化「访问→加购」路径",
+          "priority": "normal",
+          "label": ""
+        },
+        {
+          "text": "渠道切片预警：抖音 等1个渠道端到端转化率低于红线 1.67%，建议暂停劣质渠道投放预算",
+          "priority": "normal",
+          "label": ""
+        },
+        {
+          "text": "当场转化缺口 100.0%：仅 0 人在 30 分钟内（同一会话）走完全程，相比总转化 6 人，用户当场被页面刺激转化的比例偏低，建议优化落地页 UX 收割力",
+          "priority": "normal",
+          "label": ""
+        },
+        {
+          "text": "高价值转化：末档客单价 165.71 元，高于红线 50 元，转化流量商业价值健康",
+          "priority": "normal",
+          "label": ""
+        }
+      ],
+      "rendered_conclusion": {
+        "summary": "暂无分析结论",
+        "details": [],
+        "confidence": "low"
+      }
+    }
+  ]
+}

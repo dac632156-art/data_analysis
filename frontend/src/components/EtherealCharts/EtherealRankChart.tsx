@@ -38,16 +38,17 @@ const GRADIENT_COLORS: [string, string][] = [
   ['#F5D0FE', '#BBF7D0'], // 15 丁香 → 浅绿
 ];
 
-// 状态语义色（用于 System_Action 着色）
+// 状态语义色（仅用于「紧急预警」——劣质/低价值渠道，用红系提示）
 const WARNING_GRADIENT: [string, string] = ['#FDA4AF', '#FB7185']; // 红
-const HEALTHY_GRADIENT: [string, string] = ['#86EFAC', '#34D399']; // 绿
 
 function isWarning(action: string): boolean {
   return /预警|Warning|告警|Alert|劣质|Low/i.test(action);
 }
-function isHealthy(action: string): boolean {
-  return /优质|Healthy|高价值|High/i.test(action);
-}
+// ★ 注意：原先的 HEALTHY_GRADIENT 是纯绿（#86EFAC→#34D399），
+//   会导致「渠道转化质量」这类带 System_Action="优质/高价值" 的排行图
+//   整图渲染成单一绿色，用户反馈「排行图应该是渐变色，这个都是绿色」。
+//   现改为：除紧急预警外，一律使用 GRADIENT_COLORS 多色渐变（保留排名色相区分），
+//   不再返回纯绿实色。
 
 function buildGradient(colors: [string, string]): echarts.graphic.LinearGradient {
   return new echarts.graphic.LinearGradient(0, 0, 1, 0, [
@@ -56,20 +57,12 @@ function buildGradient(colors: [string, string]): echarts.graphic.LinearGradient
   ]);
 }
 
-function getGradient(index: number, action?: string, colorOverride?: string): echarts.graphic.LinearGradient {
-  // 1) option 兜底自带的颜色（如漏斗渠道预警红/优质绿）优先
-  if (colorOverride && typeof colorOverride === 'string' && colorOverride.startsWith('#')) {
-    return new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-      { offset: 0, color: colorOverride },
-      { offset: 1, color: colorOverride },
-    ]);
-  }
-  // 2) 状态语义色
-  if (action) {
-    if (isWarning(action)) return buildGradient(WARNING_GRADIENT);
-    if (isHealthy(action)) return buildGradient(HEALTHY_GRADIENT);
-  }
-  // 3) 默认淡彩渐变
+function getGradient(index: number, action?: string): echarts.graphic.LinearGradient {
+  // 1) 仅「紧急预警」（劣质/低价值）保留红系语义色，提示风险
+  if (action && isWarning(action)) return buildGradient(WARNING_GRADIENT);
+  // 2) 默认仙气淡彩渐变（粉紫青绿低饱和，相邻排名保持色相区分）。
+  //    ★ 不读取后端单一纯色、不使用纯绿实色——保证排行图永远是多色渐变。
+  //      配色统一由仙气组件 GRADIENT_COLORS 接管（用户要求配色按组件来，不乱改）。
   const colors = GRADIENT_COLORS[index % GRADIENT_COLORS.length];
   return buildGradient(colors);
 }
@@ -133,7 +126,7 @@ interface Props {
   /** VisualizationRenderer / EGridLayout 传入的扁平数据兜底 */
   data?: Array<Record<string, unknown>>;
   title?: string;
-  height?: number;
+  height?: number | string;
   cardBgUrl?: string;
 }
 
@@ -196,7 +189,6 @@ export const EtherealRankChart: React.FC<Props> = ({ chartNode, data, title, hei
         category: String(item[categoryField] ?? ''),
         value: parseFloat(String(item[valueField] ?? '0')) || 0,
         action: actionField ? String(item[actionField] ?? '') : '',
-        colorOverride: typeof item['__color'] === 'string' ? (item['__color'] as string) : '',
       }))
       .sort((a, b) => b.value - a.value);
 
@@ -217,7 +209,7 @@ export const EtherealRankChart: React.FC<Props> = ({ chartNode, data, title, hei
     const barData = values.map((val, idx) => ({
       value: val,
         itemStyle: {
-          color: getGradient(idx, sorted[idx].action, sorted[idx].colorOverride),
+          color: getGradient(idx, sorted[idx].action),
         borderRadius: [20, 20, 20, 20],
         opacity: 0.72,
         borderColor: 'rgba(255,255,255,0.6)',

@@ -55,7 +55,7 @@ function extractSeriesValues(raw: unknown): number[] {
 interface Props {
   chartNode: Record<string, unknown>;
   title?: string;
-  height?: number;
+  height?: number | string;
 }
 
 // 通用格式化器：万/亿按 unitHint 转成 "1404.3万" 这种。

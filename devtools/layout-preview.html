@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>computeLayout 排版预览（离线调试）</title>
+<style>
+  :root { --bg: #050816; --card: #0b1230; --line: rgba(255,255,255,.12); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: #e2e8f0; font-family: -apple-system, "Segoe UI", "PingFang SC", sans-serif; }
+  header { padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  .hint { font-size: 12px; color: #94a3b8; }
+  .controls { display: flex; gap: 12px; align-items: center; padding: 12px 20px; flex-wrap: wrap; }
+  label { font-size: 12px; color: #cbd5e1; }
+  input[type=number] { width: 64px; padding: 4px 6px; background: #111a3a; color: #e2e8f0; border: 1px solid var(--line); border-radius: 6px; }
+  button { padding: 6px 12px; font-size: 12px; background: #1e293b; color: #e2e8f0; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+  button:hover { background: #334155; }
+  .stage { padding: 20px; }
+  .grid-wrap { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .grid { display: grid; gap: 8px; width: 100%; }
+  .cell { border: 1px dashed rgba(139,92,246,.5); border-radius: 8px; background: rgba(139,92,246,.08);
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          font-size: 11px; color: #c4b5fd; min-height: 60px; position: relative; overflow: hidden; }
+  .cell .area { position: absolute; top: 4px; left: 6px; font-size: 9px; color: #7c83a8; }
+  .cell .type { font-weight: 600; font-size: 12px; color: #ede9fe; }
+  .cell .meta { font-size: 10px; color: #a5b4fc; }
+  .cell.kpi { border-style: solid; border-color: rgba(16,185,129,.5); background: rgba(16,185,129,.08); color: #6ee7b7; }
+  .cell.full { border-color: rgba(245,158,11,.5); background: rgba(245,158,11,.08); color: #fcd34d; }
+  pre { background: #0a0f24; border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: 11px; overflow: auto; }
+  .row-title { font-size: 11px; color: #94a3b8; margin: 14px 0 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎛️ computeLayout 排版预览（离线调试，零依赖）</h1>
+  <div class="hint">修改本页内联算法或 frontend/src/layout/computeLayout.ts 同步后，刷新即可看到效果。当前算法与 computeLayout.ts 保持一致。</div>
+</header>
+
+<div class="controls">
+  <label>图表数量 N：<input id="n" type="number" value="11" min="1" max="40" /></label>
+  <label><input id="showAreas" type="checkbox" /> 显示 area 名</label>
+  <button onclick="render()">重新渲染</button>
+  <button onclick="copyAreas()">复制 grid-template-areas</button>
+</div>
+
+<div class="stage">
+  <div class="grid-wrap">
+    <div id="grid" class="grid"></div>
+  </div>
+  <div class="row-title">grid-template-areas 输出：</div>
+  <pre id="out"></pre>
+</div>
+
+<script>
+// ===== 以下算法与 frontend/src/layout/computeLayout.ts 完全一致 =====
+const COLS = 12;
+const ROW_TEMPLATES = [
+  { row: 1, template: [4, 4, 4], height: '110px', sizeClass: 'kpi' },
+  { row: 2, template: [3, 6, 3], height: '300px', sizeClass: 'wide' },
+  { row: 3, template: [6, 6],    height: '300px', sizeClass: 'wide' },
+  { row: 4, template: [6, 3, 3], height: '300px', sizeClass: 'wide' },
+];
+const COL_AREA = (row, colStart, width) => `r${row}c${colStart}s${width}`;
+function isFullWidth(t){ t=(t||'').toLowerCase(); return t==='table'||t==='cohort_heatmap'||t==='heatmap'; }
+
+function computeLayout(items){
+  if(!items||items.length===0){
+    const e=COL_AREA(0,1,COLS);
+    return { gridTemplateAreas:`"${Array(COLS).fill(e).join(' ')}"`, rowHeights:'1fr', assignments:[], rowCount:1 };
+  }
+  const sorted=[...items].sort((a,b)=>(b.attention_weight??0)-(a.attention_weight??0));
+  const assignments=[];
+  const rows={}; const heights={};
+  const forcedFull=[], normal=[];
+  for(const it of sorted){
+    if((it.forceFull||isFullWidth(it.chart_type)) && it.chart_type!=='metric' && it.chart_type!=='kpi') forcedFull.push(it);
+    else normal.push(it);
+  }
+  let cursor=0;
+  for(const tpl of ROW_TEMPLATES){
+    if(cursor>=normal.length) break;
+    const names=Array(COLS).fill('.');
+    let col=1;
+    for(let i=0;i<tpl.template.length;i++){
+      const w=tpl.template[i];
+      const area=COL_AREA(tpl.row,col,w);
+      for(let j=0;j<w;j++) names[col+j-1]=area;
+      const item=normal[cursor];
+      if(item){
+        assignments.push({slot:item.slot,title:item.title,chartType:item.chart_type,sizeClass:tpl.sizeClass,area,rowIndex:tpl.row,colIndex:col});
+        cursor++;
+      }
+      col+=w;
+    }
+    rows[tpl.row]=names; heights[tpl.row]=tpl.height;
+  }
+  let extraRow=Math.max(...ROW_TEMPLATES.map(r=>r.row),0)+1;
+  while(cursor<normal.length){
+    const remaining=normal.length-cursor;
+    const names=Array(COLS).fill('.');
+    if(remaining>=2){
+      const i1=normal[cursor]; const a1=COL_AREA(extraRow,1,6);
+      for(let j=0;j<6;j++) names[j]=a1;
+      assignments.push({slot:i1.slot,title:i1.title,chartType:i1.chart_type,sizeClass:'wide',area:a1,rowIndex:extraRow,colIndex:1});
+      cursor++;
+      const i2=normal[cursor];
+      if(i2){ const a2=COL_AREA(extraRow,7,6); for(let j=6;j<12;j++) names[j]=a2;
+        assignments.push({slot:i2.slot,title:i2.title,chartType:i2.chart_type,sizeClass:'wide',area:a2,rowIndex:extraRow,colIndex:7}); cursor++; }
+      rows[extraRow]=names; heights[extraRow]='260px'; extraRow++;
+    } else {
+      const item=normal[cursor]; const a=COL_AREA(extraRow,1,COLS);
+      for(let j=0;j<COLS;j++) names[j]=a;
+      assignments.push({slot:item.slot,title:item.title,chartType:item.chart_type,sizeClass:'full',area:a,rowIndex:extraRow,colIndex:1});
+      cursor++; rows[extraRow]=names; heights[extraRow]='260px'; extraRow++;
+    }
+  }
+  for(const item of forcedFull){
+    const names=Array(COLS).fill('.'); const a=COL_AREA(extraRow,1,COLS);
+    for(let j=0;j<COLS;j++) names[j]=a;
+    assignments.push({slot:item.slot,title:item.title,chartType:item.chart_type,sizeClass:'full',area:a,rowIndex:extraRow,colIndex:1});
+    rows[extraRow]=names; heights[extraRow]='320px'; extraRow++;
+  }
+  const keys=Object.keys(rows).map(Number).sort((a,b)=>a-b);
+  const gridTemplateAreas=keys.map(k=>`"${rows[k].join(' ')}"`).join('\n');
+  const rowHeights=keys.map(k=>heights[k]).join(' ');
+  return { gridTemplateAreas, rowHeights, assignments, rowCount:keys.length };
+}
+
+// ===== 渲染 =====
+const TYPE_SEQ = ['metric','metric','metric','hbar','pie','funnel','line','line','table','line','pie','bar','radar','dual_axis','ranking','heatmap'];
+function buildMock(n){
+  return Array.from({length:n},(_,i)=>({
+    slot:`mock_${i}`, title:`Chart ${i+1}`,
+    chart_type: TYPE_SEQ[i%TYPE_SEQ.length]||'bar',
+    attention_weight: +(1 - i*0.05).toFixed(3),
+  }));
+}
+function render(){
+  const n=Math.max(1,Math.min(40,+document.getElementById('n').value||11));
+  const showAreas=document.getElementById('showAreas').checked;
+  const res=computeLayout(buildMock(n));
+  const grid=document.getElementById('grid');
+  grid.style.gridTemplateAreas=res.gridTemplateAreas.replace(/\n/g,' ');
+  grid.style.gridTemplateRows=res.rowHeights;
+  grid.style.gridTemplateColumns='repeat(12,1fr)';
+  grid.innerHTML='';
+  res.assignments.forEach(a=>{
+    const div=document.createElement('div');
+    div.className='cell '+a.sizeClass;
+    div.style.gridArea=a.area;
+    div.innerHTML=`${showAreas?`<span class="area">${a.area}</span>`:''}
+      <span class="type">${a.title}</span>
+      <span class="meta">${(a.chartType||'').toUpperCase()} · ${a.sizeClass}</span>`;
+    grid.appendChild(div);
+  });
+  document.getElementById('out').textContent=res.gridTemplateAreas+'\n\n/* rowHeights: '+res.rowHeights+' */';
+  window.__lastAreas=res.gridTemplateAreas;
+}
+function copyAreas(){
+  if(window.__lastAreas){ navigator.clipboard.writeText(window.__lastAreas); alert('已复制 grid-template-areas'); }
+}
+render();
+</script>
+</body>
+</html>

@@ -210,8 +210,12 @@ export const ChartWidget: React.FC<ChartWidgetProps> = memo(({ widget, onFilter,
       console.error(`[ChartWidget] ${widget.widget_id} setOption 失败:`, err);
     }
 
-    // ResizeObserver
-    const ro = new ResizeObserver(() => chart?.resize());
+    // ResizeObserver（保护：el 可能已卸载，避免 resize 触发 null.getBoundingClientRect）
+    const ro = new ResizeObserver(() => {
+      const inst = instanceRef.current;
+      const node = chartRef.current;
+      if (inst && node && node.isConnected) inst.resize();
+    });
     ro.observe(el);
     return () => {
       ro.disconnect();

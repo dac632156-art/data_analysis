@@ -652,6 +652,84 @@ export default function EChartView({
         text: ['高', '低'],
       };
     }
+
+    // ★ legend 自适应：图例溢出/重合兜底
+    //   问题：ECharts 默认把 legend 放在底部水平铺开，series 数量多 + 图例名长时挤压/换行，
+    //   出现「图例文字重合」「图例压到 x 轴 label」等。
+    //   兜底：若 option.legend 没设 type → 注入 scroll 类型，让图例可横向滚动；
+    //   若没设 top → 注入 'top' (铺在标题下方) —— 标题通常由图表容器自身渲染 (EtherealChart 组件已有 <ChartTitle/>)。
+    //   但部分 chart 后端不带 title、只靠 chartType 渲染（包型 chart），
+    //   此时 legend top=0 就在容器顶部，与 series 打架；因此按 series count 自动选择：
+    //     - series 数 ≤ 4 且名短 → bottom: 'auto'（默认）
+    //     - series 数 ≥ 5 或名长 → top:0 + type:scroll + textStyle.fontSize:10
+    const computeLegendName = (s: Record<string, unknown>): string => {
+      const n = s.name;
+      if (typeof n === 'string') return n;
+      if (Array.isArray(n)) return n.join('-');
+      if (s.data && Array.isArray(s.data) && (s.data as unknown[])[0] && typeof (s.data as unknown[])[0] === 'object') {
+        const head = (s.data as unknown[])[0] as Record<string, unknown>;
+        return String(head.name || head.seriesName || '');
+      }
+      return '';
+    };
+    const seriesNames = seriesArr.map(computeLegendName).filter(Boolean);
+    const longestName = seriesNames.reduce((m, n) => Math.max(m, n.length), 0);
+    const needScroll = seriesNames.length >= 5 || longestName > 8;
+    const existingLegend = baseRec.legend as Record<string, unknown> | undefined;
+    // 部分组件（如 heatmap）会把 legend 关掉 (legend.show=false)，尊重它们
+    if (!existingLegend || existingLegend.show !== false) {
+      if (needScroll) {
+        baseRec.legend = {
+          ...(existingLegend || {}),
+          type: 'scroll',
+          top: 0,
+          left: 'center',
+          itemWidth: 12,
+          itemHeight: 8,
+          itemGap: 6,
+          pageIconColor: '#5BA0FF',
+          pageTextStyle: { color: '#6B7B95' },
+          textStyle: { color: '#475569', fontSize: 10 },
+        };
+      } else {
+        // 短图例：仍保留在底部默认，但若 bottom 已设置则不覆盖；并稍稍缩小字号以避免贴边
+        baseRec.legend = {
+          ...(existingLegend || {}),
+          type: 'plain',
+          bottom: (existingLegend && (existingLegend.bottom !== undefined)) ? existingLegend.bottom : 0,
+          itemGap: 8,
+          textStyle: { color: '#475569', fontSize: 11, ...(existingLegend?.textStyle as object || {}) },
+        };
+      }
+    }
+
+    // ★ 关键：legend 默认位置在 top:0 / scroll 时，ECharts 不会自动给 grid.top 让出空间，
+    //   会把图例拉到底部并与 x 轴 label 重合（用户截图里"各群体占比"图例覆盖 x 轴）。
+    //   解决：用户乐于 scroll 模式时强制 grid.top = 60 给图例留位；
+    //   plain 模式时强制 grid.bottom = 36 给图例留位。
+    const existingGrid = (baseRec.grid as Record<string, unknown> | undefined) || {};
+    if (Array.isArray(baseRec.xAxis) || !Array.isArray(baseRec.xAxis)) {
+      // 不论 xAxis 是否数组，grid 都要让位
+    }
+    const applyGridMargin = (key: 'top' | 'bottom', val: number) => {
+      const cur = (existingGrid[key] as string | number | undefined);
+      // 已有大值不覆盖
+      if (typeof cur === 'number' && cur >= val) return;
+      if (typeof cur === 'string' && /%$/.test(cur)) {
+        const num = parseFloat(cur);
+        if (num >= val) return;
+      }
+      existingGrid[key] = val;
+    };
+    if (needScroll) {
+      applyGridMargin('top', 60);
+    } else {
+      applyGridMargin('bottom', 40);
+    }
+    if (existingGrid.left === undefined) existingGrid.left = 16;
+    if (existingGrid.right === undefined) existingGrid.right = 16;
+    if (existingGrid.containLabel === undefined) existingGrid.containLabel = true;
+    baseRec.grid = existingGrid;
     if (highlightLabel) {
       return applyHighlightBlur(base, highlightLabel);
     }
@@ -669,11 +747,16 @@ export default function EChartView({
     // ★ 检测当前是否需要 3D（echarts-gl）
     const isGL = needsWebGL(enhancedOption);
 
+    // ★ 关键守卫：组件卸载/模式切换前异步任务全部作废
+    let cancelled = false;
+    // ★ 当前 effect 持有的 chart 实例引用（cleanup 时唯一 dispose 来源）
+    let localChart: echarts.ECharts | null = null;
+
     // ★ 2D→3D 或 3D→2D 切换时，必须销毁旧实例重新创建
     // 因为 echarts-gl 需要在新实例上初始化 WebGL 上下文
     let chart = instanceRef.current;
     if (chart && isGLRef.current !== isGL) {
-      chart.dispose();
+      try { chart.dispose(); } catch {}
       chart = null;
       instanceRef.current = null;
       isGLRef.current = null;
@@ -687,10 +770,16 @@ export default function EChartView({
         await ensureChinaMapRegistered();
       }
 
+      // ★ StrictMode / 快速切换 slot 时，异步 init 前再确认容器仍在、未被卸载
+      if (cancelled) return;
+      const curEl = domRef.current;
+      if (!curEl) return;
+
       if (needsInit) {
         // ★ ECharts 核心只支持 'canvas' 和 'svg' 渲染器，不支持 'webgl'
         // echarts-gl 在 Canvas 渲染器之上内部处理 3D WebGL 渲染
-        chart = echarts.init(el, undefined, { renderer: 'canvas' });
+        chart = echarts.init(curEl, undefined, { renderer: 'canvas' });
+        localChart = chart;
         instanceRef.current = chart;
         isGLRef.current = isGL;
 
@@ -728,6 +817,8 @@ export default function EChartView({
         });
       }
 
+      if (cancelled || !chart) return;
+
       try {
         chart.setOption(enhancedOption, { notMerge: true });
       } catch (err) {
@@ -735,8 +826,9 @@ export default function EChartView({
         // 3D 渲染失败时，尝试降级到 2D
         if (isGL && needsInit) {
           console.warn('[EChartView] 3D 渲染失败，尝试降级到 2D');
-          chart.dispose();
-          chart = echarts.init(el, undefined, { renderer: 'canvas' });
+          try { chart.dispose(); } catch {}
+          if (cancelled) return;
+          chart = echarts.init(curEl, undefined, { renderer: 'canvas' });
           instanceRef.current = chart;
           isGLRef.current = false;
           // 移除 3D 组件，仅保留基础渲染
@@ -772,21 +864,39 @@ export default function EChartView({
 
     initAndRender();
 
-    const onResize = () => chart?.resize();
+    const onResize = () => {
+      if (cancelled) return;
+      try { chart?.resize(); } catch {}
+    };
     window.addEventListener('resize', onResize);
-    return () => { window.removeEventListener('resize', onResize); };
-  }, [enhancedOption, groupId]);
-
-  useEffect(() => {
+    // ★ 容器尺寸变化（cell 高度变化、grid 重排等）也要 resize，否则图表固定初始尺寸
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined' && domRef.current) {
+      ro = new ResizeObserver(() => {
+        if (cancelled) return;
+        try { chart?.resize(); } catch { /* ignore */ }
+      });
+      ro.observe(domRef.current);
+    }
     return () => {
-      const chart = instanceRef.current;
-      if (chart) {
-        chart.dispose();
-        instanceRef.current = null;
-        isGLRef.current = null;
+      // ★ 关键：effect 清理时（enhancedOption/groupId 变化 → React 重建 effect，
+      //   或组件卸载）必须 dispose 当前持有的实例，避免 chart 在已卸载的容器
+      //   上继续 RAF → 调 el.getBoundingClientRect() 报 null。
+      cancelled = true;
+      window.removeEventListener('resize', onResize);
+      ro?.disconnect();
+      ro = null;
+      // ★ 优先 dispose 本 effect 创建的实例；否则 dispose ref 中的实例（兼容复用）
+      const toDispose = localChart || instanceRef.current;
+      if (toDispose) {
+        try { toDispose.dispose(); } catch { /* ignore */ }
+        if (instanceRef.current === toDispose) {
+          instanceRef.current = null;
+          isGLRef.current = null;
+        }
       }
     };
-  }, []);
+  }, [enhancedOption, groupId]);
 
   if (!option) {
     return (
