@@ -226,6 +226,12 @@ function bucketOf(c: ChartLike): ChartBucket {
   if (/客户.*生命周期.*排行|客户.*top\s*\d|客户.*Top\s*\d|top\s*\d.*排行/i.test(title)) return 'bar_rank_channel';
   // 2) 通用 ranking 关键词默认进 channel 桶（让"Top5 排行"等通用 ranking 也有位可站）
   if (/ranking|排行|^top\s*\d|^top\d|top排行/.test(title)) return 'bar_rank_channel';
+  // ★ 横向柱状图（后端 chart_type='bar' 但 slot 来自 clv_a_*）走 ranking 多色排行版
+  //   兜底：标题含"各X平均…价值" / "客渠道" 等排行语义时 → 直接进 ranking，避免被柱状图吞掉
+  //   兜底目的：让"各客渠道平均客户生命周期价值"等横向条形排行图，优先走到 ranking 渲染，
+  //   而不是落到下方 bar 判定被错误地画成垂直柱状胶囊。
+  if (typeof c.slot === 'string' && (c.slot.startsWith('clv_a_') || c.slot.startsWith('clv_'))) return 'bar_rank_channel';
+  if (/各.{0,4}(客渠道|渠道|平台|来源|媒介)\s*平均|平均客户生命周期价值|各.*平均.*价值/i.test(title)) return 'bar_rank_channel';
   // 优先按标题语义匹配（更鲁棒：用户生成的 chart_type 可能不规范）
   if (/heatmap|热力/.test(title)) return 'heatmap';
   if (/funnel|漏斗/.test(title)) return 'funnel';
