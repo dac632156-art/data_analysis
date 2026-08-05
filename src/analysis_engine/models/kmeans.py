@@ -775,7 +775,11 @@ def _build_findings(df_feat, labels, names, cfg, best_k):
             confidence=0.8,
             business_meaning=f"该群体在{cfg.display_name}中表现为{desc}。",
             recommendation="可针对该群体制定差异化运营策略。",
-        ).link_evidence(chart_slots=["cluster_radar"])
+        ).link_evidence(
+            # 雷达图仅由非 churn_seg 分段且特征列>=2 时产出（见 _build_charts），
+            # 故 chart_slots 必须按实际产出条件引用，避免悬空（churn_seg 不产雷达图却声明为证据）。
+            chart_slots=["cluster_radar"] if (cfg.name != "churn_seg" and len(name_feats) >= 2) else []
+        )
         findings.append(f)
         insights.append(f"{names[c]}（{size} 个{cfg.entity_word}，{size / total:.0%}）：{desc}。")
     return findings, insights

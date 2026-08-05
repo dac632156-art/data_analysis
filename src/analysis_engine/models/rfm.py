@@ -152,8 +152,11 @@ def _safe_div(a: Any, b: Any, default: float = 0.0) -> float:
 
 
 def _bin_score(s: pd.Series, ascending: bool, q: int = 5) -> pd.Series:
-    """等频分箱为 1~q 分；ascending=True 时小值→低分。"""
-    r = s.rank(method="first", pct=True, ascending=ascending)
+    """等频分箱为 1~q 分；ascending=True 时小值→低分。
+    用 method="average" 而非 "first"：等值客户共享同一 rank，避免相同 R/F/M
+    被伪排序打进不同档，也消除结果对输入行序的依赖（nondeterministic）。
+    """
+    r = s.rank(method="average", pct=True, ascending=ascending)
     score = np.ceil(r * q)
     return score.clip(1, q).astype(int)
 
@@ -645,7 +648,7 @@ class RFMModel(AnalysisModel):
                     "建议对「流失预警高价值客户」启动高力度赢回 campaign（专属优惠/客户经理），"
                     "优先级高于普通客群。"
                 ),
-                chart_slots=["rfm_pie", "rfm_segment_summary_table"],
+                chart_slots=["rfm_pie"],
             ))
         if core_value_pct < 10:
             findings.append(rfm_factory.create(
@@ -668,7 +671,7 @@ class RFMModel(AnalysisModel):
                     "建议把「潜力高价值客户 / 沉睡高价值客户」作为升舱重点，"
                     "通过提升复购与客单逐步做大核心盘。"
                 ),
-                chart_slots=["rfm_pie", "rfm_segment_summary_table"],
+                chart_slots=["rfm_pie"],
             ))
 
         return AnalysisPackage(

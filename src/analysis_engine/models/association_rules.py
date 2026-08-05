@@ -483,7 +483,10 @@ class AssociationRulesModel(AnalysisModel):
             sev = None
             sev_reason = ""
         if sev is not None:
-            ar_chart_slots = ["ar_rules_lift_table"]
+            # 注意：ar_rules_lift_table 是 TableData（进 pkg.tables，随包始终渲染），
+            # 不属于图表，故不放入 chart_slots（chart_slots 仅承载 ChartData，
+            # 守卫与图表绑定函数只认 chart_data）。表格无需靠 chart_slots 保命。
+            ar_chart_slots = []
             if any(c.slot == "ar_network" for c in charts):
                 ar_chart_slots.append("ar_network")
             top_rule = max(base_rules, key=lambda r: r["lift"]) if base_rules else None

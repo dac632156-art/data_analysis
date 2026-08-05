@@ -390,6 +390,9 @@ class DataAnalysisAgent:
             ai_text = response.choices[0].message.content or ""
             sections = _parse_report_json(ai_text)
 
+            # 高危发现防漏守卫：保证 CRITICAL/HIGH 发现的图表+文字不被 LLM 漏掉
+            sections = _enforce_high_severity_coverage(sections, report_input["sections_data"])
+
             # 绑定图表信息到 sections
             sections = _bind_package_charts_to_sections(sections, report_input["sections_data"])
 
@@ -428,6 +431,7 @@ class DataAnalysisAgent:
 
             try:
                 fallback_sections = _build_fallback_from_packages(packages, report_input)
+                fallback_sections = _enforce_high_severity_coverage(fallback_sections, report_input["sections_data"])
                 # 归一化 type 名 → 前端兼容格式
                 fallback_sections = _normalize_section_types(fallback_sections)
                 return {
@@ -1319,6 +1323,178 @@ def _normalize_section_types(sections: List[Dict[str, Any]]) -> List[Dict[str, A
             if merged:
                 s["action_items"] = merged
     return sections
+
+# ===== 高危发现防漏守卫（severity → 挑图 的硬性保证）=====
+# 背景：LLM 可能漏写 CRITICAL/HIGH 发现的 chart_title（图缺失）甚至整条发现（文字缺失）。
+# 此处确定性补入：直接用发现自身写好的 business_meaning/impact/recommendation 作文字
+# （不二次调 LLM、不编造），并将其 evidence.chart_slots → 图表 title 补入对应章节。
+# 满足项目铁律「文字优先 / 图表仅作证据」：补入的高危必带文字，不只一张裸图。
+
+# V3 章节名 → LLM 旧章节类型（用于把补入洞察塞到语义匹配的已有章节；无匹配则新建）
+_V3_TO_LLM_SECTION = {
+    "risk_analysis": "anomaly",
+    "retention_analysis": "trend",
+    "concentration_analysis": "structure",
+    "structure_analysis": "structure",
+    "correlation_analysis": "anomaly",
+    "funnel_analysis": "structure",
+    "geo_analysis": "structure",
+}
+
+_HIGH_SEVERITY = {"critical", "high"}
+
+
+def _enforce_high_severity_coverage(
+    sections: List[Dict[str, Any]],
+    sections_data: Dict[str, List[Dict[str, Any]]],
+) -> List[Dict[str, Any]]:
+    """保证所有 CRITICAL/HIGH 业务发现的『图表 + 文字』都出现在报告中。
+
+    返回（可能已就地修改）sections。
+    """
+    # 1) LLM 已引用的 chart_title 集合
+    referenced_titles = set()
+    for s in sections:
+        for ins in (s.get("insights") or []):
+            if isinstance(ins, dict) and ins.get("chart_title"):
+                referenced_titles.add(ins["chart_title"])
+
+    # 2) 全局 slot -> title / slot -> type 桥。
+    #    与 _bind_package_charts_to_sections 一致：图表绑定是跨包全局 chart_map，
+    #    故守卫也必须全局解析——否则跨包图引用（如 churn_seg 的 finding 引 kmeans 的
+    #    cluster_radar）会被误判为不可覆盖的悬空槽，导致高危图防漏失效。
+    slot_to_title = {}
+    slot_to_type = {}
+    for pkgs in sections_data.values():
+        for pkg in pkgs:
+            for c in pkg.get("chart_data", []):
+                if c.get("slot") and c.get("title"):
+                    slot_to_title[c["slot"]] = c["title"]
+                if c.get("slot") and c.get("type"):
+                    slot_to_type[c["slot"]] = c["type"]
+
+    # 3) 逐章节检查高危发现
+    for section_name, pkgs in sections_data.items():
+        for pkg in pkgs:
+            for f in pkg.get("findings", []):
+                if not isinstance(f, dict) or str(f.get("severity", "")).lower() not in _HIGH_SEVERITY:
+                    continue
+
+                evidence = f.get("evidence") or {}
+                slots = evidence.get("chart_slots") or []
+                expected_titles = [slot_to_title[s] for s in slots if s in slot_to_title]
+
+                if expected_titles:
+                    # 图表型发现：逐张图检查覆盖，缺哪张补哪张。
+                    # 不能用 any() 短路——否则 LLM 引用了同发现的另一张图，
+                    # 会把本张高危图漏掉（实测：churn_rule 一张饼图被引用，
+                    # 另一张气泡矩阵图被静默跳过）。
+                    for t in expected_titles:
+                        if t in referenced_titles:
+                            continue
+                        _inject_finding_insight(sections, section_name, f, pkg, t, slot_to_title, slot_to_type)
+                        referenced_titles.add(t)
+                else:
+                    # 纯文字发现：粗略检查标题是否已在某 insight 文字中出现
+                    ftitle = f.get("title", "")
+                    if ftitle and _finding_text_covered(sections, ftitle):
+                        continue
+                    _inject_finding_insight(sections, section_name, f, pkg, None, slot_to_title, slot_to_type)
+
+    return sections
+
+
+def _finding_text_covered(sections, ftitle):
+    for s in sections:
+        for ins in (s.get("insights") or []):
+            if isinstance(ins, dict):
+                blob = " ".join(
+                    str(ins.get(k, "")) for k in ("analysis", "business_conclusion", "title")
+                )
+                if ftitle and ftitle in blob:
+                    return True
+    return False
+
+
+def _inject_finding_insight(sections, section_name, f, pkg, target_title, slot_to_title, slot_to_type):
+    """把单个高危发现补入报告：文字来自发现自身，图表 title 取自 chart_slots 映射。"""
+    analysis = f.get("business_meaning") or f.get("description") or ""
+    business_conclusion = f.get("business_impact") or analysis
+    recommendation = f.get("recommendation") or ""
+    insight_label = _category_to_insight_label(f.get("category", ""))
+    analysis_type = pkg.get("analysis_type", "")
+    dimension = pkg.get("dimension", "")
+    metric = pkg.get("metric", "")
+
+    chart_type = ""
+    if target_title:
+        # 全局反查 chart_type（图表可能来自其他包，如 churn_seg 引 kmeans 的 cluster_radar）
+        for slot, title in slot_to_title.items():
+            if title == target_title:
+                chart_type = slot_to_type.get(slot, "")
+                break
+
+    insight = {
+        "chart_title": target_title,
+        "chart_type": chart_type,
+        "table_type": None,
+        "rule_id": None,
+        "insight_label": insight_label,
+        "analysis_type": analysis_type,
+        "dimension": dimension,
+        "metric": metric,
+        "title": f.get("title", ""),
+        "analysis": analysis,
+        "business_conclusion": business_conclusion,
+        "recommendation": recommendation,
+        "_enforced": True,  # 审计标记：确定性补入，非 LLM 原创
+    }
+
+    target_section = _find_sibling_section(sections, slot_to_title)
+    if target_section is None:
+        target_section = _create_section_for(sections, section_name)
+    target_section.setdefault("insights", []).append(insight)
+
+
+def _find_sibling_section(sections, slot_to_title):
+    """找已存在且包含本章节兄弟图表的 LLM 章节（保持图表在合适位置）。"""
+    sibling_titles = set(slot_to_title.values())
+    if not sibling_titles:
+        return None
+    for s in sections:
+        for ins in (s.get("insights") or []):
+            if isinstance(ins, dict) and ins.get("chart_title") in sibling_titles:
+                return s
+    return None
+
+
+def _create_section_for(sections, section_name):
+    """无兄弟章节时新建一个（用 LLM 能渲染的旧类型 + 中文标题）。"""
+    llm_type = _V3_TO_LLM_SECTION.get(section_name, "anomaly")
+    title = section_name
+    try:
+        from src.report_builder import SECTION_DISPLAY_NAME
+        title = SECTION_DISPLAY_NAME.get(section_name, section_name)
+    except Exception:
+        pass
+    new_section = {"type": llm_type, "title": title, "insights": []}
+    sections.append(new_section)
+    return new_section
+
+
+def _category_to_insight_label(category):
+    mapping = {
+        "RISK": "风险洞察",
+        "ANOMALY": "异常洞察",
+        "CONCENTRATION": "集中度洞察",
+        "CORRELATION": "相关性洞察",
+        "STRUCTURE": "结构洞察",
+        "COMPOSITION": "结构洞察",
+        "COMPARISON": "结构洞察",
+        "GROWTH": "趋势洞察",
+    }
+    return mapping.get(str(category).upper(), "结构洞察")
+
 
 def _bind_package_charts_to_sections(
     sections: List[Dict[str, Any]],

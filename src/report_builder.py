@@ -26,6 +26,19 @@ TYPE_TO_SECTION: Dict[str, str] = {
     "comparison_analysis": "comparison_analysis",
     "geo_analysis": "geo_analysis",
     "retention_analysis": "retention_analysis",
+    # ===== V3 领域模型 analysis_type → 报告章节（2026-08-05 修复：此前缺失导致 V3 包被丢弃、AI 报告为空） =====
+    "rfm": "structure_analysis",
+    "CLV": "concentration_analysis",
+    "cohort": "retention_analysis",
+    "churn_rule": "risk_analysis",
+    "churn_seg": "risk_analysis",
+    "funnel": "funnel_analysis",
+    "association_rules": "correlation_analysis",
+    "user_profile": "structure_analysis",
+    "sku_seg": "structure_analysis",
+    "geo_seg": "geo_analysis",
+    "activity_seg": "structure_analysis",
+    "category_seg": "structure_analysis",
 }
 
 SECTION_ORDER = [
@@ -40,6 +53,7 @@ SECTION_ORDER = [
     "comparison_analysis",
     "geo_analysis",
     "retention_analysis",
+    "funnel_analysis",
     "anomaly_analysis",
     "proportion_analysis",
     "risk_analysis",
@@ -61,6 +75,7 @@ SECTION_DISPLAY_NAME: Dict[str, str] = {
     "comparison_analysis": "对比分析",
     "geo_analysis": "地理空间分析",
     "retention_analysis": "留存分析",
+    "funnel_analysis": "转化漏斗分析",
     "anomaly_analysis": "异常分析",
     "proportion_analysis": "占比分析",
     "risk_analysis": "风险分析",
@@ -143,6 +158,13 @@ class ReportBuilder:
         recommendations = pkg.get("recommendations", [])
         chart_data = pkg.get("chart_data", [])
         findings = pkg.get("findings", [])
+        # 兼容 funnel 等手写模型：图表走 `charts`(ChartItem) 字段而非 `chart_data`。
+        # 报告侧统一以 chart_data 为消费入口，故此处把 charts 并入（仅当 chart_data
+        # 为空时，避免与其他模型经管线渲染出的 charts 镜像重复）。
+        # _safe_chart_data 已对 chart_type/type 做归一化，ChartItem 的 chart_type 可正确读取。
+        charts = pkg.get("charts", []) or []
+        if not chart_data and charts:
+            chart_data = charts
 
         has_content = bool(kpis or tables or insights or conclusions or chart_data or findings)
         if not has_content:

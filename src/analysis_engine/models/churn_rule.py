@@ -639,6 +639,14 @@ class ChurnRuleModel(AnalysisModel):
         else:
             sev = None
         if sev is not None:
+            # bubble_matrix 仅在进阶 E（有金额/价值列）触发时产出；缺价值列则不产图，
+            # 故 chart_slots 必须按实际产出条件引用，避免悬空（图不存在却声明为证据）。
+            bubble_produced = any(
+                getattr(c, "slot", None) == "bubble_matrix__retention_priority" for c in charts
+            )
+            churn_chart_slots = ["churn_tier_pie"]
+            if bubble_produced:
+                churn_chart_slots.append("bubble_matrix__retention_priority")
             findings.append(churn_factory.create(
                 category=sev_cat,
                 title=f"整体流失率 {churn_rate:.1%} 偏高",
@@ -659,7 +667,7 @@ class ChurnRuleModel(AnalysisModel):
                     f"建议对 {N_warned} 名流失预警用户启动定向召回，"
                     "对已流失的高价值人群优先紧急挽回，并复盘流失集中维度（见进阶 F）。"
                 ),
-                chart_slots=["churn_tier_pie", "bubble_matrix__retention_priority"],
+                chart_slots=churn_chart_slots,
             ))
 
         return AnalysisPackage(
