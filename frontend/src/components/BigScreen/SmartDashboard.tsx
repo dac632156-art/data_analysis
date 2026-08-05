@@ -251,7 +251,10 @@ function bucketOf(c: ChartLike): ChartBucket {
   // 标题以「X表」结尾（X 为 1~6 个字，避免"图表"误伤）
   if (/^[\u4e00-\u9fa5A-Za-z0-9\s]{1,8}(表|table|list)$/i.test(title)) return 'table';
   // 然后按 chart_type 兜底
-  if (t === 'heatmap' || t === 'calendar') return isWideHeatmap(c) ? 'heatmap_wide' : 'heatmap';
+  // ★ 修复：后端热力图 chart_type 实为 'heatmap' | 'cohort_heatmap' | 'heatmap_2d'，
+  //   旧逻辑只认精确 'heatmap'，导致 cohort_heatmap/heatmap_2d 落到 other 桶被挤进 4 列窄槽。
+  //   改为子串包含匹配，并保留宽幅判定（≥8 列维度走 heatmap_wide 占 6 列）。
+  if (/heatmap/.test(t) || t === 'calendar') return isWideHeatmap(c) ? 'heatmap_wide' : 'heatmap';
   if (t === 'funnel') return 'funnel';
   if (t === 'pie' || t === 'donut' || t === 'rose') {
     return densityOf(c) === 'sparse' ? 'pie_sparse' : 'pie_rich';
@@ -696,11 +699,15 @@ function buildSemanticLayout(
             { charts: bucket.others, items: bucket.otherItems },
           ]);
         } else if (width === 6) {
+          // ★ 6 列宽槽：优先热力图（修复后 cohort_heatmap/heatmap_2d 已正确入桶），
+          //   其次环形/折线/密集柱状图；明确排除 bar_sparse（≤5 柱窄图），
+          //   使其只能落到 3/4 列窄槽，不再抢占 6 列 hero 位。
           picked = pickWithDedup([
             { charts: bucket.heatmaps, items: bucket.heatmapItems },
+            { charts: bucket.heatmapWides, items: bucket.heatmapWideItems },
             { charts: bucket.pies, items: bucket.pieItems },
             { charts: bucket.lines, items: bucket.lineItems },
-            { charts: bucket.bars, items: bucket.barItems },
+            { charts: bucket.barDenses, items: bucket.barDenseItems },
             { charts: bucket.others, items: bucket.otherItems },
           ]);
         } else { // width === 3 or 4

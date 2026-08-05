@@ -95,20 +95,39 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
     slot; // slot 本身有时也含类型线索（如 rfm_pie / cohort_a_line）
   let type = normalizeChartType(rawType);
 
-  // ★ 后置重定向：hbar 类图表根据「数据形态」决定走哪个组件，而不是看 title 关键词。
-  //   - 数据含「偏移值 / 流失占比 / 正常占比」字段 → 维度偏移图（流失归因，走 EtherealDimOffsetChart）
+  // ★ 后置重定向：bar/hbar 类图表根据「数据形态 + slot 语义」决定走哪个组件，而不是看 title 关键词。
+  //   - 数据含「偏移值 / 流失占比 / 正常占比」字段，或 slot 含「dim_offset」语义 → 维度偏移图
+  //     （流失归因，走 EtherealDimOffsetChart 仙气胶囊版本）
+  //   - slot 是「clv_* / hbar_*」横向条形场景（含按值排序的排行榜）→ 统一走 EtherealRankChart 仙气排行版，
+  //     即使 chart_type 被后端标成 bar 也能正确渲染（不再被错误地画成普通柱状图）
   //   - 其余 hbar（渠道对比 / TopN 排行 / 价值榜等）→ 统一走渐变排行组件 EtherealRankChart
-  //   这样"同一个 chart_type=hbar"不会因为 title 不同而分流到两套组件、出现一个成功一个失败。
-  if (type === 'hbar') {
+  //   - 其余 bar（普通柱状图）→ 走 EtherealBarChart
+  //   这样不同路径下发的 chart_type（bar/hbar/ranking）都能识别出同一类可视化语义，
+  //   不会出现"排行图被柱状图替换"或"维度偏移图渲染失败"之类不一致。
+  if (type === 'hbar' || type === 'bar') {
+    const slotStr = String(slot || '').toLowerCase();
+    const isDimOffsetSlot = slotStr.includes('dim_offset');
+    const isClvOrHbarSlot = slotStr.startsWith('clv_') || slotStr.startsWith('hbar_');
     const hbarRaw =
       (data && data.length > 0 ? data : (chartNode?.data as Array<Record<string, unknown>>) || []) as Array<Record<string, unknown>>;
-    const isDimOffset = hbarRaw.some(
+    const isDimOffsetData = hbarRaw.some(
       (r) =>
         r && (r['偏移值'] !== undefined || r['流失占比'] !== undefined || r['正常占比'] !== undefined),
     );
-    if (!isDimOffset) {
+    if (isDimOffsetData || isDimOffsetSlot) {
+      type = 'hbar'; // 走维度偏移图（case 'hbar' → EtherealDimOffsetChart）
+    } else if (isClvOrHbarSlot) {
+      type = 'ranking'; // 横向条形/排行（clv_a_* / hbar__*_top_n 等）→ EtherealRankChart
+    } else if (type === 'hbar') {
       type = 'ranking';
     }
+  }
+
+  // ★ 调试钩子：window.__datamind_chart_debug__ = true 时把每张图的归一结果打到 console
+  //   排查"为什么某张图走错组件"问题的最快办法：用户开启后直接看 type / slot / data[0]。
+  if (typeof window !== 'undefined' && (window as Record<string, unknown>).__datamind_chart_debug__) {
+    // eslint-disable-next-line no-console
+    console.log('[EC]', { rawType, slot, finalType: type, dataSample: (Array.isArray(data) && data[0]) || null });
   }
 
   // ★ 默认让组件继承父容器高度（parent 自适应），仅在调用方显式传 height 时硬编码。
