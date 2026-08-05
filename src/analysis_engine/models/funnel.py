@@ -23,6 +23,8 @@ from src.analysis_templates.base import (
 )
 from src.analysis_engine.base import AnalysisModel
 from src.analysis_engine.registry import register_model
+from src.domain.finding_factory import FindingFactory
+from src.domain.business_finding import Severity, FindingCategory
 
 
 # ===== 模块常量 =====
@@ -901,6 +903,44 @@ class FunnelAnalysisModel(AnalysisModel):
             pkg.kpis.append(chart_c)
         if insights_c:
             pkg.insights.extend(insights_c)
+
+        # ===== findings：漏斗步骤掉率 severity 标注（C' 改造）=====
+        # 阈值写死（测试4 前两步掉~30% 临界）：单步掉率 >35% CRIT。
+        # 方向 A「大于」语义：掉率越高越严重。
+        findings = []
+        funnel_factory = FindingFactory("funnel")
+        if n >= 2:
+            worst_i = 1
+            worst_drop = 100 - step_cr[1]
+            for i in range(2, n):
+                d = 100 - step_cr[i]
+                if d > worst_drop:
+                    worst_drop = d
+                    worst_i = i
+            if worst_drop > 35:
+                findings.append(funnel_factory.create(
+                    category=FindingCategory.ANOMALY,
+                    title=f"转化漏斗在「{steps[worst_i - 1]}→{steps[worst_i]}」出现断崖（掉率 {worst_drop:.1f}%）",
+                    metric="单步掉率",
+                    entity=f"{steps[worst_i - 1]}→{steps[worst_i]}",
+                    value=round(worst_drop, 1),
+                    unit="%",
+                    severity=Severity.CRITICAL,
+                    business_meaning=(
+                        f"漏斗从「{steps[worst_i - 1]}」到「{steps[worst_i]}」单步掉率高达 {worst_drop:.1f}%，"
+                        f"是该转化路径的最大流失环节，大量用户在此步流失。"
+                    ),
+                    business_impact=(
+                        "关键转化环节的剧烈流失直接拉低端到端转化率与 GMV，"
+                        "是投入产出比最高的优化靶点。"
+                    ),
+                    recommendation=(
+                        f"建议重点排查「{steps[worst_i - 1]}→{steps[worst_i]}」的路径摩擦"
+                        f"（页面体验 / 文案 / 阻力点），并做 A/B 优化。"
+                    ),
+                    chart_slots=["funnel_core"],
+                ))
+        pkg.findings = findings
 
         return pkg
 

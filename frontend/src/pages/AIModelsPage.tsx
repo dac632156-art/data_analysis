@@ -1,6 +1,7 @@
 /* AI Models - AI 模型配置（浅色玻璃主题，复用 DataContext 的 AI_PROVIDERS） */
 import React, { useState } from 'react';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
+import { saveApiConfig } from '../api/client';
 import { FiCpu, FiCheck } from 'react-icons/fi';
 
 export default function AIModelsPage() {
@@ -11,10 +12,21 @@ export default function AIModelsPage() {
   const defaultModel = selectedProvider?.model || '';
   const defaultBaseUrl = selectedProvider?.baseUrl || '';
 
-  const onSave = (e: React.FormEvent) => {
+  const onSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      await saveApiConfig(state.sessionId, {
+        api_key: state.apiKey,
+        ai_provider: state.aiProvider,
+        custom_model: state.customModel,
+        custom_base_url: state.customBaseUrl,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      console.error('[AIModelsPage] 保存 AI 配置失败', err);
+      alert('保存失败，请稍后重试');
+    }
   };
 
   return (

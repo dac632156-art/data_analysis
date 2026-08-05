@@ -445,6 +445,21 @@ export const listDatasets = async (sessionId: string): Promise<DatasetListRespon
   return data;
 };
 
+/** 保存整套 AI 配置进后端 session（刷新后随 listDatasets 一并拉回）*/
+export const saveApiConfig = async (
+  sessionId: string,
+  cfg: { api_key: string; ai_provider: string; custom_model: string; custom_base_url: string },
+): Promise<{ success: boolean }> => {
+  const { data } = await api.post<{ success: boolean }>('/data/api-config', {
+    session_id: sessionId,
+    api_key: cfg.api_key,
+    ai_provider: cfg.ai_provider,
+    custom_model: cfg.custom_model,
+    custom_base_url: cfg.custom_base_url,
+  });
+  return data;
+};
+
 /** 删除指定数据集（删落盘 + 减额度 + 回退 active）*/
 export const removeDataset = async (sessionId: string, datasetId: string): Promise<{ success: boolean }> => {
   const { data } = await api.post('/data/remove-dataset', { session_id: sessionId, dataset_id: datasetId });

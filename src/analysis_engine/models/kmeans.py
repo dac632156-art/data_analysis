@@ -760,7 +760,7 @@ def _build_findings(df_feat, labels, names, cfg, best_k):
                     dev_desc.append(f"{cfg.feature_labels.get(f, {}).get('低', '低')}（{f}≈{gv:.1f}，全局≈{gm:.1f}）")
         desc = "；".join(dev_desc) if dev_desc else "各项特征接近全局均值"
         title = f"簇 {names[c]}：{size} 个{cfg.entity_word}（占比 {size / total:.0%}）"
-        findings.append(BusinessFinding(
+        f = BusinessFinding(
             id=str(uuid.uuid4()),
             analysis_type=cfg.name,
             category=FindingCategory.STRUCTURE,
@@ -775,7 +775,8 @@ def _build_findings(df_feat, labels, names, cfg, best_k):
             confidence=0.8,
             business_meaning=f"该群体在{cfg.display_name}中表现为{desc}。",
             recommendation="可针对该群体制定差异化运营策略。",
-        ))
+        ).link_evidence(chart_slots=["cluster_radar"])
+        findings.append(f)
         insights.append(f"{names[c]}（{size} 个{cfg.entity_word}，{size / total:.0%}）：{desc}。")
     return findings, insights
 

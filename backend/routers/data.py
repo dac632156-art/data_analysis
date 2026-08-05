@@ -665,6 +665,14 @@ class DatasetRemoveRequest(BaseModel):
     dataset_id: str
 
 
+class ApiConfigRequest(BaseModel):
+    session_id: str
+    api_key: str = ""
+    ai_provider: str = ""
+    custom_model: str = ""
+    custom_base_url: str = ""
+
+
 @router.post("/data/select")
 async def data_select(req: DatasetSelectRequest):
     """切换当前分析对象（active 数据集）；按需 reload 内存 df + 释放其余非 active 内存 df"""
@@ -680,11 +688,17 @@ async def data_datasets(session_id: str):
     try:
         session = manager.get_session(session_id)
         used = session.uploaded_bytes if session else 0
+        # API 配置整 session 一份，放 response 根级（与 used_bytes 同级），随刷新一并拉回
+        api_cfg = manager.get_api_config(session_id)
         return sanitize_json({
             "success": True,
             "datasets": manager.get_datasets(session_id),
             "used_bytes": used,
             "quota_bytes": QUOTA_BYTES,
+            "api_key": api_cfg["api_key"],
+            "ai_provider": api_cfg["ai_provider"],
+            "custom_model": api_cfg["custom_model"],
+            "custom_base_url": api_cfg["custom_base_url"],
         })
     except Exception as e:
         # 抓全量堆栈到服务端日志，并以可读 JSON 返回，避免静默崩成 500(ERR_BAD_RESPONSE)
@@ -703,3 +717,24 @@ async def data_remove_dataset(req: DatasetRemoveRequest):
     if not ok:
         raise HTTPException(status_code=404, detail="数据集不存在")
     return sanitize_json({"success": True})
+
+
+@router.post("/data/api-config")
+async def data_save_api_config(req: ApiConfigRequest):
+    """保存整套 AI 配置（api_key/ai_provider/custom_model/custom_base_url）进 session 并落库"""
+    try:
+        manager.set_api_config(
+            req.session_id,
+            req.api_key,
+            req.ai_provider,
+            req.custom_model,
+            req.custom_base_url,
+        )
+        return sanitize_json({"success": True})
+    except Exception as e:
+        logger.error("[data/api-config] 保存 AI 配置失败 session_id=%s: %s\n%s",
+                     req.session_id, e, traceback.format_exc())
+        return JSONResponse(
+            status_code=500,
+            content=sanitize_json({"success": False, "error": f"保存 AI 配置失败: {e}"}),
+        )

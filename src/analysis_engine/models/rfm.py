@@ -18,6 +18,8 @@ import numpy as np
 from src.analysis_engine.base import AnalysisModel
 from src.analysis_engine.registry import register_model
 from src.analysis_templates.base import AnalysisPackage, KPIItem, ChartData, TableData
+from src.domain.finding_factory import FindingFactory
+from src.domain.business_finding import Severity, FindingCategory
 
 
 # ==================== 列名归一化 ====================
@@ -614,6 +616,61 @@ class RFMModel(AnalysisModel):
         # 纯加法：把每用户分群宽表挂出供下游用户画像消费（RFM 自身逻辑零改动）
         self._seg_table = user_df[["用户ID", "R_raw", "F_raw", "M_raw", "profit", "Segment"]].copy()
 
+        # ===== findings：RFM 关键分层 severity 标注（C' 改造）=====
+        # 阈值写死（测试4/5 分布推导）：流失预警高价值客户占比 >30% HIGH；
+        # 高价值核心客户占比 <10% MEDIUM（头部薄弱提醒）。
+        # 注：本模型采用自定义 8 段命名——"流失预警高价值客户"对应标准 RFM
+        # 的"重要流失类"，"高价值核心客户"对应"重要价值类"。
+        findings = []
+        rfm_factory = FindingFactory("rfm_user_segmentation")
+        churn_risk_pct = _safe_div(seg_counts.get("流失预警高价值客户", 0), total) * 100
+        core_value_pct = _safe_div(seg_counts.get("高价值核心客户", 0), total) * 100
+        if churn_risk_pct > 30:
+            findings.append(rfm_factory.create(
+                category=FindingCategory.RISK,
+                title=f"高价值流失预警人群占比偏高（{churn_risk_pct:.1f}%）",
+                metric="流失预警高价值客户占比",
+                entity="全量客户",
+                value=round(churn_risk_pct, 1),
+                unit="%",
+                severity=Severity.HIGH,
+                business_meaning=(
+                    f"「流失预警高价值客户」（高消费、久未互动、低频）占比达 {churn_risk_pct:.1f}%，"
+                    f"高于 30% 警戒线，这部分高价值客户随时可能流失。"
+                ),
+                business_impact=(
+                    "高价值客户流失对营收冲击最大，若不干预，存量高价值盘子将快速收缩。"
+                ),
+                recommendation=(
+                    "建议对「流失预警高价值客户」启动高力度赢回 campaign（专属优惠/客户经理），"
+                    "优先级高于普通客群。"
+                ),
+                chart_slots=["rfm_pie", "rfm_segment_summary_table"],
+            ))
+        if core_value_pct < 10:
+            findings.append(rfm_factory.create(
+                category=FindingCategory.STRUCTURE,
+                title=f"核心高价值客户占比偏低（{core_value_pct:.1f}%）",
+                metric="高价值核心客户占比",
+                entity="全量客户",
+                value=round(core_value_pct, 1),
+                unit="%",
+                severity=Severity.MEDIUM,
+                business_meaning=(
+                    f"「高价值核心客户」（近期高频高额消费的核心盘）占比仅 {core_value_pct:.1f}%，"
+                    f"低于 10%，高价值基本盘偏薄。"
+                ),
+                business_impact=(
+                    "核心高价值客户是营收压舱石，占比偏低意味着增长依赖长尾、结构脆弱，"
+                    "抗风险能力弱。"
+                ),
+                recommendation=(
+                    "建议把「潜力高价值客户 / 沉睡高价值客户」作为升舱重点，"
+                    "通过提升复购与客单逐步做大核心盘。"
+                ),
+                chart_slots=["rfm_pie", "rfm_segment_summary_table"],
+            ))
+
         return AnalysisPackage(
             id="rfm_user_segmentation",
             analysis_type="rfm",
@@ -624,6 +681,7 @@ class RFMModel(AnalysisModel):
             kpis=kpis,
             chart_data=charts,
             tables=tables,
+            findings=findings,
             insights=insights,
             conclusions=conclusions,
             recommendations=recommendations,

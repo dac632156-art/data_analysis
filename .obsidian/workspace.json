@@ -200,8 +200,9 @@
       "bases:新建数据库": false
     }
   },
-  "active": "dd3973b8f1311f74",
+  "active": "955fb15eb1d3fe56",
   "lastOpenFiles": [
+    "_threshold_probe.py",
     "data/app.db-journal",
     "src/mapping/mapping.db-journal",
     "data/originals/fd22be77-80d3-4867-9619-5e6259ea8826_05d786b7-7a39-406e-a50e-237876d6fee7.pkl",
@@ -212,7 +213,6 @@
     "_diff_sm.txt",
     "_db_probe.py",
     "data/originals/fd22be77-80d3-4867-9619-5e6259ea8826_aa809704-c8bc-4c11-a24d-10e286e8930e.pkl",
-    "frontend/vite.config.ts.timestamp-1785836995906-4247f24df426d8.mjs",
     "知识库/前端/前端怎么调后端API.md",
     "分析模型/规则型用户流失预警模型拆解.md",
     "分析模型/用户画像模型拆解.md",

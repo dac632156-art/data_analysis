@@ -15,6 +15,8 @@ import pandas as pd
 from src.analysis_engine.base import AnalysisModel
 from src.analysis_engine.registry import register_model
 from src.analysis_templates.base import AnalysisPackage, KPIItem, ChartData
+from src.domain.finding_factory import FindingFactory
+from src.domain.business_finding import Severity, FindingCategory
 
 
 # ==================== 配置常量（对齐文档原文附录） ====================
@@ -727,6 +729,50 @@ class CohortAnalysisModel(AnalysisModel):
                     f"（一个用户应可对应多笔订单）；若数据本身无复购，下三角将退化为首单列。")
             insights = [warn] + insights
 
+        # ===== findings：同期群 M1 留存 severity 标注（C' 改造）=====
+        # 阈值写死（测试4 分布推导）：单同期群 M1 留存 <0.9% CRIT / <1.5% HIGH。
+        # 方向 B「小于」语义：留存越低越严重。M1 留存 = 首单后第1月仍活跃用户占比。
+        findings = []
+        cohort_factory = FindingFactory("cohort")
+        m1 = {m: v for (m, j), v in base["retention"].items() if j == 1 and pd.notna(v)}
+        if m1:
+            worst_m = min(m1, key=lambda k: m1[k])
+            worst_val = m1[worst_m]
+            n_low = sum(1 for v in m1.values() if v < 0.015)
+            n_crit = sum(1 for v in m1.values() if v < 0.009)
+            if n_crit > 0:
+                sev, sev_cat = Severity.CRITICAL, FindingCategory.ANOMALY
+            elif n_low > 0:
+                sev, sev_cat = Severity.HIGH, FindingCategory.ANOMALY
+            else:
+                sev = None
+            if sev is not None:
+                worst_label = base["cohort_label_map"].get(worst_m, worst_m)
+                findings.append(cohort_factory.create(
+                    category=sev_cat,
+                    title=f"存在同期群 M1 留存过低（最低 {worst_val * 100:.1f}%）",
+                    metric="M1留存率",
+                    entity=f"同期群 {worst_label}",
+                    value=round(worst_val * 100, 2),
+                    unit="%",
+                    severity=sev,
+                    business_meaning=(
+                        f"在 {len(m1)} 个同期群中，M1 留存率最低的为 {worst_label}"
+                        f"（{worst_val * 100:.1f}%），共 {n_low} 个同期群低于 1.5% 警戒线"
+                        f"（其中 {n_crit} 个低于 0.9% 危急线）。首单后第1月仍活跃用户占比极低，"
+                        f"反映拉新质量或首单体验问题。"
+                    ),
+                    business_impact=(
+                        "首月留存是复购与 LTV 的基石，过低说明新客首单后迅速流失，"
+                        "拉新投入回报差、增长不可持续。"
+                    ),
+                    recommendation=(
+                        "建议对低留存同期群回溯拉新渠道与首单活动质量，"
+                        "并针对首单用户设计 early-lifecycle 复购唤醒。"
+                    ),
+                    chart_slots=["cohort_retention"],
+                ))
+
         return AnalysisPackage(
             id="cohort",
             analysis_type="cohort",
@@ -738,6 +784,7 @@ class CohortAnalysisModel(AnalysisModel):
             chart_data=charts,
             insights=insights,
             conclusions=conclusions,
+            findings=findings,
             recommendations=[],
             confidence=1.0,
             calculator_used="cohort_v1",

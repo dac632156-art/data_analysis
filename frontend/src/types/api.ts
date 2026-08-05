@@ -335,6 +335,11 @@ export interface DatasetInfo {
 export interface DatasetListResponse {
   success: boolean;
   datasets: DatasetInfo[];
+  // AI 配置（整 session 一份，随 /data/datasets 一并拉回，放在 response 根级）
+  api_key?: string;
+  ai_provider?: string;
+  custom_model?: string;
+  custom_base_url?: string;
 }
 
 /** /analysis/process-datasets 提交响应 */

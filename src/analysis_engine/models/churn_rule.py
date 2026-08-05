@@ -37,6 +37,8 @@ from src.analysis_templates.base import (
 )
 from src.analysis_engine.base import AnalysisModel
 from src.analysis_engine.registry import register_model
+from src.domain.finding_factory import FindingFactory
+from src.domain.business_finding import Severity, FindingCategory
 
 
 # ===== 标准列名（映射词典已标准化，模型直接认，不做别名转换） =====
@@ -626,6 +628,40 @@ class ChurnRuleModel(AnalysisModel):
             f"在 {N} 名用户中，{N_churned} 人已流失（流失率 {churn_rate:.1%}），"
             f"{N_warned} 人处于流失预警，{N_normal} 人正常（健康率 {health_rate:.1%}）。")
 
+        # ===== findings：整体流失率 severity 标注（C' 改造）=====
+        # 阈值写死：行业基准 >30% HIGH / >40% CRIT（流失率% 非天数）。
+        findings = []
+        churn_factory = FindingFactory("churn_rule")
+        if churn_rate > 0.40:
+            sev, sev_cat = Severity.CRITICAL, FindingCategory.RISK
+        elif churn_rate > 0.30:
+            sev, sev_cat = Severity.HIGH, FindingCategory.RISK
+        else:
+            sev = None
+        if sev is not None:
+            findings.append(churn_factory.create(
+                category=sev_cat,
+                title=f"整体流失率 {churn_rate:.1%} 偏高",
+                metric="流失率",
+                entity="全量客户",
+                value=round(churn_rate * 100, 1),
+                unit="%",
+                severity=sev,
+                business_meaning=(
+                    f"在 {N} 名用户中，{N_churned} 人已流失（流失率 {churn_rate:.1%}），"
+                    f"{N_warned} 人处于流失预警，健康率仅 {health_rate:.1%}。"
+                ),
+                business_impact=(
+                    "流失率超过电商行业基准（30% 警戒 / 40% 危急），存量客户价值正加速流失，"
+                    "召回成本显著高于留存成本。"
+                ),
+                recommendation=(
+                    f"建议对 {N_warned} 名流失预警用户启动定向召回，"
+                    "对已流失的高价值人群优先紧急挽回，并复盘流失集中维度（见进阶 F）。"
+                ),
+                chart_slots=["churn_tier_pie", "bubble_matrix__retention_priority"],
+            ))
+
         return AnalysisPackage(
             id="churn_rule",
             analysis_type="churn_rule",
@@ -637,7 +673,7 @@ class ChurnRuleModel(AnalysisModel):
             kpis=kpis,
             chart_data=charts,
             tables=tables,
-            findings=[],
+            findings=findings,
             insights=insights,
             suggestion="可将用户级流失标签宽表导出用于定向召回；进阶分支已依据可用列自动触发。",
             confidence=1.0,

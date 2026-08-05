@@ -14,6 +14,8 @@ import pandas as pd
 from src.analysis_engine.base import AnalysisModel
 from src.analysis_engine.registry import register_model
 from src.analysis_templates.base import AnalysisPackage, KPIItem, ChartData, TableData
+from src.domain.finding_factory import FindingFactory
+from src.domain.business_finding import Severity, FindingCategory
 
 logger = logging.getLogger("analysis.clv")
 
@@ -314,7 +316,7 @@ def _build_insights_base(base: dict) -> tuple:
         "高价值客户应重点维护（VIP/1v1），低价值客户控制投入、以自动化运营为主。",
         "CLV 基于历史客单价、年购买频次与群体流失率估算，宜结合进阶维度（渠道/类目/净毛利/客龄）细化运营策略。",
     ]
-    return insights, conclusions
+    return insights, conclusions, top_share
 
 
 def _status_pkg(model, status: str, reason: str, suggestion: str) -> AnalysisPackage:
@@ -358,7 +360,7 @@ class CLVAnalysisModel(AnalysisModel):
         charts = _build_charts_base(base)
         kpis = _build_kpis_base(base)
         tables = _build_tables_base(base)
-        insights, conclusions = _build_insights_base(base)
+        insights, conclusions, top_share = _build_insights_base(base)
 
         # 第三段：进阶探测层（各支独立触发）
         if self.supports_advanced:
@@ -372,12 +374,47 @@ class CLVAnalysisModel(AnalysisModel):
                 except Exception as e:  # 进阶失败不影响核心产出
                     logger.warning("[CLV] advanced %s 失败: %s", fn.__name__, e)
 
+        # ===== findings：CLV 头部集中度 severity 标注（C' 改造）=====
+        # 阈值写死：测试数据（测试5=73% 触发 HIGH）推导 >65% HIGH / >75% CRIT。
+        findings = []
+        clv_factory = FindingFactory("CLV")
+        if top_share > 0.75:
+            sev, sev_cat = Severity.CRITICAL, FindingCategory.CONCENTRATION
+        elif top_share > 0.65:
+            sev, sev_cat = Severity.HIGH, FindingCategory.CONCENTRATION
+        else:
+            sev = None
+        if sev is not None:
+            findings.append(clv_factory.create(
+                category=sev_cat,
+                title=f"头部 20% 客户贡献 {top_share * 100:.0f}% 的 CLV，价值高度集中",
+                metric="头部20%客户CLV占比",
+                entity="全量客户",
+                value=round(top_share * 100, 1),
+                unit="%",
+                severity=sev,
+                business_meaning=(
+                    f"头部 20% 客户贡献了约 {top_share * 100:.0f}% 的总客户生命周期价值，"
+                    f"价值高度长尾集中，营收依赖少数高价值客户。"
+                ),
+                business_impact=(
+                    "价值过度集中于头部客户，一旦头部流失将直接冲击整体营收，"
+                    "抗风险能力弱、增长结构脆弱。"
+                ),
+                recommendation=(
+                    "建议对头部客户做 VIP/1v1 重点维系防流失，"
+                    "同时培育中段客户做大基本盘、分散集中度风险。"
+                ),
+                chart_slots=["clv_pareto"],
+            ))
+
         return AnalysisPackage(
             id="", analysis_type="CLV",
             business_question="客户生命周期价值（CLV）估算",
             algorithm="CLV 三段式（Base + Advanced A/B/C）",
             dimension=None, metric="CLV",
             kpis=kpis, chart_data=charts, tables=tables,
+            findings=findings,
             insights=insights, conclusions=conclusions, recommendations=[],
             confidence=1.0, calculator_used="clv", template_used="CLV",
             can_run=True,

@@ -20,7 +20,8 @@ function renderMarkdown(text: string): string {
 
 /**
  * 把可能是对象/数组的「文本」归一为字符串，杜绝 [object Object]。
- * 后端 insights/conclusions 偶尔返回 BusinessFinding 对象（含 .text/.content/.summary），
+ * 后端 insights/conclusions/findings 偶尔返回 BusinessFinding 对象
+ * （真实字段为 title / description / business_meaning，而非 .text/.content/.summary），
  * 而非纯字符串；这里优先提取常见可读字段，否则 JSON 序列化。
  */
 function normalizeText(input: unknown): string {
@@ -30,7 +31,16 @@ function normalizeText(input: unknown): string {
   if (Array.isArray(input)) return input.map((v) => normalizeText(v)).join(' ');
   if (typeof input === 'object') {
     const obj = input as Record<string, unknown>;
-    const cand = obj.text ?? obj.content ?? obj.summary ?? obj.value ?? obj.message ?? obj.detail;
+    const cand =
+      obj.text ??
+      obj.content ??
+      obj.summary ??
+      obj.value ??
+      obj.message ??
+      obj.detail ??
+      obj.business_meaning ??
+      obj.description ??
+      obj.title;
     if (cand != null) return normalizeText(cand);
     try {
       return JSON.stringify(obj);

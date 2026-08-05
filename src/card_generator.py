@@ -92,13 +92,7 @@ class CardGenerator:
             if card:
                 self.cards.append(card)
 
-        # 5. Conclusion Cards
-        for concl in package.get('rendered_conclusion', {}).get('conclusions', []):
-            card = self._insight_card(concl, is_conclusion=True)
-            if card:
-                self.cards.append(card)
-
-        # 6. Fallback injection
+        # 5. Fallback injection
         self.cards = self._apply_fallback(self.cards, package)
 
         # 7. Score + Rank

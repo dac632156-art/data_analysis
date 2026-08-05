@@ -83,6 +83,7 @@ type Action =
   | { type: 'SET_AI_PROVIDER'; aiProvider: string }
   | { type: 'SET_CUSTOM_MODEL'; customModel: string }
   | { type: 'SET_CUSTOM_BASE_URL'; customBaseUrl: string }
+  | { type: 'SET_API_CONFIG'; apiKey: string; aiProvider: string; customModel: string; customBaseUrl: string }
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_ERROR'; error: string | null }
   | { type: 'SET_ANALYSIS'; payload: Partial<AnalysisState> }
@@ -161,6 +162,15 @@ function dataReducer(state: DataState, action: Action): DataState {
       return { ...state, customModel: action.customModel };
     case 'SET_CUSTOM_BASE_URL':
       return { ...state, customBaseUrl: action.customBaseUrl };
+    case 'SET_API_CONFIG':
+      // 刷新回放：一次性把后端 session 里的四个 API 字段写回 state（不走"切换即清空"逻辑）
+      return {
+        ...state,
+        apiKey: action.apiKey,
+        aiProvider: action.aiProvider,
+        customModel: action.customModel,
+        customBaseUrl: action.customBaseUrl,
+      };
     case 'SET_LOADING':
       return { ...state, loading: action.loading };
     case 'SET_ERROR':
@@ -222,9 +232,9 @@ function dataReducer(state: DataState, action: Action): DataState {
     case 'CLEAR_DATA':
       // 结束会话：清掉 localStorage 里的旧 sessionId，让 ensureValidSession 自然创建全新会话，
       // 避免沿用「已被后端 clear_data 删除」的旧 id（否则 ensureValidSession 直接返回旧 id、新会话语义失效）。
-      // 本地 AI 配置（apiKey/aiProvider/customModel/customBaseUrl）跨会话保留，不在此清空。
+      // API 配置（apiKey/aiProvider/customModel/customBaseUrl）与数据集同生命周期，结束会话一并清空，不再跨会话保留。
       localStorage.removeItem('sessionId');
-      return { ...initialState, apiKey: state.apiKey, aiProvider: state.aiProvider, customModel: state.customModel, customBaseUrl: state.customBaseUrl };
+      return { ...initialState };
     default:
       return state;
   }
@@ -270,6 +280,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
         const active = res.datasets.find((d) => d.is_active);
         if (active) dispatch({ type: 'SELECT_DATASET', datasetId: active.dataset_id });
+        // API 配置回放独立于 datasets 是否为空：response 根级始终携带（即便无数据集也要恢复）
+        dispatch({
+          type: 'SET_API_CONFIG',
+          apiKey: res.api_key ?? '',
+          aiProvider: res.ai_provider ?? '',
+          customModel: res.custom_model ?? '',
+          customBaseUrl: res.custom_base_url ?? '',
+        });
       } catch {
         // 会话暂无数据集，忽略；任由页面展示空态
       }

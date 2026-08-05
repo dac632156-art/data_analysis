@@ -26,6 +26,8 @@ from src.analysis_templates.base import (
 )
 from src.analysis_engine.base import AnalysisModel
 from src.analysis_engine.registry import register_model
+from src.domain.finding_factory import FindingFactory
+from src.domain.business_finding import Severity, FindingCategory
 
 
 # --------------------------------------------------------------------------
@@ -466,6 +468,52 @@ class AssociationRulesModel(AnalysisModel):
             KPIItem(label="最高提升度", value=f"{max_lift:.2f}"),
         ]
 
+        # ===== findings：强关联规则 lift severity 标注（C' 改造）=====
+        # 阈值写死：行业共识 lift >2 HIGH / >3 CRIT（提升度衡量关联强度）。
+        findings = []
+        ar_factory = FindingFactory("association_rules")
+        strong_rules = [r for r in base_rules if r["lift"] > 2]
+        if max_lift > 3:
+            sev, sev_cat = Severity.CRITICAL, FindingCategory.CORRELATION
+            sev_reason = f"最高提升度达 {max_lift:.2f}（>3 强关联共识线）"
+        elif max_lift > 2:
+            sev, sev_cat = Severity.HIGH, FindingCategory.CORRELATION
+            sev_reason = f"最高提升度达 {max_lift:.2f}（>2 显著关联线）"
+        else:
+            sev = None
+            sev_reason = ""
+        if sev is not None:
+            ar_chart_slots = ["ar_rules_lift_table"]
+            if any(c.slot == "ar_network" for c in charts):
+                ar_chart_slots.append("ar_network")
+            top_rule = max(base_rules, key=lambda r: r["lift"]) if base_rules else None
+            rule_desc = ""
+            if top_rule:
+                rule_desc = (
+                    f"最强规则：{top_rule.get('antecedent')} → {top_rule.get('consequent')}"
+                    f"（提升度 {top_rule['lift']:.2f}）"
+                )
+            findings.append(ar_factory.create(
+                category=sev_cat,
+                title=f"存在强商品关联（{len(strong_rules)} 条 lift>2）",
+                metric="关联提升度",
+                entity="商品组合",
+                value=round(max_lift, 2),
+                unit="",
+                severity=sev,
+                business_meaning=(
+                    f"{sev_reason}；共发掘 {len(strong_rules)} 条显著强关联规则（lift>2）。{rule_desc}"
+                ),
+                business_impact=(
+                    "强关联商品组合可用于捆绑推荐、货架邻近陈列与组合促销，"
+                    "直接拉升客单价与连带率；但 lift 仅衡量统计共现，落地前需结合业务验证可解释性。"
+                ),
+                recommendation=(
+                    "建议对最强关联组合配置「加购推荐 / 组合优惠」，并验证跨类目关联的业务合理性。"
+                ),
+                chart_slots=ar_chart_slots,
+            ))
+
         return AnalysisPackage(
             id="association_rules",
             analysis_type="association_rules",
@@ -477,7 +525,7 @@ class AssociationRulesModel(AnalysisModel):
             kpis=kpis,
             chart_data=charts,
             tables=tables,
-            findings=[],
+            findings=findings,
             insights=insights,
             suggestion="；".join(suggestions) if suggestions else "已基于订单明细完成购物篮关联分析。",
             confidence=1.0 if has_significant else 0.5,

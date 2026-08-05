@@ -262,7 +262,7 @@ class UserProfileModel(AnalysisModel):
                     confidence=0.8,
                     business_meaning=desc,
                     recommendation="可针对该群体制定差异化运营策略。",
-                )
+                ).link_evidence(table_titles=["segment_profile_overview_table"])
             )
 
         insights = [f"共刻画 {int(n_s.shape[0])} 个分群、{total_users} 名用户的属性画像。"]

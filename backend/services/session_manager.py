@@ -102,6 +102,9 @@ class SessionData:
         self.analysis_packages: Dict[str, Any] = {}     # 临时分析结果（key=pkg_id, value=AnalysisPackage）
         self.saved_packages: List[Dict[str, Any]] = []   # 用户保存的分析包
         self.api_key: str = ""
+        self.ai_provider: str = ""           # AI 服务商（deepseek/openai/custom 等）
+        self.custom_model: str = ""          # 自定义模型名
+        self.custom_base_url: str = ""       # 自定义 API Base URL
         self.custom_title: str = ""          # 用户手动编辑的仪表盘标题
         self.holds_slot: bool = False        # 是否已占用"数据插槽"（限流=持有数据的会话，上限 max_sessions）
         self.reserved_at: float = 0.0         # 占用插槽的时间戳（用于预约超时释放）
@@ -234,6 +237,9 @@ class SessionManager:
             "analysis_packages": norm_analysis,
             "saved_packages": norm_saved,
             "api_key": session.api_key,
+            "ai_provider": session.ai_provider,
+            "custom_model": session.custom_model,
+            "custom_base_url": session.custom_base_url,
             "custom_title": session.custom_title,
             "holds_slot": session.holds_slot,
             "reserved_at": session.reserved_at,
@@ -253,6 +259,9 @@ class SessionManager:
         session.analysis_packages = state.get("analysis_packages", {}) or {}
         session.saved_packages = state.get("saved_packages", []) or []
         session.api_key = state.get("api_key", "")
+        session.ai_provider = state.get("ai_provider", "")
+        session.custom_model = state.get("custom_model", "")
+        session.custom_base_url = state.get("custom_base_url", "")
         session.custom_title = state.get("custom_title", "")
         session.holds_slot = state.get("holds_slot", False)
         session.reserved_at = state.get("reserved_at", 0.0)
@@ -886,6 +895,33 @@ class SessionManager:
         """获取 API Key"""
         session = self.get_session(session_id)
         return session.api_key if session else ""
+
+    def set_api_config(self, session_id: str, api_key: str, ai_provider: str,
+                       custom_model: str, custom_base_url: str):
+        """设置整套 AI 配置（api_key/ai_provider/custom_model/custom_base_url）并落库"""
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = SessionData()
+                self._sessions[session_id] = session
+            session.api_key = api_key
+            session.ai_provider = ai_provider
+            session.custom_model = custom_model
+            session.custom_base_url = custom_base_url
+            session.last_access = time.time()
+            self._persist_session(session_id)
+
+    def get_api_config(self, session_id: str) -> Dict[str, str]:
+        """获取整套 AI 配置，session 不存在时返回全空字符串"""
+        session = self.get_session(session_id)
+        if not session:
+            return {"api_key": "", "ai_provider": "", "custom_model": "", "custom_base_url": ""}
+        return {
+            "api_key": session.api_key,
+            "ai_provider": session.ai_provider,
+            "custom_model": session.custom_model,
+            "custom_base_url": session.custom_base_url,
+        }
 
     def set_custom_title(self, session_id: str, title: str):
         """设置用户手动编辑的仪表盘标题"""
