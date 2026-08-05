@@ -277,8 +277,6 @@ function bucketOf(c: ChartLike): ChartBucket {
   }
   if (t === 'table' || t === 'tabular' || t === 'analysis_table' || t === 'cohort_table' || t === 'rank_table' || t === 'retention_table' || t === 'cohort_retention' || /_table$|^table_/.test(t)) return 'table';
   if (t === 'gauge' || t === 'treemap' || t === 'sunburst' || t === 'sankey' || t === 'radar') return 'full';
-  // ★ 商品关联图（关联网络图 / 和弦图）并入 full 桶，避免被 correlation 桶静默丢弃而消失
-  if (t === 'graph' || t === 'chord' || t === 'network' || /关联|网络图|network/.test(c.title || '')) return 'full';
   return 'other';
 }
 
