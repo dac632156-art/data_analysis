@@ -193,20 +193,35 @@ export const EtherealTable: React.FC<Props> = ({
         .dir-up { color: #16A34A; }
         .dir-down { color: #DC2626; }
         .dir-flat { color: #94A3B8; }
+
+        /* ★ 表格滚动容器：行数多时让整张表可纵向滚动，避免被外层 overflow:hidden 硬截断。
+           设计选择：不使用 sticky 表头——卡片只有 360px 高，吸顶会让用户视觉上觉得
+           "突然冒出一行异样颜色"，更突兀；改成表头随数据一起滚走，反而更干净。 */
+        .ethereal-table-shell {
+          flex: 1 1 auto;
+          min-height: 0;
+          overflow-y: auto;
+          overflow-x: hidden;
+          padding-right: 4px;
+        }
+        .ethereal-table-shell::-webkit-scrollbar { width: 6px; }
+        .ethereal-table-shell::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.25); border-radius: 3px; }
+        .ethereal-table-shell::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.45); }
       `}</style>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontSize: 24, fontWeight: 600, color: '#1E293B', letterSpacing: '0.5px' }}>{titleText}</div>
       </div>
-      <table className="ethereal-table-wrap">
-        <thead>
-          <tr>
-            {renderColumns.map((col, index) => (
-              <th key={index} className={index === 0 ? 'segment-header' : ''}>{col}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rawRows.map((row, ri) => {
+      <div className="ethereal-table-shell">
+        <table className="ethereal-table-wrap">
+          <thead>
+            <tr>
+              {renderColumns.map((col, index) => (
+                <th key={index} className={index === 0 ? 'segment-header' : ''}>{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rawRows.map((row, ri) => {
             // 序号列偏移：若 showIndex，真实数据列从 ci=1 开始
             const dataStart = showIndex ? 1 : 0;
             return (
@@ -253,6 +268,7 @@ export const EtherealTable: React.FC<Props> = ({
           })}
         </tbody>
       </table>
+    </div>
     </div>
   );
 };
