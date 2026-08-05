@@ -95,47 +95,9 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
     slot; // slot 本身有时也含类型线索（如 rfm_pie / cohort_a_line）
   let type = normalizeChartType(rawType);
 
-  // ★ 关键：所有归属于「bar_rank_channel」「bar_rank_stage」桶的图，后端 chart_type='bar'，
-  //   此时 EtherealChart 必须按 slot 或 raw_data 形态把它归一到 'ranking' → EtherealRankChart，
-  //   而不是交给 'EtherealBarChart' 变成彩色竖向柱状图（用户已多次反馈该问题）。
-  //   判定策略（按可信度从高到低）：
-  //     (1) raw_data 是 [{维度, 数值}] 形态、且非 dim_offset 数据 → ranking
-  //     (2) slot 包含 'clv_'、'hbar_'、'dim_offset'、'rank'、'top_n' 前缀/子串 → ranking/hbar
-  //   不再用「chart_type 是否是 'hbar'」这样的后端字段依赖（clv_advanced 全标 bar，必须后端不确定也能救回）。
-
-  // 旧逻辑（保留兜底）
-  if (type === 'hbar' || type === 'bar') {
-    const slotStr = String(slot || '').toLowerCase();
-    const isDimOffsetSlot = slotStr.includes('dim_offset');
-    const isClvOrHbarSlot = slotStr.startsWith('clv_') || slotStr.startsWith('hbar_');
-
-    const hbarRaw =
-      (data && data.length > 0 ? data : (chartNode?.data as Array<Record<string, unknown>>) || []) as Array<Record<string, unknown>>;
-    const isDimOffsetData = hbarRaw.some(
-      (r) =>
-        r && (r['偏移值'] !== undefined || r['流失占比'] !== undefined || r['正常占比'] !== undefined),
-    );
-
-    // ★ 数据形态识别：扁平 [{string, number}, ...]，且只有 2 个 key（一列维度、一列数值），
-    //   且数值列字段名不是"偏移/流失/占比/客户生命周期价值"等同源聚合 → 走 ranking
-    const looksLikeRankingData =
-      Array.isArray(data) && data.length >= 2 &&
-      data.every(
-        (r) =>
-          r && typeof r === 'object' &&
-          Object.keys(r).length === 2 &&
-          Object.values(r).every((v) => typeof v === 'string' || typeof v === 'number'),
-      ) &&
-      !isDimOffsetData;
-
-    if (isDimOffsetData || isDimOffsetSlot) {
-      type = 'hbar'; // → EtherealDimOffsetChart
-    } else if (looksLikeRankingData || isClvOrHbarSlot) {
-      type = 'ranking'; // → EtherealRankChart
-    } else if (type === 'hbar') {
-      type = 'ranking';
-    }
-  }
+  // ★ 设计原则：完全信任后端下发的 chart_type。柱状图(bar) 与 排行图(ranking) 由后端
+  //   在生成时就已经区分好（ranking 用于 TopN 排序展示，bar 用于普通柱状图），前端不再
+  //   通过 slot 命名或数据形态二次猜测，避免把正常的柱状图误判成排行图 / 反之。
 
   // ★ 调试钩子：默认关闭（生产），打开方式：浏览器 console 执行
   //   window.__datamind_chart_debug__ = true; 刷新后所有归一结果会打印到 console

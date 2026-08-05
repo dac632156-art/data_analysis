@@ -135,7 +135,7 @@ def compute_advanced_b(work: pd.DataFrame, base_rules: list, chart_top: int = 15
     rs = sorted(out, key=lambda r: r.get(metric, 0), reverse=True)[:chart_top]
     data = [{"x": f"{r['antecedent']}→{r['consequent']}",
              "y": round(r.get(metric, 0), 2)} for r in rs]
-    chart = ChartData(slot="ar_margin_top", chart_type="bar",
+    chart = ChartData(slot="ar_margin_top", chart_type="ranking",
                       title=title, x="规则", y=ylabel, data=data)
     return out, chart, has_margin, has_revenue
 
@@ -244,7 +244,7 @@ def compute_advanced_c(work: pd.DataFrame, seg: pd.DataFrame,
                 "y": seg_count[seg].get(combo, 0),
                 "series": seg,
             })
-    chart = ChartData(slot="ar_c_count_top", chart_type="bar",
+    chart = ChartData(slot="ar_c_count_top", chart_type="ranking",
                       title="各客群常买组合（共现次数，进阶 C）",
                       x="组合", y="共现次数", data=chart_data)
     return table, chart

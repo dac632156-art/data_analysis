@@ -219,7 +219,10 @@ function bucketOf(c: ChartLike): ChartBucket {
   // ★ ranking 二级子类：按标题细分，避免两条 ranking 在 blueprint 里被同一桶抢
   // 1) 先按 chart_type 精确识别（如 'ranking' / 'bar_rank' / 'rank_*'）
   if (t === 'ranking' || t === 'bar_rank' || t === 'rank' || /^rank_/.test(t)) return 'bar_rank_channel';
-  if (/渠道.*排行|渠道.*价值/.test(title)) return 'bar_rank_channel';
+  // ★ 修正：只匹配「渠道.*排行」（明确是排序语义），不再匹配「渠道.*价值」
+  //   此前会把「各渠道平均客户生命周期价值」这种并列对比图（非 ranking）也吸进
+  //   bar_rank_channel，导致 row2 3col 侧栏位置被柱状图侵占、环形图左侧无 ranking 可放
+  if (/渠道.*排行/.test(title)) return 'bar_rank_channel';
   if (/用户阶段.*排行|用户.*阶段|阶段.*价值/.test(title)) return 'bar_rank_stage';
   // ★ 用户最新诉求：「客户生命周期价值 Top5 排行」含"客户"+TopN，应归到 channel 排行桶
   //   此前它会被后面的 bar 兜底吃掉，错位渲染成彩色柱状图

@@ -123,12 +123,10 @@ const ROW_TEMPLATES: { row: number; template: number[]; height: string; sizeClas
 const WIDE_TYPES = new Set(['line', 'area', 'area_chart', 'cohort_heatmap', 'heatmap', 'funnel', 'funnel_chart', 'radar', 'dual_axis', 'dual']);
 /** Hero 类型（视觉冲击大 → 放 Row 2 中央 6col 槽） */
 const HERO_TYPES = new Set(['pie', 'ring', 'donut']);
-/** 边角类型（适合紧凑 3col 侧边槽）—— 横条/柱状 */
-const SIDE_TYPES = new Set(['hbar', 'hbar_family', 'horizontal_bar', 'bar', 'v_bar']);
+/** 边角类型（适合紧凑 3col 侧边槽）—— 横条/柱状/排行图 */
+const SIDE_TYPES = new Set(['hbar', 'hbar_family', 'horizontal_bar', 'bar', 'v_bar', 'ranking']);
 /** KPI/Metric 类型（→ 放 Row 1 三个 4col 等宽槽） */
 const KPI_TYPES = new Set(['metric', 'kpi', 'card', 'metric_card']);
-/** ★ 排行榜（渐变排行）—— 独占整行 full（视觉冲击 + 不挤） */
-const FULL_TYPES = new Set(['ranking']);
 
 /**
  * 判断给定 chart_type 是否属于 Hero（视觉冲击型）
@@ -146,18 +144,15 @@ function isSide(t: string): boolean {
 function isKpi(t: string): boolean {
   return KPI_TYPES.has((t || '').toLowerCase());
 }
-/** ★ 排行榜 → full（占满整行 12col，高度可给 2.4~3fr 让内容大气） */
-function isFullRank(t: string): boolean {
-  return FULL_TYPES.has((t || '').toLowerCase());
-}
+/** 排行榜 → 进 side_strip（环形图两侧），不再强制全宽 */
 
 const COL_AREA = (row: number, colStart: number, width: number) =>
   `r${row}c${colStart}s${width}`;
 
 function isFullWidth(chartType: string): boolean {
   const t = (chartType || '').toLowerCase();
-  // ★ 排行榜（ranking）也走 full——独占整行高大上，不再挤在 3col 侧边
-  return t === 'table' || t === 'cohort_heatmap' || t === 'heatmap' || isFullRank(t);
+  // 排行榜（ranking）已纳入 side_strip，不再强制全宽
+  return t === 'table' || t === 'cohort_heatmap' || t === 'heatmap';
 }
 
 /**
@@ -382,11 +377,12 @@ function computeLayoutHeuristic(items: LayoutInputItem[]): ComputeLayoutResult {
       if (centerItem) {
         assignments.push({ slot: centerItem.slot, title: centerItem.title, chartType: centerItem.chart_type, sizeClass: tpl.sizeClass, area: a1, rowIndex: tpl.row, colIndex: 1 + w0 });
       }
-      const leftItem = takeBy((it) => isSide(it.chart_type));
+      // ★ 蓝图要求：环形图两侧优先放排行图(ranking)，其次再退化到横条/柱状
+      const leftItem = takeBy((it) => it.chart_type === 'ranking') || takeBy((it) => isSide(it.chart_type));
       if (leftItem) {
         assignments.push({ slot: leftItem.slot, title: leftItem.title, chartType: leftItem.chart_type, sizeClass: tpl.sizeClass, area: a0, rowIndex: tpl.row, colIndex: 1 });
       }
-      const rightItem = takeBy((it) => isSide(it.chart_type));
+      const rightItem = takeBy((it) => it.chart_type === 'ranking') || takeBy((it) => isSide(it.chart_type));
       if (rightItem) {
         assignments.push({ slot: rightItem.slot, title: rightItem.title, chartType: rightItem.chart_type, sizeClass: tpl.sizeClass, area: a2, rowIndex: tpl.row, colIndex: 1 + w0 + w1 });
       }
