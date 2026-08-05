@@ -219,13 +219,22 @@ class ReportBuilder:
         result = []
         for c in chart_data:
             if isinstance(c, dict):
+                # 保留 option/raw_data/role：V4 报告需要把图表元数据绑定回 section，
+                # 若在此处剥离，_bind_package_charts_to_sections 会因 option 为空
+                # 跳过所有图，导致报告中「有文字无图表」。
+                # 注意：_format_prompt_input 仅输出 title/type/x/y/data_count，
+                # option 不会进入 prompt 文本，不浪费 token。
                 result.append({
                     "slot": str(c.get("slot", "")),
                     "type": str(c.get("chart_type", c.get("type", ""))),
+                    "chart_type": str(c.get("chart_type", c.get("type", ""))),
                     "title": str(c.get("title", "")),
                     "x": str(c.get("x", "")),
                     "y": str(c.get("y", "")),
                     "data_count": len(c.get("data", [])) if isinstance(c.get("data"), list) else 0,
+                    "option": c.get("option"),
+                    "raw_data": c.get("raw_data"),
+                    "role": c.get("role", ""),
                 })
         return result
 

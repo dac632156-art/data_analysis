@@ -447,7 +447,7 @@ export default function AnalysisPage() {
   /** V2：保存选中的分析包到 Dashboard */
   const handleSavePackages = async (pkgIds: string[]) => {
     try {
-      const res = await api.saveAnalysis(ds.sessionId, pkgIds);
+      const res = await api.saveAnalysis(ds.sessionId, pkgIds, ds.activeDatasetId);
       // 已保存分析包以「后端 session.saved_packages」为唯一真相源（report.py 生成报告时自读兜底），
       // 不再写 localStorage 冗余副本，避免与后端数据不一致。
       alert(`已保存 ${res.saved_count} 个分析结果到仪表盘`);

@@ -1,58 +1,65 @@
-/* CoverPage - 应用封面（浅色科技 landing + 视频背景 + 鼠标水平 seek） */
-import React, { useEffect, useRef } from 'react';
+/* CoverPage - 应用封面（浅色科技 landing + 抽帧图序列 + 鼠标水平 seek）
+ * 用 80 张静态抽帧图替代原视频，避免浏览器实时解码视频帧导致的卡顿。
+ * 鼠标水平位置 → 帧序号映射，切换 <img>.src 即可，零解码、跟手不卡。
+ */
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const SENSITIVITY = 0.8;
+const TOTAL_FRAMES = 80; // robot_frames/frame_0001.jpg ~ frame_0080.jpg
+const SENSITIVITY = 0.8; // 鼠标滑到右 80% 才转到最后一帧（沿用原视频手感）
+const FRAME_PATH = (i: number) =>
+  `/robot_frames/frame_${String(i).padStart(4, '0')}.jpg`;
 
 export default function CoverPage() {
   const navigate = useNavigate();
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const targetTimeRef = useRef<number>(0);
-  const seekingRef = useRef<boolean>(false);
-  const rafRef = useRef<number | null>(null);
+  const [ready, setReady] = useState(false); // 全部帧预加载完成
+  const [currentIdx, setCurrentIdx] = useState(1); // 当前显示的 1-based 帧序号
+  const currentIdxRef = useRef(1);
+  const readyRef = useRef(false);
+
+  // 预加载全部 80 张图，完成后才启用鼠标切换，避免白屏/切换闪烁
+  useEffect(() => {
+    let alive = true;
+    let loaded = 0;
+    for (let i = 1; i <= TOTAL_FRAMES; i++) {
+      const img = new Image();
+      img.onload = img.onerror = () => {
+        loaded += 1;
+        if (loaded >= TOTAL_FRAMES && alive) {
+          readyRef.current = true;
+          setReady(true);
+        }
+      };
+      img.src = FRAME_PATH(i);
+    }
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    // 直接 seek 到目标时间（mousemove 已做节流，避免 flood）
-    const seekTo = (t: number) => {
-      const clamped = Math.max(0, Math.min(video.duration || 0, t));
-      if (Math.abs(video.currentTime - clamped) < 0.005) return;
-      if (seekingRef.current) return; // 正在 seek 则跳过，等 seeked 后再处理
-      seekingRef.current = true;
-      video.currentTime = clamped;
-    };
-
-    const handleSeeked = () => {
-      seekingRef.current = false;
-    };
-
-    // rAF 每帧把 currentTime 立刻拉到目标点（不缓动，跟手）
-    const tick = () => {
-      if (video.duration > 0 && isFinite(video.duration)) {
-        seekTo(targetTimeRef.current);
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
     let lastMove = 0;
     const handleMouseMove = (e: MouseEvent) => {
       const now = performance.now();
-      if (now - lastMove < 16) return; // 节流到 ~60fps，避免高频 event 触发 seek flood
+      if (now - lastMove < 16) return; // 节流到 ~60fps，避免高频 setState
       lastMove = now;
-      if (video.duration === 0 || !isFinite(video.duration)) return;
+      if (!readyRef.current) return; // 未预加载完不切换，保持首帧
       const ratio = Math.max(0, Math.min(1, e.clientX / window.innerWidth));
-      targetTimeRef.current = Math.max(0, Math.min(video.duration, ratio * SENSITIVITY * video.duration));
+      const idx = Math.max(
+        1,
+        Math.min(
+          TOTAL_FRAMES,
+          Math.round(ratio * SENSITIVITY * (TOTAL_FRAMES - 1)) + 1
+        )
+      );
+      if (idx !== currentIdxRef.current) {
+        currentIdxRef.current = idx;
+        setCurrentIdx(idx);
+      }
     };
 
-    rafRef.current = requestAnimationFrame(tick);
-    video.addEventListener('seeked', handleSeeked);
     window.addEventListener('mousemove', handleMouseMove);
-
     return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      video.removeEventListener('seeked', handleSeeked);
       window.removeEventListener('mousemove', handleMouseMove);
     };
   }, []);
@@ -62,20 +69,24 @@ export default function CoverPage() {
       className="relative w-full h-screen overflow-hidden"
       style={{ fontFamily: 'PingFang SC, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' }}
     >
-      {/* 视频背景 */}
-      <video
-        ref={videoRef}
-        src="/机器人.mp4"
-        muted
-        playsInline
-        preload="auto"
+      {/* 机器人抽帧图序列（替代视频，鼠标水平位置映射帧） */}
+      <img
+        src={FRAME_PATH(currentIdx)}
+        alt="DataMind AI 智能机器人"
         className="absolute inset-0 w-full h-full object-cover"
-        style={{ background: '#F8FAFC' }}
+        style={{
+          background: '#F8FAFC',
+          opacity: ready ? 1 : 0.6,
+          // 高质量缩放渲染：2K 图铺满时浏览器用高质量插值而非默认钝化，
+          // 缓解 object-cover 放大后的边缘发虚（配合已超分的 2K 资源生效）。
+          imageRendering: 'high-quality',
+          willChange: 'transform',
+        } as React.CSSProperties}
+        draggable={false}
       />
 
-      {/* 顶部 Header：只保留左上角 logo（红色框内容已删除） */}
+      {/* 顶部 Header：只保留左上角 logo */}
       <header className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-8 py-6">
-        {/* 蓝色框：项目图标 + 名称 */}
         <div className="flex items-center gap-3">
           <div
             className="w-8 h-8 rounded-full flex-shrink-0"
@@ -93,7 +104,6 @@ export default function CoverPage() {
       {/* 中间 Hero 内容 */}
       <main className="relative z-10 w-full h-full flex flex-col px-8 md:px-16 lg:px-24 pt-28 md:pt-32">
         <div className="max-w-2xl">
-          {/* 大标题：放大占位 */}
           <h1
             className="font-bold tracking-tight"
             style={{ color: '#0F172A', fontSize: '96px', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.02em' }}
@@ -101,7 +111,6 @@ export default function CoverPage() {
             DataMind AI
           </h1>
 
-          {/* 绿色框：英文翻译成中文 */}
           <p
             className="mt-7"
             style={{ color: '#334155', fontSize: '24px', fontWeight: 400, lineHeight: 1.7 }}
@@ -109,7 +118,6 @@ export default function CoverPage() {
             释放数据的智能潜力，遇见你的 AI 数据伙伴。
           </p>
 
-          {/* 按钮：保留 Start for Free（中文），删除 Learn More（红色框） */}
           <div className="mt-10 flex items-center gap-4">
             <button
               type="button"

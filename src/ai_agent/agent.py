@@ -6,6 +6,8 @@ import pandas as pd
 import json
 import openai
 import threading
+import unicodedata
+import difflib
 from typing import List, Dict, Any, Optional
 from src.ai_agent.prompts import (
     SYSTEM_PROMPT, REPORT_SYSTEM_PROMPT, REPORT_USER_PROMPT_TEMPLATE,
@@ -300,7 +302,7 @@ class DataAnalysisAgent:
                 # debug: AI text length logged via logging
 
                 # 尝试解析 JSON
-                sections = _parse_report_json(ai_text)
+                sections, report_title = _parse_report_json(ai_text)
                 # 归一化 type 名（_fill_missing_sections 可能注入了新版名）→ 旧版名，确保 _bind_core_charts 能匹配
                 sections = _normalize_section_types(sections)
                 # debug: parsed sections logged via logging
@@ -311,6 +313,7 @@ class DataAnalysisAgent:
                 return {
                     "success": True,
                     "sections": sections,
+                    "report_title": report_title,
                     "raw_analysis": analysis_data,
                 }
 
@@ -383,12 +386,12 @@ class DataAnalysisAgent:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.4,
-                max_tokens=8192,  # 保持 8192，通过精简输入 prompt 提速
+                max_tokens=16000,  # 提升上限：全模块报告易超 8192 被截断（用户实测截断）
                 timeout=240,  # 与 client 级一致；SDK 重试已关，最坏 240s 即走 fallback
             )
 
             ai_text = response.choices[0].message.content or ""
-            sections = _parse_report_json(ai_text)
+            sections, report_title = _parse_report_json(ai_text)
 
             # 高危发现防漏守卫：保证 CRITICAL/HIGH 发现的图表+文字不被 LLM 漏掉
             sections = _enforce_high_severity_coverage(sections, report_input["sections_data"])
@@ -402,6 +405,7 @@ class DataAnalysisAgent:
             return {
                 "success": True,
                 "sections": sections,
+                "report_title": report_title,
                 "packages_used": len(packages),
                 # 成功路径也返回结构化 degradation（degraded=False），让前端判断逻辑统一
                 "degradation": {
@@ -437,6 +441,7 @@ class DataAnalysisAgent:
                 return {
                     "success": True,
                     "sections": fallback_sections,
+                    "report_title": "",  # 降级路径无 LLM 标题，前端用默认文案
                     "packages_used": len(packages),
                     "warning": warning,
                     "degradation": {
@@ -597,28 +602,29 @@ def _fill_missing_sections(sections: List[Dict[str, Any]]) -> List[Dict[str, Any
         if rt == "executive_summary":
             new_sections.append({
                 "type": "executive_summary", "title": "执行摘要",
-                "content": "AI 未生成执行摘要。",
+                "content": "AI 未生成执行摘要。", "chart_titles": [],
             })
         elif rt == "data_overview":
             new_sections.append({
                 "type": "data_overview", "title": "数据概览",
-                "content": "AI 未生成数据概览。",
+                "content": "AI 未生成数据概览。", "chart_titles": [],
             })
         elif rt == "conclusion":
             new_sections.append({
                 "type": "conclusion", "title": "总结",
-                "insights": [{"analysis": "AI 未生成总结。"}],
+                "content": "AI 未生成总结。", "chart_titles": [],
             })
         elif rt == "management_suggestions":
             new_sections.append({
                 "type": "management_suggestions", "title": "管理建议",
-                "insights": [{"analysis": "AI 未生成管理建议。"}],
+                "content": "AI 未生成管理建议。", "chart_titles": [],
             })
         else:
             new_sections.append({
                 "type": rt,
                 "title": _section_title_for(rt),
-                "insights": [{"analysis": f"{_section_title_for(rt)}：本章节无相关数据。"}],
+                "content": f"{_section_title_for(rt)}：本章节无相关数据。",
+                "chart_titles": [],
             })
 
     if new_sections:
@@ -643,8 +649,8 @@ def _section_title_for(section_type: str) -> str:
         "risk_analysis": "风险分析",
     }.get(section_type, section_type)
 
-def _parse_report_json(ai_text: str) -> List[Dict[str, Any]]:
-    """从 AI 返回的文本中解析 JSON sections"""
+def _parse_report_json(ai_text: str) -> tuple:
+    """从 AI 返回的文本中解析 JSON，返回 (sections, report_title)"""
     import json as _json
 
     # 提取 JSON 块
@@ -663,7 +669,7 @@ def _parse_report_json(ai_text: str) -> List[Dict[str, Any]]:
         if brace_start >= 0 and brace_end > brace_start:
             json_str = ai_text[brace_start:brace_end + 1]
         else:
-            return [{"type": "error", "title": "AI 返回解析失败", "content": ai_text[:500]}]
+            return [{"type": "error", "title": "AI 返回解析失败", "content": ai_text[:500]}], ""
 
     try:
 
@@ -673,10 +679,10 @@ def _parse_report_json(ai_text: str) -> List[Dict[str, Any]]:
         # 旧逻辑 len < 5 触发补全会与正常 AI 输出冲突。
         if not sections:
             sections = _fill_missing_sections(sections)
-        return sections
+        return sections, data.get("report_title", "")
     except Exception:
         # JSON 解析失败，返回原始文本
-        return [{"type": "error", "title": "AI 返回格式异常", "content": ai_text[:1000]}]
+        return [{"type": "error", "title": "AI 返回格式异常", "content": ai_text[:1000]}], ""
 
 
 def _bind_core_charts_to_sections(
@@ -1341,6 +1347,72 @@ _V3_TO_LLM_SECTION = {
     "geo_analysis": "structure",
 }
 
+def _norm_title(s: Any) -> str:
+    """图表标题归一化：NFKC 全角转半角 + 去所有空白 + 转小写，用于模糊匹配。
+
+    LLM 常把源标题简写（如 '转化漏斗' vs 源 '转化漏斗（AARRR）'），
+    精确串匹配会同时破坏三处：守卫重复补图、兄弟章节匹配、前端图绑定。
+    归一化后三者一致，是修复 BUG1 的根基。
+    """
+    if not s:
+        return ""
+    return unicodedata.normalize("NFKC", str(s)).replace(" ", "").replace("\u3000", "").lower()
+
+
+def _title_to_slot(title: Any, slot_to_title: Dict[str, str]):
+    """把（可能简写的）图表标题反查到源 slot。返回 slot 或 None。
+
+    匹配优先级：① 归一化精确相等 ② 包含关系（简写⊂源，最常见）
+    ③ difflib 相似度 ≥0.85（微小改写如 '八' vs '8'）。
+    """
+    if not title:
+        return None
+    nt = _norm_title(title)
+    if not nt:
+        return None
+    best, best_score = None, 0.0
+    for slot, src in slot_to_title.items():
+        ns = _norm_title(src)
+        if not ns:
+            continue
+        if nt == ns:
+            return slot
+        if nt in ns or ns in nt:
+            return slot
+        ratio = difflib.SequenceMatcher(None, nt, ns).ratio()
+        if ratio >= 0.85 and ratio > best_score:
+            best, best_score = slot, ratio
+    return best
+
+
+def _dedupe_section_insights_by_slot(
+    sections: List[Dict[str, Any]], slot_to_title: Dict[str, str]
+) -> None:
+    """每个 section 内按图表 slot 去重 insights（LLM 简写已对齐，同 slot 必同标题）。
+
+    兜底：即便前面的判断逻辑漏判，补图后也保证同一张图在同一章节只出现一次。
+    按 section 维度去重，不影响设计允许的跨章节引用（如 churn_seg 引 kmeans 的图）。
+    """
+    for s in sections:
+        ins_list = s.get("insights")
+        if not isinstance(ins_list, list) or not ins_list:
+            continue
+        seen_slots = set()
+        kept = []
+        for ins in ins_list:
+            if not isinstance(ins, dict):
+                kept.append(ins)
+                continue
+            ct = ins.get("chart_title")
+            slot = _title_to_slot(ct, slot_to_title) if ct else None
+            if slot is not None:
+                if slot in seen_slots:
+                    continue  # 同图重复，丢弃多余的一条
+                seen_slots.add(slot)
+            kept.append(ins)
+        s["insights"] = kept
+
+
 _HIGH_SEVERITY = {"critical", "high"}
 
 
@@ -1352,14 +1424,8 @@ def _enforce_high_severity_coverage(
 
     返回（可能已就地修改）sections。
     """
-    # 1) LLM 已引用的 chart_title 集合
-    referenced_titles = set()
-    for s in sections:
-        for ins in (s.get("insights") or []):
-            if isinstance(ins, dict) and ins.get("chart_title"):
-                referenced_titles.add(ins["chart_title"])
-
-    # 2) 全局 slot -> title / slot -> type 桥。
+    # 1) 全局 slot -> title / slot -> type 桥（必须在收集 LLM 引用之前构建，
+    #    以便把 LLM 简写标题对齐回源精确标题）。
     #    与 _bind_package_charts_to_sections 一致：图表绑定是跨包全局 chart_map，
     #    故守卫也必须全局解析——否则跨包图引用（如 churn_seg 的 finding 引 kmeans 的
     #    cluster_radar）会被误判为不可覆盖的悬空槽，导致高危图防漏失效。
@@ -1373,6 +1439,26 @@ def _enforce_high_severity_coverage(
                 if c.get("slot") and c.get("type"):
                     slot_to_type[c["slot"]] = c["type"]
 
+    # 2) LLM 已引用的 chart_title / chart_slot 集合；
+    #    并就地把 LLM 简写 chart_title 对齐回源精确标题——这一对齐同时修复三处：
+    #    (a) 守卫补图判断不再因标题不一致而重复补；(b) _find_sibling_section 能认出
+    #    兄弟章节而不新建重复章节；(c) _bind_package_charts_to_sections 能按精确标题
+    #    绑定图表，前端图可正常加载。
+    referenced_titles = set()
+    referenced_slots = set()
+    for s in sections:
+        ct_list = s.get("chart_titles") or []
+        if not isinstance(ct_list, list):
+            continue
+        for i, ct in enumerate(ct_list):
+            if not ct:
+                continue
+            matched_slot = _title_to_slot(ct, slot_to_title)
+            if matched_slot is not None:
+                ct_list[i] = slot_to_title[matched_slot]  # 就地对齐回源精确标题
+                referenced_slots.add(matched_slot)
+            referenced_titles.add(ct_list[i])
+
     # 3) 逐章节检查高危发现
     for section_name, pkgs in sections_data.items():
         for pkg in pkgs:
@@ -1382,88 +1468,83 @@ def _enforce_high_severity_coverage(
 
                 evidence = f.get("evidence") or {}
                 slots = evidence.get("chart_slots") or []
-                expected_titles = [slot_to_title[s] for s in slots if s in slot_to_title]
 
-                if expected_titles:
-                    # 图表型发现：逐张图检查覆盖，缺哪张补哪张。
+                if slots:
+                    # 图表型发现：逐张图（按 slot）检查覆盖，缺哪张补哪张。
+                    # 用 slot 维度判断而非标题精确匹配——LLM 简写标题已对齐回源，
+                    # 即便个别未对齐也能通过 slot 识别是否已引用，杜绝重复补图。
                     # 不能用 any() 短路——否则 LLM 引用了同发现的另一张图，
                     # 会把本张高危图漏掉（实测：churn_rule 一张饼图被引用，
                     # 另一张气泡矩阵图被静默跳过）。
-                    for t in expected_titles:
-                        if t in referenced_titles:
+                    for slot in slots:
+                        if slot not in slot_to_title:
                             continue
-                        _inject_finding_insight(sections, section_name, f, pkg, t, slot_to_title, slot_to_type)
+                        t = slot_to_title[slot]
+                        if slot in referenced_slots or t in referenced_titles:
+                            continue
+                        _inject_finding_chart_title(sections, section_name, t, slot_to_title)
+                        referenced_slots.add(slot)
                         referenced_titles.add(t)
                 else:
-                    # 纯文字发现：粗略检查标题是否已在某 insight 文字中出现
+                    # 纯文字发现：粗略检查标题是否已在某 section content 文字中出现
                     ftitle = f.get("title", "")
                     if ftitle and _finding_text_covered(sections, ftitle):
                         continue
-                    _inject_finding_insight(sections, section_name, f, pkg, None, slot_to_title, slot_to_type)
+                    _inject_finding_chart_title(sections, section_name, None, slot_to_title)
 
+    # 4) 兜底：每个 section 内按图表标题去重，确保同一张图绝不在同一章节出现两次
+    #    （即便前述判断逻辑存在边界漏判，此处也保证最终报告无重复图）。
+    for s in sections:
+        ct_list = s.get("chart_titles")
+        if isinstance(ct_list, list) and ct_list:
+            seen = set()
+            kept = []
+            for ct in ct_list:
+                if ct and ct not in seen:
+                    seen.add(ct)
+                    kept.append(ct)
+            s["chart_titles"] = kept
     return sections
 
 
 def _finding_text_covered(sections, ftitle):
     for s in sections:
-        for ins in (s.get("insights") or []):
-            if isinstance(ins, dict):
-                blob = " ".join(
-                    str(ins.get(k, "")) for k in ("analysis", "business_conclusion", "title")
-                )
-                if ftitle and ftitle in blob:
-                    return True
+        blob = " ".join(str(s.get(k, "")) for k in ("content", "title"))
+        if ftitle and ftitle in blob:
+            return True
     return False
 
 
-def _inject_finding_insight(sections, section_name, f, pkg, target_title, slot_to_title, slot_to_type):
-    """把单个高危发现补入报告：文字来自发现自身，图表 title 取自 chart_slots 映射。"""
-    analysis = f.get("business_meaning") or f.get("description") or ""
-    business_conclusion = f.get("business_impact") or analysis
-    recommendation = f.get("recommendation") or ""
-    insight_label = _category_to_insight_label(f.get("category", ""))
-    analysis_type = pkg.get("analysis_type", "")
-    dimension = pkg.get("dimension", "")
-    metric = pkg.get("metric", "")
+def _inject_finding_chart_title(sections, section_name, target_title, slot_to_title):
+    """把单个高危发现的图表标题补入报告的 chart_titles（图随其所属章节就近展示）。
 
-    chart_type = ""
-    if target_title:
-        # 全局反查 chart_type（图表可能来自其他包，如 churn_seg 引 kmeans 的 cluster_radar）
-        for slot, title in slot_to_title.items():
-            if title == target_title:
-                chart_type = slot_to_type.get(slot, "")
-                break
-
-    insight = {
-        "chart_title": target_title,
-        "chart_type": chart_type,
-        "table_type": None,
-        "rule_id": None,
-        "insight_label": insight_label,
-        "analysis_type": analysis_type,
-        "dimension": dimension,
-        "metric": metric,
-        "title": f.get("title", ""),
-        "analysis": analysis,
-        "business_conclusion": business_conclusion,
-        "recommendation": recommendation,
-        "_enforced": True,  # 审计标记：确定性补入，非 LLM 原创
-    }
-
+    - target_title 为图表标题：补入找到的目标章节的 chart_titles 数组（去重）。
+    - target_title 为 None（纯文字发现）：仅确保对应章节存在（依附兄弟章节或新建），
+      不补图，符合项目铁律「文字优先」。
+    """
     target_section = _find_sibling_section(sections, slot_to_title)
     if target_section is None:
         target_section = _create_section_for(sections, section_name)
-    target_section.setdefault("insights", []).append(insight)
+    if target_title is None:
+        return
+    ct_list = target_section.setdefault("chart_titles", [])
+    if target_title not in ct_list:
+        ct_list.append(target_title)
 
 
 def _find_sibling_section(sections, slot_to_title):
-    """找已存在且包含本章节兄弟图表的 LLM 章节（保持图表在合适位置）。"""
-    sibling_titles = set(slot_to_title.values())
-    if not sibling_titles:
+    """找已存在且包含本章节兄弟图表的 LLM 章节（保持图表在合适位置）。
+
+    改用归一化匹配：LLM 简写标题（如 '转化漏斗'）也能认出对应的兄弟章节，
+    避免因精确匹配失败而新建一个重复章节（BUG1 的连锁表现之一）。
+    新结构（V4）：兄弟图声明在 section.chart_titles（字符串数组）中。
+    """
+    sibling_titles_norm = {_norm_title(t) for t in slot_to_title.values() if t}
+    if not sibling_titles_norm:
         return None
     for s in sections:
-        for ins in (s.get("insights") or []):
-            if isinstance(ins, dict) and ins.get("chart_title") in sibling_titles:
+        for ct in (s.get("chart_titles") or []):
+            if ct and _norm_title(ct) in sibling_titles_norm:
                 return s
     return None
 
@@ -1500,37 +1581,63 @@ def _bind_package_charts_to_sections(
     sections: List[Dict[str, Any]],
     sections_data: Dict[str, List[Dict[str, Any]]],
 ) -> List[Dict[str, Any]]:
-    """将 AnalysisPackage 中的图表信息绑定到 AI 生成的 sections 中"""
+    """将 AnalysisPackage 中的图表信息绑定到 AI 生成的 sections 中。
+
+    新结构（V4）：每个 section 用 `chart_titles`（字符串数组）声明其正文中引用的图表，
+    此处把它们对应的完整图表（含 option/raw_data）提取成 `section_charts` 挂回 section，
+    供前端就近插图。不再依赖旧的 insights[].chart_title 结构。
+    """
+    # 全局 title -> 完整图表对象 映射（图表可能来自跨包，故全局解析）
     chart_map: Dict[str, Dict[str, Any]] = {}
-    for section_name, pkgs in sections_data.items():
+    for pkgs in sections_data.values():
         for pkg in pkgs:
-            charts = pkg.get("chart_data", [])
-            for c in charts:
+            for c in pkg.get("chart_data", []):
                 title = c.get("title", "")
-                if title:
-                    chart_map[title] = {
-                        "chart_type": c.get("chart_type", c.get("type", "")),
-                        "analysis_type": pkg.get("analysis_type", ""),
-                        "dimension": pkg.get("dimension"),
-                        "metric": pkg.get("metric"),
-                    }
+                if title and title not in chart_map:
+                    chart_map[title] = c
 
     for section in sections:
-        insights = section.get("insights")
-        if not isinstance(insights, list):
+        ct_list = section.get("chart_titles")
+        if not isinstance(ct_list, list) or not ct_list:
+            section["section_charts"] = []
             continue
-        for ins in insights:
-            ct = ins.get("chart_title", "")
-            if ct and ct in chart_map:
-                info = chart_map[ct]
-                if not ins.get("chart_type"):
-                    ins["chart_type"] = info["chart_type"]
-                if not ins.get("analysis_type"):
-                    ins["analysis_type"] = info["analysis_type"]
-                if not ins.get("dimension"):
-                    ins["dimension"] = info["dimension"]
-                if not ins.get("metric"):
-                    ins["metric"] = info["metric"]
+        bound = []
+        seen_slots = set()
+        for ct in ct_list:
+            if not ct:
+                continue
+            # 优先精确匹配，其次归一化包含匹配（LLM 可能简写标题）
+            chart = chart_map.get(ct)
+            if chart is None:
+                nt = _norm_title(ct)
+                for src_title, src_chart in chart_map.items():
+                    ns = _norm_title(src_title)
+                    if nt == ns or nt in ns or ns in nt:
+                        chart = src_chart
+                        break
+            if chart is None:
+                continue
+            # 关键过滤：option 为 None 的图（未渲染出 option，仅有 raw_data 或无图）
+            # 前端 EtherealRadarChart 等组件会对 chartNode.title 直接取值，null 会崩溃整页。
+            # 与路由 report.py 的 not chart.get("option") 过滤保持一致。
+            if not chart.get("option"):
+                continue
+            slot = chart.get("slot", "")
+            # 同一 section 内按 slot 去重：LLM 重复声明同一张图（或 chart_titles
+            # 含一个 slot 的多处引用）时，避免前端 key=slot 撞车（React 重复 key 警告）。
+            if slot and slot in seen_slots:
+                continue
+            if slot:
+                seen_slots.add(slot)
+            bound.append({
+                "title": chart.get("title", ""),
+                "option": chart.get("option"),
+                "chart_type": chart.get("chart_type", chart.get("type", "")),
+                "slot": slot,
+                "raw_data": chart.get("raw_data"),
+                "role": chart.get("role", ""),
+            })
+        section["section_charts"] = bound
 
     return sections
 
@@ -1604,28 +1711,18 @@ def _build_fallback_from_packages(
             if pkg_insights:
                 analysis_parts.extend(pkg_insights[:3])
 
-            chart_title = None
+            chart_titles = []
             charts = pkg.get("chart_data", [])
             if charts:
-                chart_title = charts[0].get("title", "")
+                chart_titles = [c.get("title", "") for c in charts if c.get("title")]
 
-            insights.append({
-                "chart_title": chart_title,
-                "chart_type": charts[0].get("type") if charts else None,
-                "insight_label": None,
-                "analysis_type": pkg.get("analysis_type", ""),
-                "dimension": pkg.get("dimension"),
-                "metric": pkg.get("metric"),
-                "business_question": question,
-                "business_conclusion": "；".join(conclusions) if conclusions else None,
-                "analysis": "。".join(analysis_parts) if analysis_parts else "暂无详细分析数据",
-            })
+            content = "。".join(analysis_parts) if analysis_parts else "暂无详细分析数据"
 
-        if insights:
             sections.append({
                 "type": section_name,
                 "title": SECTION_DISPLAY_NAME.get(section_name, section_name),
-                "insights": insights,
+                "content": content,
+                "chart_titles": chart_titles,
             })
 
     # 管理建议
@@ -1639,14 +1736,16 @@ def _build_fallback_from_packages(
         sections.append({
             "type": "management_suggestions",
             "title": "管理建议",
-            "insights": [{"analysis": c} for c in all_conclusions[:5]],
+            "content": "\n".join(f"- {c}" for c in all_conclusions[:5]),
+            "chart_titles": [],
         })
 
     # 总结
     sections.append({
         "type": "conclusion",
         "title": "总结",
-        "insights": [{"analysis": f"报告基于 {len(packages)} 个分析包自动生成。AI 报告生成失败，以上内容为已有分析数据的直接汇总。"}],
+        "content": f"报告基于 {len(packages)} 个分析包自动生成。AI 报告生成失败，以上内容为已有分析数据的直接汇总。",
+        "chart_titles": [],
     })
 
     return sections

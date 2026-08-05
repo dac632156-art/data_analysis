@@ -78,22 +78,32 @@ def _run_report_task(
             result = agent.generate_report_from_packages(packages, data_profile)
 
         if result.get("success"):
-            # 从 packages 中提取图表 option 供前端报告渲染（前端当前主流程未使用，
-            # 但保留字段以兼容；精简副本中通常已无 option）
+            # 从 packages 中提取图表 option 供前端报告渲染。
+            # 优先使用已渲染好的 pkg["charts"]；若不存在则回退到 pkg["chart_data"]。
+            # 按 title 去重，避免同一图被多包/多字段重复加入。
             chart_options = []
+            seen_titles = set()
             for pkg in packages:
-                charts = pkg.get("charts", []) or []
+                charts = pkg.get("charts") or pkg.get("chart_data") or []
                 for chart in charts:
-                    if isinstance(chart, dict) and chart.get("option"):
-                        chart_options.append({
-                            "title": chart.get("title", ""),
-                            "option": chart["option"],
-                            "chart_type": chart.get("chart_type", ""),
-                            "role": chart.get("role", ""),
-                        })
+                    if not isinstance(chart, dict) or not chart.get("option"):
+                        continue
+                    title = chart.get("title", "")
+                    if title in seen_titles:
+                        continue
+                    seen_titles.add(title)
+                    chart_options.append({
+                        "title": title,
+                        "option": chart["option"],
+                        "chart_type": chart.get("chart_type", ""),
+                        "role": chart.get("role", ""),
+                        "slot": chart.get("slot", ""),
+                        "raw_data": chart.get("raw_data"),
+                    })
             payload = sanitize_json({
                 "success": True,
                 "sections": result.get("sections", []),
+                "report_title": result.get("report_title", ""),
                 "packages_used": result.get("packages_used", 0),
                 "charts": chart_options,
                 "warning": result.get("warning"),

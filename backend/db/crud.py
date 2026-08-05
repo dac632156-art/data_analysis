@@ -80,6 +80,18 @@ def delete_session(session_id: str) -> None:
     conn.commit()
 
 
+def clear_all_data() -> None:
+    """清空全部上传数据（sessions / datasets / analysis_packages 三表全清）。
+
+    用途：后端冷启动时释放所有历史数据，恢复到空白状态。幂等、不依赖内存状态。
+    """
+    conn = get_connection()
+    conn.execute("DELETE FROM analysis_packages")
+    conn.execute("DELETE FROM datasets")
+    conn.execute("DELETE FROM sessions")
+    conn.commit()
+
+
 def list_expired_sessions(timeout: float, now: float) -> List[str]:
     """返回最后访问距 now 超过 timeout 秒的会话 ID 列表。"""
     conn = get_connection()

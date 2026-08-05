@@ -1,6 +1,6 @@
 [
   {
-    "id": "growth_primary_trend_d8a7bc",
+    "id": "growth_primary_trend_b68bed",
     "title": "销售额变化趋势如何",
     "description": "华东同比增长12%",
     "chart_config": {
@@ -39,6 +39,7 @@
         },
         "series": [
           {
+            "name": "销售额",
             "type": "line",
             "data": [
               100.0,
@@ -80,17 +81,17 @@
     "chart_type": "line",
     "related_widgets": [
       {
-        "target_widget_id": "sales_ranking_09e3bc",
+        "target_widget_id": "sales_ranking_de1a86",
         "relation_type": "explain",
         "description": "排名分析解释增长趋势的变化来源"
       },
       {
-        "target_widget_id": "sales_composition_977ab7",
+        "target_widget_id": "sales_composition_bd3bc3",
         "relation_type": "explain",
         "description": "结构分析揭示增长变化的构成原因"
       },
       {
-        "target_widget_id": "risk_warning_5d91ca",
+        "target_widget_id": "risk_warning_1e7886",
         "relation_type": "complement",
         "description": "异常分析标记趋势中的离群点"
       }
@@ -151,7 +152,7 @@
     }
   },
   {
-    "id": "risk_warning_5d91ca",
+    "id": "risk_warning_1e7886",
     "title": "销售额变化趋势如何",
     "description": "华东同比增长12%",
     "chart_config": {
@@ -190,6 +191,7 @@
         },
         "series": [
           {
+            "name": "销售额",
             "type": "scatter",
             "data": [
               100.0,
@@ -229,7 +231,7 @@
     "chart_type": "scatter",
     "related_widgets": [
       {
-        "target_widget_id": "growth_primary_trend_d8a7bc",
+        "target_widget_id": "growth_primary_trend_b68bed",
         "relation_type": "depend",
         "description": "增长趋势为异常检测提供背景参考"
       }
@@ -290,7 +292,7 @@
     }
   },
   {
-    "id": "sales_ranking_09e3bc",
+    "id": "sales_ranking_de1a86",
     "title": "销售额变化趋势如何",
     "description": "华东同比增长12%",
     "chart_config": {
@@ -329,6 +331,7 @@
         },
         "series": [
           {
+            "name": "销售额",
             "type": "bar",
             "data": [
               100.0,
@@ -368,7 +371,7 @@
     "chart_type": "bar",
     "related_widgets": [
       {
-        "target_widget_id": "sales_composition_977ab7",
+        "target_widget_id": "sales_composition_bd3bc3",
         "relation_type": "drill",
         "description": "结构分析提供排名对象的占比细节"
       }
@@ -429,7 +432,7 @@
     }
   },
   {
-    "id": "sales_composition_977ab7",
+    "id": "sales_composition_bd3bc3",
     "title": "销售额变化趋势如何",
     "description": "华东同比增长12%",
     "chart_config": {
@@ -522,7 +525,7 @@
     "chart_type": "pie",
     "related_widgets": [
       {
-        "target_widget_id": "sales_ranking_09e3bc",
+        "target_widget_id": "sales_ranking_de1a86",
         "relation_type": "depend",
         "description": "排名分析为结构分析提供排序参考"
       }

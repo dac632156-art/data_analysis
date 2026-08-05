@@ -111,8 +111,13 @@ export interface ChatResponse {
 export interface ReportSection {
   type: 'overview' | 'kpi' | 'trend' | 'structure' | 'top' | 'anomaly' | 'conclusion' | 'suggestions' | 'next_steps' | 'error';
   title: string;
+  /** 连续文字分析（Markdown，章节内禁用标题，层级由 type/title 决定） */
   content?: string;
-  /** insights 可以是字符串或带完整规则信息的对象 */
+  /** 本章节正文引用的图表标题数组（由后端映射到 section_charts） */
+  chart_titles?: string[];
+  /** 后端把 chart_titles 解析成的具体图表（含 option/raw_data），前端就近插图 */
+  section_charts?: PackageChartItem[];
+  /** 保留：旧 insights 结构（fallback 或极旧后端可能返回） */
   insights?: Array<string | ReportInsight>;
   /** next_steps section 专有字段 */
   charts_to_create?: ChartToCreate[];
@@ -157,6 +162,10 @@ export interface ReportDegradation {
 export interface AIReportResponse {
   success: boolean;
   sections: ReportSection[];
+  /** LLM 根据数据生成的业务标题，为空时前端用默认文案 */
+  report_title?: string;
+  /** 报告引用的可视化图表（ECharts option），供 ReportsPage 内联渲染 */
+  charts?: PackageChartItem[];
   raw_analysis?: Record<string, unknown>;
   warning?: string;
   degradation?: ReportDegradation;

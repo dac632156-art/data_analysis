@@ -252,8 +252,8 @@ export const EtherealFunnelChart: React.FC<Props> = ({
           series: [
             {
               type: 'funnel',
-              left: '15%',
-              right: '15%',
+              left: 'center',
+              width: '80%',
               top: 56,
               bottom: 24,
               min: 0,

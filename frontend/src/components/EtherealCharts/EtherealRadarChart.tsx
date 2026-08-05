@@ -67,9 +67,17 @@ export const EtherealRadarChart: React.FC<Props> = ({ chartNode, height = 420 })
     chartDom.style.backdropFilter = 'blur(20px)';
     chartDom.style.boxShadow = '0 20px 40px -10px rgba(99, 102, 241, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.9)';
 
+    if (!chartNode) {
+      if (ref.current) {
+        ref.current.innerHTML =
+          '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94a3b8;font-size:13px;">图表数据缺失，暂无法渲染</div>';
+      }
+      return;
+    }
+
     const chart = echarts.init(chartDom);
 
-    const title = (chartNode.title as string) || '';
+    const title = (chartNode?.title as string) || '';
 
     // 兼容两套输入结构：
     //   A. 标准 ECharts radar option（后端 /api 走这条路）：

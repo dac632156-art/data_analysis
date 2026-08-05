@@ -407,8 +407,8 @@ export const saveDashboardTitle = async (
 };
 
 /* ===== 分析保存 ===== */
-export const saveAnalysis = async (sessionId: string, packageIds: string[]) => {
-  const { data } = await api.post('/analysis/save', { session_id: sessionId, package_ids: packageIds });
+export const saveAnalysis = async (sessionId: string, packageIds: string[], datasetId?: string) => {
+  const { data } = await api.post('/analysis/save', { session_id: sessionId, package_ids: packageIds, dataset_id: datasetId });
   return data;
 };
 

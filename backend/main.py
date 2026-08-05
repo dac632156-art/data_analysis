@@ -4,6 +4,7 @@ DataMind AI - FastAPI 后端入口
 """
 import os
 import sys
+import shutil
 import traceback
 
 # 添加项目根目录到 sys.path，以便导入现有模块
@@ -42,11 +43,12 @@ app = FastAPI(
 @app.on_event("startup")
 def _startup_init_db():
     """启动时确保 SQLite 表结构存在（幂等建表）。"""
+    import logging as _logging
+    _logger = _logging.getLogger("uvicorn.error")
     try:
         init_db()
     except Exception as exc:  # 建表失败不应阻断启动，但需记录
-        import logging as _logging
-        _logging.getLogger("uvicorn.error").error(f"数据库初始化失败: {exc}", exc_info=True)
+        _logger.error(f"数据库初始化失败: {exc}", exc_info=True)
 
     # 已知脏会话一次性清理：旧版（建库前 bug 版）把 AnalysisPackage 对象经
     # json.dumps(default=str) 序列化成了字符串落库，重启读回后无法还原，
@@ -57,13 +59,26 @@ def _startup_init_db():
         for _sid in _DIRTY_SESSIONS:
             _crud.delete_session(_sid)
         if _DIRTY_SESSIONS:
-            import logging as _logging
-            _logging.getLogger("uvicorn.error").info(
+            _logger.info(
                 f"已清理 {len(_DIRTY_SESSIONS)} 个历史脏会话的 SQLite state"
             )
     except Exception as exc:
-        import logging as _logging
-        _logging.getLogger("uvicorn.error").warning(f"清理历史脏会话失败(可忽略): {exc}")
+        _logger.warning(f"清理历史脏会话失败(可忽略): {exc}")
+
+    # 冷启动全量释放：清空所有上传数据（库 + 落盘），恢复到空白状态。
+    # 与用户约定一致：重启后端即释放全部数据（数据集/分析包/已保存图表/落盘 pkl）。
+    try:
+        from backend.db import crud as _crud
+        _crud.clear_all_data()
+        _logger.info("已清空全部上传数据（SQLite）")
+        # 删除落盘 pickle 目录并重建空目录（先判断存在，避免目录不存在报错）
+        _originals = os.path.join(project_root, "data", "originals")
+        if os.path.exists(_originals):
+            shutil.rmtree(_originals)
+        os.makedirs(_originals, exist_ok=True)
+        _logger.info(f"已清空落盘目录: {_originals}")
+    except Exception as exc:
+        _logger.warning(f"冷启动清空数据失败(可忽略): {exc}")
 
 
 # CORS 配置 - 演示阶段允许所有来源（生产环境应限制）

@@ -17,6 +17,7 @@ from src.ai_agent.report_audit import (
     build_ground_numbers,
     extract_numbers,
     _normalize_number,
+    _norm_title,
 )
 
 
@@ -171,3 +172,59 @@ def test_audit_clean_report_has_no_untraceable():
     audit = audit_report(clean_report, sd)
     assert audit.untraceable == []
     assert audit.missing_chart_titles == []
+
+
+def test_norm_title_collapses_spaces_and_fullwidth():
+    # 去空白 + NFKC 全角→半角，使 LLM 改写版本与源标题归一化后一致
+    assert _norm_title("RFM 8 大群体占比") == _norm_title("RFM 8大群体占比")
+    assert _norm_title("同期群质量趋势（偏移 j 留存率）") == _norm_title("同期群质量趋势（偏移j留存率）")
+    assert _norm_title("客户生命周期价值 分布直方图（等宽分箱）") == "客户生命周期价值分布直方图(等宽分箱)"
+
+
+def test_chart_title_paraphrase_not_flagged_missing():
+    # 真机审计中观察到的 4 个「误报缺失」：源标题含空格/括号注，LLM 引用时省略
+    sd = {
+        "structure_analysis": [
+            {"chart_data": [{"slot": "s1", "type": "pie", "title": "RFM 8 大群体占比"}]}
+        ],
+        "concentration_analysis": [
+            {
+                "chart_data": [
+                    {"slot": "c1", "type": "hist", "title": "客户生命周期价值 分布直方图（等宽分箱）"},
+                    {"slot": "c2", "type": "bar", "title": "客户生命周期价值 分层（高/中/低 平均价值）"},
+                ]
+            }
+        ],
+        "retention_analysis": [
+            {"chart_data": [{"slot": "r1", "type": "line", "title": "同期群质量趋势（偏移 j 留存率）"}]}
+        ],
+    }
+    report = [
+        {
+            "type": "structure_analysis",
+            "insights": [
+                {"chart_title": "RFM 8大群体占比", "analysis": "结构稳定。"},
+                {"chart_title": "客户生命周期价值分布直方图", "analysis": "分布右偏。"},
+                {"chart_title": "客户生命周期价值分层（高/中/低平均价值）", "analysis": "高价值占比低。"},
+            ],
+        },
+        {
+            "type": "retention_analysis",
+            "insights": [
+                {"chart_title": "同期群质量趋势（偏移j留存率）", "analysis": "留存下滑。"},
+            ],
+        },
+    ]
+    audit = audit_report(report, sd)
+    for t in [
+        "RFM 8大群体占比",
+        "客户生命周期价值分布直方图",
+        "客户生命周期价值分层（高/中/低平均价值）",
+        "同期群质量趋势（偏移j留存率）",
+    ]:
+        assert t not in audit.missing_chart_titles, f"改写标题被误判缺失: {t}"
+
+    # 真正不存在的标题仍应被标出（防止归一化把真缺失也吞掉）
+    report[0]["insights"].append({"chart_title": "客户流失预测热力图", "analysis": "不存在的图。"})
+    audit2 = audit_report(report, sd)
+    assert "客户流失预测热力图" in audit2.missing_chart_titles

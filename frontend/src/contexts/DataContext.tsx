@@ -118,7 +118,7 @@ const initialState: DataState = {
   columnInfo: [],
   dataInfo: null,
   cleaningHistory: [],
-  apiKey: 'sk-SXzLmQOotBHW63Pk6kApIuP2xuw3YBCCqc24nfgLofssxuhE',
+  apiKey: '',
   aiProvider: 'ppio',
   customModel: '',
   customBaseUrl: '',

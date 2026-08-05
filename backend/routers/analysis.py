@@ -47,6 +47,7 @@ class AnalysisRunRequest(BaseModel):
 class AnalysisSaveRequest(BaseModel):
     session_id: str
     package_ids: List[str]
+    dataset_id: Optional[str] = None  # 前端当前激活数据集 ID，用于按数据集过滤报告包
 
 
 # ===== 分析执行（委托共享流水线，行为不变）=====
@@ -77,7 +78,7 @@ async def api_analysis_run(req: AnalysisRunRequest):
 async def api_analysis_save(req: AnalysisSaveRequest):
     """从 session.analysis_packages 复制到 saved_packages"""
     try:
-        manager.save_packages(req.session_id, req.package_ids)
+        manager.save_packages(req.session_id, req.package_ids, dataset_id=req.dataset_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
     packages = manager.get_saved_packages(req.session_id)
@@ -347,7 +348,11 @@ async def api_dataset_packages(session_id: str, dataset_id: str):
     # 转为可序列化结构：{pkg_id: payload}
     result = {}
     for pid, pkg in (pkgs or {}).items():
-        result[pid] = pkg.payload if hasattr(pkg, "payload") else pkg
+        payload = pkg.payload if hasattr(pkg, "payload") else pkg
+        # 防御：跳过 None / 非 dict 的 payload，避免污染前端并触发报告接口 422
+        if not isinstance(payload, dict):
+            continue
+        result[pid] = payload
     return {"packages": sanitize_json(result)}
 
 

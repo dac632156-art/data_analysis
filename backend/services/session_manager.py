@@ -1021,7 +1021,7 @@ class SessionManager:
                 self._persist_session(session_id)
 
     # ===== V2 分析包操作 =====
-    def save_packages(self, session_id: str, package_ids: List[str]):
+    def save_packages(self, session_id: str, package_ids: List[str], dataset_id: Optional[str] = None):
         """聚合所有 dataset 分桶的包 + 兜底 analysis_packages，按 package_ids 复制进 saved_packages"""
         with self._lock:
             session = self._sessions.get(session_id)
@@ -1042,6 +1042,12 @@ class SessionManager:
                     src = all_pkgs[pkg_id]
                     pkg = dataclasses.asdict(src) if dataclasses.is_dataclass(src) else dict(src)
                     pkg["saved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    # ★ 标记包所属数据集，供报告/看板按当前激活数据集精准过滤。
+                    #    优先使用前端显式传入的 dataset_id（解耦 session 状态），
+                    #    回退 session.active_dataset_id（兼容旧调用方）。
+                    effective_did = dataset_id or getattr(session, "active_dataset_id", None)
+                    if effective_did:
+                        pkg["dataset_id"] = effective_did
                     # 去重：同一 ID 不重复保存
                     if not any(p.get("id") == pkg_id for p in session.saved_packages):
                         session.saved_packages.append(pkg)

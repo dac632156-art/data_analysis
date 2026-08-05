@@ -12,7 +12,8 @@ tables / insights / conclusions）中溯源，标记**疑似幻觉**的数字。
    - 精确/容差内命中 → TRACED
    - 接近但未精确命中 → APPROX（建议人工复核量级表述）
    - 无近似命中     → UNTRACEABLE（疑似幻觉，必须人工复核）
-4. 附加检查：报告 ``insight.chart_title`` 引用的图表标题是否都存在于源 ``chart_data``。
+4. 附加检查：报告 ``insight.chart_title`` 引用的图表标题是否都存在于源 ``chart_data``
+   （标题做归一化比对：NFKC 全角→半角、去空白、转小写，并兼容 LLM 省略括号注/微小改写）。
 
 注意：这是**数值级**审计，不能捕捉「数字对但归因错」的语义幻觉；它主要拦截
 「凭空编造的数字」。UNTRACEABLE 列表应作为人工复核清单，而非自动定罪。
@@ -21,7 +22,9 @@ tables / insights / conclusions）中溯源，标记**疑似幻觉**的数字。
 """
 from __future__ import annotations
 
+import difflib
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -180,6 +183,37 @@ def build_source_chart_titles(sections_data: Dict[str, List[Dict[str, Any]]]) ->
     return titles
 
 
+def _norm_title(s: str) -> str:
+    """归一化图表标题用于比对：NFKC 全角→半角、去所有空白、转小写。"""
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKC", str(s))
+    s = re.sub(r"\s+", "", s)
+    return s.lower()
+
+
+def _title_present(ct: str, source_norm: set) -> bool:
+    """判断报告引用的图表标题是否能在源标题中找到。
+
+    兼容三类 LLM 改写：
+    1. 规范化精确命中（去全半角差异 + 去空白，解决「RFM 8大群体占比」vs「RFM 8 大群体占比」）；
+    2. 包含关系（一方包含另一方，解决省略「（等宽分箱）」之类括号注）；
+    3. 模糊匹配（difflib 相似度 ≥ 0.85，解决「八」vs「8」等微小改写）。
+    """
+    n = _norm_title(ct)
+    if not n:
+        return True  # 空标题不判缺失
+    if n in source_norm:
+        return True
+    for st in source_norm:
+        if n in st or st in n:
+            return True
+    for st in source_norm:
+        if st and difflib.SequenceMatcher(None, n, st).ratio() >= 0.85:
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # 报告数值抽取 + 比对
 # ---------------------------------------------------------------------------
@@ -271,7 +305,8 @@ def audit_report(
                     status = "UNTRACEABLE"
             results.append(TraceResult(claim, status, nearest, diff))
 
-    # 图表标题溯源
+    # 图表标题溯源（归一化比对，兼容 LLM 改写/省略空格与括号注，避免误报缺失）
+    source_norm = {_norm_title(t) for t in source_titles}
     missing: List[str] = []
     for sec in report_sections or []:
         if not isinstance(sec, dict):
@@ -280,7 +315,7 @@ def audit_report(
             if isinstance(ins, dict):
                 ct = ins.get("chart_title")
                 if ct and str(ct).lower() not in ("null", "none", ""):
-                    if str(ct) not in source_titles:
+                    if not _title_present(str(ct), source_norm):
                         missing.append(str(ct))
 
     traced = sum(1 for r in results if r.status == "TRACED")
