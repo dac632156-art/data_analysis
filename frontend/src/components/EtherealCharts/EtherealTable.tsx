@@ -194,9 +194,11 @@ export const EtherealTable: React.FC<Props> = ({
         .dir-down { color: #DC2626; }
         .dir-flat { color: #94A3B8; }
 
-        /* ★ 表格滚动容器：行数多时让整张表可纵向滚动，避免被外层 overflow:hidden 硬截断。
-           设计选择：不使用 sticky 表头——卡片只有 360px 高，吸顶会让用户视觉上觉得
-           "突然冒出一行异样颜色"，更突兀；改成表头随数据一起滚走，反而更干净。 */
+        /* ★ 表格滚动容器：行数多时让整张表可纵向滚动。
+           只冻结首行（列表头），不冻结首列。
+           冻结行的背景用 transparent，让卡片本身的渐变/纹理自然透过，
+           避免「突然冒出一行纯白横条」破坏卡片整体质感。仅保留最弱的一道分割阴影
+           作为「分层感」提示。 */
         .ethereal-table-shell {
           flex: 1 1 auto;
           min-height: 0;
@@ -207,6 +209,14 @@ export const EtherealTable: React.FC<Props> = ({
         .ethereal-table-shell::-webkit-scrollbar { width: 6px; }
         .ethereal-table-shell::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.25); border-radius: 3px; }
         .ethereal-table-shell::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.45); }
+        /* 仅首行(表头) sticky-top，背景透明贴合卡片 */
+        .ethereal-table-wrap thead th {
+          position: sticky;
+          top: 0;
+          z-index: 3;
+          background: transparent;
+          box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+        }
       `}</style>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ fontSize: 24, fontWeight: 600, color: '#1E293B', letterSpacing: '0.5px' }}>{titleText}</div>
