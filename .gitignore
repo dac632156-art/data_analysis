@@ -60,6 +60,9 @@ backend/-w
 frontend/dist/
 frontend/dist-buildcheck/
 *.flag
+-w_1
+backend/-w
+src/mapping/mapping.db
 
 # Logs
 *.log

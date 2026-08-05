@@ -2,9 +2,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
-import { FiDownload, FiFileText, FiGrid, FiRadio, FiActivity, FiSave, FiLayout } from 'react-icons/fi';
+import { FiDownload, FiFileText, FiGrid, FiActivity, FiSave } from 'react-icons/fi';
 import EGridLayout from '../components/BigScreen/EGridLayout';
-import CommandScreen from '../components/BigScreen/CommandScreen';
 import MedicalDashboard from '../components/BigScreen/MedicalDashboard';
 import { DashboardRenderer } from '../components/DashboardRenderer';
 import SmartDashboard from '../components/BigScreen/SmartDashboard';
@@ -12,11 +11,10 @@ import type { CardItem, CardMeta } from '../components/cardTypes';
 import KPICards, { type KPIItem } from '../components/KPICards';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
 import * as api from '../api/client';
-import { generateEChartsDashboardHTML, generateAIDashboardHTML, downloadEChartsHTML } from '../utils/exportEChartsDashboard';
+import { generateEChartsDashboardHTML, downloadEChartsHTML } from '../utils/exportEChartsDashboard';
 import type { EChartItem, ReportDegradation } from '../types/api';
-import type { DashboardSchema } from '../types/dashboard';
 
-type TemplateType = 'command' | 'grid' | 'medical' | 'report' | 'schema';
+type TemplateType = 'grid' | 'medical' | 'report';
 
 /** 根据数据列名推断行业/业务领域，生成对应的报告标题 */
 function inferIndustryTitle(columns: string[]): string {
@@ -55,15 +53,10 @@ function inferIndustryTitle(columns: string[]): string {
 }
 
 const TEMPLATES: { id: TemplateType; label: string; icon: typeof FiGrid; desc: string }[] = [
-  { id: 'command', label: '指挥中心', icon: FiRadio, desc: '3D地球 + 数据面板 + 飞线大屏' },
   { id: 'medical', label: '数据看板', icon: FiActivity, desc: 'KPI数字 + 趋势图 + 雷达图 + 数据表格' },
   { id: 'grid', label: '经典网格', icon: FiGrid, desc: 'KPI条 + 2x3图表 + 联动高亮' },
   { id: 'report', label: '分析报告', icon: FiFileText, desc: '专业图文报告 + AI分析 + 导出' },
-  { id: 'schema', label: '可视化看板', icon: FiLayout, desc: 'DashboardSchema 管线（LayoutEngine + DashboardRenderer）' },
 ];
-
-/** 第5选项「可视化看板」使用的固定布局（与布局库 YAML 对应） */
-const SCHEMA_LAYOUT = 'wide';
 
 export default function DashboardPage() {
   const { state: ds } = useData();
@@ -83,11 +76,6 @@ export default function DashboardPage() {
   const [hideChartTitle, setHideChartTitle] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [savedTableData, setSavedTableData] = useState<Record<string, unknown>[]>([]);
-
-  // ──── 第5选项「可视化看板」状态（独立链路，不干扰旧三模板） ────
-  const [schema, setSchema] = useState<DashboardSchema | null>(null);
-  const [schemaLoading, setSchemaLoading] = useState(false);
-  const [schemaError, setSchemaError] = useState<string | null>(null);
 
   // ──── 数据看板（medical / BigScreenDashboard）状态：来自 /dashboard/cards ────
   const [cards, setCards] = useState<CardItem[]>([]);
@@ -121,32 +109,6 @@ export default function DashboardPage() {
   useEffect(() => {
     loadEChartsDashboard();
   }, [loadEChartsDashboard]);
-
-  // ===== 加载 Dashboard Schema（第5选项专用链路） =====
-  const loadSchema = useCallback(async () => {
-    if (!hasData) return;
-    setSchemaLoading(true);
-    setSchemaError(null);
-    try {
-      const title = inferIndustryTitle(
-        ds.preview?.[0] ? Object.keys(ds.preview[0]) : ds.columnInfo?.map(c => c.name) || [],
-      );
-      const res = await api.getDashboardSchema(ds.sessionId, title, SCHEMA_LAYOUT);
-      if (res && res.schema) {
-        setSchema(res.schema as unknown as DashboardSchema);
-      } else {
-        setSchema(null);
-        setSchemaError('Schema 返回为空');
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : '加载 Schema 看板失败';
-      console.error('[Schema] 加载失败:', msg);
-      setSchemaError(msg);
-      setSchema(null);
-    } finally {
-      setSchemaLoading(false);
-    }
-  }, [hasData, ds.sessionId, ds.preview, ds.columnInfo]);
 
   // ===== 加载数据看板卡片（medical / BigScreenDashboard，来自已保存分析包） =====
   const loadCards = useCallback(async () => {
@@ -317,24 +279,13 @@ export default function DashboardPage() {
       handleExportReport();
       return;
     }
-    if (template === 'schema') {
-      if (!schema || !schema.widgets || schema.widgets.length === 0) {
-        alert('暂无可视化看板内容，请先生成 Schema');
-        return;
-      }
-      const filename = `可视化看板_${displayTitle}_${new Date().toISOString().slice(0, 10)}.html`;
-      const html = generateAIDashboardHTML(schema as unknown as Record<string, unknown>, displayTitle, hideChartTitle);
-      setReportHtml(html);
-      downloadEChartsHTML(html, filename);
-      return;
-    }
     // 数据看板(medical) 以 cards 为数据源；其余模板以 echarts 为数据源
     if (template === 'medical') {
       if (!cards || cards.length === 0) {
         alert('暂无数据看板内容，请先生成卡片');
         return;
       }
-    } else if (template !== 'command' && echarts.length === 0) {
+    } else if (echarts.length === 0) {
       alert('暂无图表数据');
       return;
     }
@@ -556,7 +507,6 @@ export default function DashboardPage() {
                 key={tpl.id}
                 onClick={() => {
                   setTemplate(tpl.id);
-                  if (tpl.id === 'schema') loadSchema();
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${
                   template === tpl.id
@@ -574,7 +524,7 @@ export default function DashboardPage() {
 
         <div className="flex items-center gap-2 flex-wrap">
           {/* 恢复默认 */}
-          <button onClick={() => template === 'schema' ? loadSchema() : loadEChartsDashboard()}
+          <button onClick={() => loadEChartsDashboard()}
             className="px-2 py-1.5 text-xs rounded text-slate-600 hover:text-slate-800 transition-colors">
             恢复默认
           </button>
@@ -616,18 +566,8 @@ export default function DashboardPage() {
 
       {/* 大屏内容 */}
       <div className="flex-1 min-h-0 overflow-auto relative" ref={screenRef}>
-        {template === 'schema' ? (
-          /* ══════════ 第5选项：Schema 看板（独立新链路，不干扰旧三模板） ══════════ */
-          <DashboardRenderer
-            schema={schema}
-            theme="dark"
-            loading={schemaLoading}
-            error={schemaError || undefined}
-          />
-        ) : loading ? (
+        {loading ? (
           <div className="flex items-center justify-center h-full"><div className="w-8 h-8 rounded-full border-2 border-[#8B5CF6] border-t-transparent animate-spin" /></div>
-        ) : template === 'command' ? (
-            <CommandScreen kpis={kpis} dataPreview={ds.preview} echarts={echarts} />
         ) : template === 'medical' ? (
             <SmartDashboard sessionId={ds.sessionId} mode="A" />
         ) : template === 'report' ? (
