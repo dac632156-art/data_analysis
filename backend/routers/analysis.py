@@ -47,7 +47,6 @@ class AnalysisRunRequest(BaseModel):
 class AnalysisSaveRequest(BaseModel):
     session_id: str
     package_ids: List[str]
-    dataset_id: Optional[str] = None  # 前端当前激活数据集 ID，用于按数据集过滤报告包
 
 
 # ===== 分析执行（委托共享流水线，行为不变）=====
@@ -78,7 +77,7 @@ async def api_analysis_run(req: AnalysisRunRequest):
 async def api_analysis_save(req: AnalysisSaveRequest):
     """从 session.analysis_packages 复制到 saved_packages"""
     try:
-        manager.save_packages(req.session_id, req.package_ids, dataset_id=req.dataset_id)
+        manager.save_packages(req.session_id, req.package_ids)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"保存失败: {str(e)}")
     packages = manager.get_saved_packages(req.session_id)
@@ -335,25 +334,6 @@ async def api_process_datasets(session_id: str, req: Optional[ProcessDatasetsReq
         daemon=True,
     ).start()
     return {"task_id": task_id, "total": len(process_items)}
-
-
-@router.get("/analysis/dataset-packages")
-async def api_dataset_packages(session_id: str, dataset_id: str):
-    """读取已落库的数据洞察分析包（process-datasets 生成的结果）。
-
-    用于前端切换模块回来后，把当前数据集的数据洞察结果重新拉回渲染，
-    无需用户重新生成、也无需点「保存到看板」。
-    """
-    pkgs = manager.get_dataset_packages(session_id, dataset_id)
-    # 转为可序列化结构：{pkg_id: payload}
-    result = {}
-    for pid, pkg in (pkgs or {}).items():
-        payload = pkg.payload if hasattr(pkg, "payload") else pkg
-        # 防御：跳过 None / 非 dict 的 payload，避免污染前端并触发报告接口 422
-        if not isinstance(payload, dict):
-            continue
-        result[pid] = payload
-    return {"packages": sanitize_json(result)}
 
 
 @router.get("/analysis/process-datasets/status/{task_id}")

@@ -14,6 +14,11 @@ from typing import List, Optional
 import pandas as pd
 
 from src.analysis_engine.registry import get_models
+
+# 双保险：确保 8 个分析模型在 run_analysis 执行前已注册到 registry。
+# analysis.py 当前用 `from src.analysis_engine.engine import run_analysis` 直导本模块，
+# 命名空间包机制下不一定触发 analysis_engine/__init__.py，故此处显式导入 models 包。
+import src.analysis_engine.models  # noqa: E402,F401
 from src.analysis_templates.base import AnalysisPackage
 from src.utils.json_serializer import sanitize_json
 
