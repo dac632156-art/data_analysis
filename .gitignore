@@ -61,23 +61,31 @@ upscale_err.txt
 .workbuddy/memory/
 数据测试集/
 文件素材/
-backend/-w
 backend/_diag_c.txt
 backend_up.log
 frontend_dev.log
 logs_e2e*.txt
 **/*_out.txt
 **/*.bak
-/-w
-backend/-w
 
 # Build output (local only)
 frontend/dist/
 frontend/dist-buildcheck/
 *.flag
--w_1
-backend/-w
 src/mapping/mapping.db
+
+# AI 工具缓存（含网页快照）
+.agnes/
+
+# 数据库备份等
+*.sqlite
+*.sqlite.bak*
+
+# 根目录临时/探测文件
+_*.html
+_*.cmd
+_probe_*
+_repro*
 
 # Logs
 *.log
