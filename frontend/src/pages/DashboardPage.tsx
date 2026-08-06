@@ -2,10 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
-import { FiDownload, FiFileText, FiGrid, FiActivity, FiSave } from 'react-icons/fi';
-import EGridLayout from '../components/BigScreen/EGridLayout';
-import MedicalDashboard from '../components/BigScreen/MedicalDashboard';
-import { DashboardRenderer } from '../components/DashboardRenderer';
+import { FiDownload, FiFileText, FiActivity, FiSave } from 'react-icons/fi';
 import SmartDashboard from '../components/BigScreen/SmartDashboard';
 import type { CardItem, CardMeta } from '../components/cardTypes';
 import KPICards, { type KPIItem } from '../components/KPICards';
@@ -14,7 +11,7 @@ import * as api from '../api/client';
 import { generateEChartsDashboardHTML, downloadEChartsHTML } from '../utils/exportEChartsDashboard';
 import type { EChartItem, ReportDegradation } from '../types/api';
 
-type TemplateType = 'grid' | 'medical' | 'report';
+type TemplateType = 'medical' | 'report';
 
 /** 根据数据列名推断行业/业务领域，生成对应的报告标题 */
 function inferIndustryTitle(columns: string[]): string {
@@ -52,9 +49,8 @@ function inferIndustryTitle(columns: string[]): string {
   return '数据分析看板';
 }
 
-const TEMPLATES: { id: TemplateType; label: string; icon: typeof FiGrid; desc: string }[] = [
+const TEMPLATES: { id: TemplateType; label: string; icon: typeof FiActivity; desc: string }[] = [
   { id: 'medical', label: '数据看板', icon: FiActivity, desc: 'KPI数字 + 趋势图 + 雷达图 + 数据表格' },
-  { id: 'grid', label: '经典网格', icon: FiGrid, desc: 'KPI条 + 2x3图表 + 联动高亮' },
   { id: 'report', label: '分析报告', icon: FiFileText, desc: '专业图文报告 + AI分析 + 导出' },
 ];
 
@@ -62,7 +58,7 @@ export default function DashboardPage() {
   const { state: ds } = useData();
   const [searchParams] = useSearchParams();
   const isMock = searchParams.get('mock') === '1';
-  const [template, setTemplate] = useState<TemplateType>('grid');
+  const [template, setTemplate] = useState<TemplateType>('medical');
   const [kpis, setKpis] = useState<KPIItem[]>([]);
   const [echarts, setECharts] = useState<EChartItem[]>([]);
   const [chartTabs, setChartTabs] = useState<Record<string, EChartItem[]>>({
@@ -618,7 +614,7 @@ export default function DashboardPage() {
             </div>
           </div>
         ) : (
-            <EGridLayout kpis={kpis} echarts={echarts} title={displayTitle} hideChartTitle={hideChartTitle} tableData={ds.preview} />
+            <SmartDashboard sessionId={ds.sessionId} mode="A" />
         )}
       </div>
 

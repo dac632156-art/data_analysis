@@ -26,7 +26,7 @@ interface KPI {
   unit?: string;
 }
 
-type Template = 'grid' | 'classic' | 'immersive' | 'medical' | 'command' | 'report';
+type Template = 'immersive' | 'medical' | 'command' | 'report';
 
 interface RingChartData { name: string; value: number; }
 interface RingChartConfig { title: string; data: RingChartData[]; }
@@ -540,113 +540,6 @@ function isGLOptionExport(option: any): boolean {
   const series = option.series || [];
   const glTypes = ['scatter3D', 'bar3D', 'line3D', 'lines3D', 'surface', 'map3D'];
   return series.some((s: any) => glTypes.includes(String(s.type || '')));
-}
-
-// ========== 经典网格 (grid) 布局 HTML 生成（与屏幕上 EGridLayout 一致） ==========
-function buildGridLayout(kpis: KPI[], charts: EChartItem[], title: string, hideTitle: boolean): string {
-  const kpiHtml = kpis.length > 0 ? `
-<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px;padding:16px 32px;border-bottom:1px solid rgba(56,189,248,0.08);">
-  ${kpis.slice(0, 5).map(makeKPICard).join('\n  ')}
-</div>` : '';
-
-  // ★ 与屏幕上 EGridLayout 一致：渲染全部图表；同环比表（chart_type==='table'）单独渲染
-  const gridCharts = charts.map((c, i) => ({ ...c, id: `grid_chart_${i}` }));
-  const tbHbCharts = gridCharts.filter((c) => c.chart_type === 'table' && c.table_data);
-  const mainCharts = gridCharts.filter((c) => c.chart_type !== 'table');
-  const hasGL = mainCharts.some((c) => isGLOptionExport(c.option));
-
-  const chartHtml = mainCharts.length > 0 ? `
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;padding:24px;">
-  ${mainCharts.map((c) => makeChartDiv(c.id, c.title, hideTitle ? 370 : 330, hideTitle, c.chart_type, c.table_data, isGLOptionExport(c.option) || c.chart_type === 'analysis_table')).join('\n  ')}
-</div>` : `
-<div style="padding:60px;text-align:center;color:#64748b;font-size:18px;">暂无图表</div>`;
-
-  const tbHbSection = tbHbCharts.length > 0
-    ? `<div style="padding:0 24px 16px;display:flex;flex-direction:column;gap:16px;">${tbHbCharts.map((c) => `<div style="border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.7);border:1px solid rgba(56,189,248,0.15);">${tbHbTableHtml(c)}</div>`).join('\n')}</div>`
-    : '';
-
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title} - 数据大屏</title>
-<style>${COMMON_CSS}</style>
-</head>
-<body style="min-height:100vh;background:linear-gradient(135deg,#050816 0%,#0a0e27 50%,#0f0d1f 100%);">
-${makeHeader(title)}
-${kpiHtml}
-${chartHtml}
-${tbHbSection}
-${hasGL ? '<script src="https://cdn.jsdelivr.net/npm/echarts-gl@2.0.9/dist/echarts-gl.min.js"></script>' : ''}
-${makeEChartsScript(mainCharts, hideTitle)}
-</body>
-</html>`;
-}
-
-function buildClassicLayout(kpis: KPI[], charts: EChartItem[], title: string, hideTitle: boolean): string {
-  const mainChart = charts[0];
-  const leftCharts = charts.slice(1, 4);
-  const rightCharts = charts.slice(4, 7);
-
-  const kpiHtml = kpis.length > 0 ? `
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:4px;">
-  ${kpis.slice(0, 4).map(k => {
-    const color = k.color || '#38BDF8';
-    return `<div style="padding:12px;border-radius:10px;text-align:center;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.12);">
-    <p style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">${k.title}</p>
-    <p style="font-size:18px;font-weight:700;color:${color};">${k.value}</p>
-  </div>`;
-  }).join('\n  ')}
-</div>` : '';
-
-  const leftHtml = `<div style="width:22%;display:flex;flex-direction:column;gap:12px;">
-  ${kpiHtml}
-  ${leftCharts.map((c, i) => makeChartDiv(`chart_${i + (mainChart ? 1 : 0)}`, c.title, 260, hideTitle, c.chart_type, c.table_data)).join('\n  ')}
-</div>`;
-
-  const centerHtml = mainChart && mainChart.chart_type === 'table' && mainChart.table_data
-    ? '<div data-chart-wrapper style="flex:1;border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.4);border:1px solid rgba(56,189,248,0.2);">' +
-      (hideTitle ? '' : '<div style="padding:12px 20px;border-bottom:1px solid rgba(56,189,248,0.1);display:flex;align-items:center;gap:12px;">' +
-        '<span style="width:10px;height:10px;border-radius:50%;background:#7DD3FC;"></span>' +
-        '<span style="font-size:15px;font-weight:600;">' + (mainChart.title || '主视图') + '</span>' +
-        '</div>') +
-      '<div style="width:100%;padding:12px;overflow:auto;max-height:520px;">' +
-      makeTableHTML(convertTableData(mainChart.table_data)) +
-      '</div></div>'
-    : `<div data-chart-wrapper style="flex:1;border-radius:16px;overflow:hidden;background:rgba(15,23,42,0.4);border:1px solid rgba(56,189,248,0.2);">
-  ${hideTitle ? '' : `<div style="padding:12px 20px;border-bottom:1px solid rgba(56,189,248,0.1);display:flex;align-items:center;gap:12px;">
-    <span style="width:10px;height:10px;border-radius:50%;background:#7DD3FC;"></span>
-    <span style="font-size:15px;font-weight:600;">${mainChart?.title || '主视图'}</span>
-  </div>`}
-  <div id="chart_0" style="width:100%;height:560px;"></div>
-</div>`;
-
-  const rightHtml = `<div style="width:22%;display:flex;flex-direction:column;gap:12px;">
-  ${rightCharts.map((c, i) => makeChartDiv(`chart_${i + (mainChart ? 1 : 0) + leftCharts.length}`, c.title, 260, hideTitle, c.chart_type, c.table_data)).join('\n  ')}
-</div>`;
-
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${title} - 数据大屏</title>
-<style>${COMMON_CSS}</style>
-</head>
-<body style="min-height:100vh;background:linear-gradient(180deg,#0a0a1a 0%,#0f0f2a 100%);">
-<div style="position:relative;padding:16px 32px;text-align:center;border-bottom:1px solid #1e1e3a;">
-  <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:400px;height:2px;background:linear-gradient(90deg,transparent,#38BDF8,transparent);"></div>
-  <h1 style="font-size:30px;font-weight:700;letter-spacing:0.15em;text-shadow:0 0 40px rgba(56,189,248,0.6);">${title}</h1>
-</div>
-<div style="display:flex;gap:16px;padding:20px;">
-  ${leftHtml}
-  ${centerHtml}
-  ${rightHtml}
-</div>
-${makeEChartsScript(charts, hideTitle)}
-</body>
-</html>`;
 }
 
 function buildImmersiveLayout(kpis: KPI[], charts: EChartItem[], title: string, hideTitle: boolean): string {
@@ -1965,10 +1858,6 @@ export function generateEChartsDashboardHTML(
   degradation?: ReportDegradation,
 ): string {
   switch (template) {
-    case 'grid':
-      return buildGridLayout(kpis, echarts, title, hideChartTitle);
-    case 'classic':
-      return buildClassicLayout(kpis, echarts, title, hideChartTitle);
     case 'immersive':
       return buildImmersiveLayout(kpis, echarts, title, hideChartTitle);
     case 'command':
@@ -1987,7 +1876,7 @@ export function generateEChartsDashboardHTML(
         degradation,
       );
     default:
-      return buildGridLayout(kpis, echarts, title, hideChartTitle);
+      return buildImmersiveLayout(kpis, echarts, title, hideChartTitle);
   }
 }
 
