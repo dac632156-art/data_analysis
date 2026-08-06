@@ -35,6 +35,8 @@ interface Props {
   cardBgUrl?: string;
   /** 下三角矩阵专用：'percent'（留存率，默认）| 'number'（客单价/净毛利等数值） */
   valueFormat?: 'percent' | 'number';
+  /** 调用方显式指定图表高度（px 或 '100%' 等）；不传则回落到 '100%' 父容器自适应 */
+  height?: number | string;
 }
 
 /** 已实现的仙气组件类型 */
@@ -85,7 +87,7 @@ function resolveValueFormat(
   return 'percent';
 }
 
-export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, data, title, filter, cardBgUrl, valueFormat }) => {
+export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, data, title, filter, cardBgUrl, valueFormat, height }) => {
   const raw = data as Array<Record<string, unknown>> | undefined;
 
   // 优先用 chartType；其次从 chartNode 里取；都没有再用 slot 兜底（兼容老预览页写法）
@@ -111,8 +113,8 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
     }
   }
 
-  // ★ 默认让组件继承父容器高度（parent 自适应），仅在调用方显式传 height 时硬编码。
-  const wrapperHeight: number | string = '100%';
+  // ★ 默认让组件继承父容器高度（parent 自适应，'100%'），仅在调用方显式传 height 时硬编码。
+  const wrapperHeight: number | string = height ?? '100%';
   switch (type) {
     case 'pie':
       return <EtherealPieChart option={chartNode as Record<string, unknown>} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;

@@ -28,6 +28,10 @@ echarts.use([
 ]);
 import type { PackageChartItem, ReportInsight } from '../types/api';
 
+/** 报告页图表高度：等于各仙气图表组件自身默认的标准身高（360px），
+ *  外部不再强制 '100%'（避免在无确定高度的卡片里塌缩成扁条）。 */
+const REPORT_CHART_HEIGHT = 360;
+
 interface ReportSection {
   type: string;
   title: string;
@@ -117,6 +121,7 @@ function ChartCard({ chart, k, sectionIndex }: { chart: PackageChartItem; k: str
         chartNode={chart.option}
         data={chart.raw_data}
         title={chart.title}
+        height={REPORT_CHART_HEIGHT}
       />
     </div>
   );
