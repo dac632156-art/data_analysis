@@ -1,60 +1,50 @@
-/* CoverPage - 应用封面（浅色科技 landing + 抽帧图序列 + 鼠标水平 seek）
- * 用 80 张静态抽帧图替代原视频，避免浏览器实时解码视频帧导致的卡顿。
- * 鼠标水平位置 → 帧序号映射，切换 <img>.src 即可，零解码、跟手不卡。
+/* CoverPage - 应用封面（浅色科技 landing + 机器人抽帧图 + 鼠标水平驱动）
+ * 用 robot_frames 下 160 张抽帧图渲染，鼠标水平位置 → 当前帧。
+ * 纯鼠标驱动：鼠标不动则停在首帧，不会自动播放。
+ * 性能优化：用 ref 直接改 DOM 的 img.src，不走 React 重渲染，跟手更及时。
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const TOTAL_FRAMES = 80; // robot_frames/frame_0001.jpg ~ frame_0080.jpg
-const SENSITIVITY = 0.8; // 鼠标滑到右 80% 才转到最后一帧（沿用原视频手感）
-const FRAME_PATH = (i: number) =>
-  `/robot_frames/frame_${String(i).padStart(4, '0')}.jpg`;
+const TOTAL_FRAMES = 160;
+const SENSITIVITY = 0.8; // 鼠标滑到右 80% 才走到最后一帧（沿用原手感）
+const FRAME_PATH = (i: number) => `/robot_frames/frame_${String(i).padStart(4, '0')}.jpg`;
 
 export default function CoverPage() {
   const navigate = useNavigate();
-  const [ready, setReady] = useState(false); // 全部帧预加载完成
-  const [currentIdx, setCurrentIdx] = useState(1); // 当前显示的 1-based 帧序号
-  const currentIdxRef = useRef(1);
-  const readyRef = useRef(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const [ready, setReady] = useState(false); // 图片是否预加载完成
+  const lastIdxRef = useRef(1);
 
-  // 预加载全部 80 张图，完成后才启用鼠标切换，避免白屏/切换闪烁
+  // 预加载 160 张帧图，加载完成再显示，避免首帧闪烁
   useEffect(() => {
-    let alive = true;
+    let cancelled = false;
     let loaded = 0;
     for (let i = 1; i <= TOTAL_FRAMES; i++) {
       const img = new Image();
-      img.onload = img.onerror = () => {
-        loaded += 1;
-        if (loaded >= TOTAL_FRAMES && alive) {
-          readyRef.current = true;
-          setReady(true);
-        }
-      };
       img.src = FRAME_PATH(i);
+      img.onload = () => {
+        loaded += 1;
+        if (loaded === TOTAL_FRAMES && !cancelled) setReady(true);
+      };
     }
     return () => {
-      alive = false;
+      cancelled = true;
     };
   }, []);
 
   useEffect(() => {
-    let lastMove = 0;
     const handleMouseMove = (e: MouseEvent) => {
-      const now = performance.now();
-      if (now - lastMove < 16) return; // 节流到 ~60fps，避免高频 setState
-      lastMove = now;
-      if (!readyRef.current) return; // 未预加载完不切换，保持首帧
       const ratio = Math.max(0, Math.min(1, e.clientX / window.innerWidth));
       const idx = Math.max(
         1,
-        Math.min(
-          TOTAL_FRAMES,
-          Math.round(ratio * SENSITIVITY * (TOTAL_FRAMES - 1)) + 1
-        )
+        Math.min(TOTAL_FRAMES, Math.round(ratio * SENSITIVITY * TOTAL_FRAMES)),
       );
-      if (idx !== currentIdxRef.current) {
-        currentIdxRef.current = idx;
-        setCurrentIdx(idx);
+      // 直接操作 DOM 换图，去掉节流与 setState 重渲染，最大化跟手度
+      if (idx !== lastIdxRef.current) {
+        lastIdxRef.current = idx;
+        const el = imgRef.current;
+        if (el) el.src = FRAME_PATH(idx);
       }
     };
 
@@ -69,19 +59,17 @@ export default function CoverPage() {
       className="relative w-full h-screen overflow-hidden"
       style={{ fontFamily: 'PingFang SC, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif' }}
     >
-      {/* 机器人抽帧图序列（替代视频，鼠标水平位置映射帧） */}
+      {/* 机器人抽帧图（鼠标水平位置映射帧序号，纯鼠标驱动、不自动播放） */}
       <img
-        src={FRAME_PATH(currentIdx)}
-        alt="DataMind AI 智能机器人"
+        ref={imgRef}
+        src={FRAME_PATH(1)}
+        alt="robot"
         className="absolute inset-0 w-full h-full object-cover"
         style={{
           background: '#F8FAFC',
           opacity: ready ? 1 : 0.6,
-          // 高质量缩放渲染：2K 图铺满时浏览器用高质量插值而非默认钝化，
-          // 缓解 object-cover 放大后的边缘发虚（配合已超分的 2K 资源生效）。
-          imageRendering: 'high-quality',
           willChange: 'transform',
-        } as React.CSSProperties}
+        }}
         draggable={false}
       />
 
