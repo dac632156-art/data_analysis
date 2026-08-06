@@ -2,16 +2,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import html2canvas from 'html2canvas';
-import { FiDownload, FiFileText, FiActivity, FiSave } from 'react-icons/fi';
+import { FiDownload, FiActivity, FiSave } from 'react-icons/fi';
 import SmartDashboard from '../components/BigScreen/SmartDashboard';
 import type { CardItem, CardMeta } from '../components/cardTypes';
 import KPICards, { type KPIItem } from '../components/KPICards';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
 import * as api from '../api/client';
 import { generateEChartsDashboardHTML, downloadEChartsHTML } from '../utils/exportEChartsDashboard';
-import type { EChartItem, ReportDegradation } from '../types/api';
+import type { EChartItem } from '../types/api';
 
-type TemplateType = 'medical' | 'report';
+type TemplateType = 'medical';
 
 /** 根据数据列名推断行业/业务领域，生成对应的报告标题 */
 function inferIndustryTitle(columns: string[]): string {
@@ -51,7 +51,6 @@ function inferIndustryTitle(columns: string[]): string {
 
 const TEMPLATES: { id: TemplateType; label: string; icon: typeof FiActivity; desc: string }[] = [
   { id: 'medical', label: '数据看板', icon: FiActivity, desc: 'KPI数字 + 趋势图 + 雷达图 + 数据表格' },
-  { id: 'report', label: '分析报告', icon: FiFileText, desc: '专业图文报告 + AI分析 + 导出' },
 ];
 
 export default function DashboardPage() {
@@ -66,7 +65,6 @@ export default function DashboardPage() {
   });
   const [navTabs, setNavTabs] = useState<string[]>(['数据总览', '趋势洞察', '分类分析', '明细查询']);
   const [ringCharts, setRingCharts] = useState<Array<{ title: string; data: Array<{ name: string; value: number }> }>>([]);
-  const [reportHtml, setReportHtml] = useState('');
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [hideChartTitle, setHideChartTitle] = useState(true);
@@ -271,10 +269,6 @@ export default function DashboardPage() {
 
   // ===== HTML 导出 =====
   const handleExportHTML = () => {
-    if (template === 'report') {
-      handleExportReport();
-      return;
-    }
     // 数据看板(medical) 以 cards 为数据源；其余模板以 echarts 为数据源
     if (template === 'medical') {
       if (!cards || cards.length === 0) {
@@ -292,7 +286,6 @@ export default function DashboardPage() {
       template, kpis, echarts, displayTitle, hideChartTitle, navTabs, ringCharts, tableData,
       undefined, undefined, undefined, 0, cards, cardsMeta,
     );
-    setReportHtml(html);
     downloadEChartsHTML(html, filename);
   };
 
@@ -325,142 +318,6 @@ export default function DashboardPage() {
       URL.revokeObjectURL(url);
     } catch (e) {
       alert('导出分析包 JSON 失败：' + (e instanceof Error ? e.message : '未知错误'));
-    }
-  };
-
-  // ===== AI 分析报告生成（五阶段流水线） =====
-  const [reportGenerating, setReportGenerating] = useState(false);
-  const [reportText, setReportText] = useState('');
-  const [reportError, setReportError] = useState('');
-  const [reportSections, setReportSections] = useState<Array<{
-    type: string; title: string; content?: string;
-    insights?: Array<string | { chart_title: string; chart_type: string | null; table_type: string | null; rule_id: string | null; insight_label: string | null; analysis: string }>;
-    charts_to_create?: Array<{ chart_title: string; chart_type: string; rule_id: string; x_axis: string; y_axis: string; value: string; guide: string }>;
-    action_items?: Array<{ priority: number; action: string }>;
-  }>>([]);
-  const [reportSummary, setReportSummary] = useState('');
-  const [reportConclusion, setReportConclusion] = useState('');
-  const [reportDegraded, setReportDegraded] = useState<ReportDegradation | null>(null);
-
-  const handleExportReport = async () => {
-    if (!ds.apiKey) { alert('请先在左上角配置 AI API Key'); return; }
-
-    setReportGenerating(true);
-    setReportError('');
-    setReportText('🔍 正在进行数据统计分析（阶段1-3）...');
-    const provider = AI_PROVIDERS.find(p => p.id === ds.aiProvider);
-    const pk = ds.apiKey;
-    const bu = provider?.baseUrl;
-    const md = provider?.model;
-
-    try {
-      // 已保存分析包以「后端 session.saved_packages」为唯一真相源，generateAIReport 后端自读兜底，
-      // 不再从 localStorage 携带副本（report.py 中 packages 缺省时回退 manager.get_saved_packages）。
-      // ★ 异步提交 + 轮询（内部规避 Render 50s HTTP 超时）
-      const result = await api.generateAIReport(ds.sessionId, pk, bu, md, undefined);
-      // 记录降级说明：AI 接口超时/不可达导致降级时，向体验者透明展示原因（与报告能力脱钩）
-      setReportDegraded(result.degradation?.degraded ? result.degradation : null);
-      const sections: Array<{
-        type: string; title: string; content?: string;
-        insights?: Array<string | { chart_title: string; analysis: string }>;
-      }> = result.sections || [];
-
-      // 提取概览和结论用于报告头部/尾部
-      const overviewSection = sections.find(s => s.type === 'overview');
-      const conclusionSection = sections.find(s => s.type === 'conclusion');
-      const summaryText = overviewSection?.content || `数据共包含 ${kpis.length} 项关键指标`;
-      const conclusionText = conclusionSection?.insights
-        ?.map(i => typeof i === 'string' ? i : i.analysis).join('\n') || '';
-
-      setReportSections(sections);
-      setReportSummary(summaryText);
-      setReportConclusion(conclusionText);
-      setReportText('📝 正在生成报告文档...');
-
-      // 生成 HTML 并下载
-      const filename = `数据分析报告_${displayTitle}_${new Date().toISOString().slice(0, 10)}.html`;
-      const html = generateEChartsDashboardHTML(
-        'report', kpis, echarts, displayTitle, hideChartTitle,
-        navTabs, ringCharts, ds?.preview || [],
-        // ★ 将 ReportSection 转为旧的兼容格式给 buildReportHTML
-        sections.map((sec, i) => {
-          // 从仪表盘 echarts 里按 section 类型匹配图表（ECharts type 在 option.series[0].type 里）
-          const chartIdx = echarts.findIndex(c => {
-            const chartType = c.option?.series?.[0]?.type || '';
-            if (sec.type === 'trend') return chartType === 'line';
-            if (sec.type === 'top') return chartType === 'bar';
-            if (sec.type === 'structure') return chartType === 'pie' || !!c.option?.geo;
-            return false;
-          });
-          return {
-          title: sec.title,
-          subtitle: sec.type === 'overview' ? '数据概览' :
-            sec.type === 'kpi' ? '核心指标' :
-            sec.type === 'trend' ? '趋势分析' :
-            sec.type === 'structure' ? '结构分析' :
-            sec.type === 'top' ? 'TOP分析' :
-            sec.type === 'anomaly' ? '异常分析' :
-            sec.type === 'conclusion' ? '核心结论' :
-            sec.type === 'suggestions' ? '业务建议' :
-            sec.type === 'next_steps' ? '后续操作' : '分析',
-          chartIndex: chartIdx >= 0 ? chartIdx : undefined,
-          analysis: sec.type === 'next_steps'
-            ? '' // next_steps 由 buildReportHTML 特殊渲染
-            : sec.content || sec.insights?.map(j =>
-              typeof j === 'string' ? j : (j.chart_title ? `**${j.chart_title}**：${j.analysis}` : j.analysis)
-            ).join('\n') || '',
-          chartsToCreate: sec.type === 'next_steps' ? (sec as any).charts_to_create : undefined,
-          actionItems: sec.type === 'next_steps' ? (sec as any).action_items : undefined,
-        };
-      }),
-        summaryText,
-        conclusionText,
-        ds?.rows ?? 0,
-        undefined,  // cards（report 模板不用）
-        undefined,  // meta（report 模板不用）
-        result.degradation,  // 降级说明透传给导出 HTML
-      );
-
-      // 同时将 HTML 写入后端返回的结构化 sections 中
-      const sectionsHTML = sections.map((sec, i) => {
-        let secContent = '';
-        if (sec.type === 'next_steps') {
-          // next_steps 特殊渲染：操作建议
-          const actionsHtml = sec.action_items?.sort((a, b) => (a.priority || 99) - (b.priority || 99)).map(a =>
-            `<p style="margin:4px 0 2px 20px;">✅ ${a.priority !== 99 ? a.priority + '. ' : ''}${a.action}</p>`
-          ).join('') || '';
-          secContent = actionsHtml;
-        } else {
-          secContent = sec.content || sec.insights?.map(j =>
-            typeof j === 'string' ? `<p>${j}</p>` : `<p><strong>${j.chart_title}</strong>：${j.analysis}</p>`
-          ).join('') || '';
-        }
-        const iconMap: Record<string, string> = {
-          overview: '📋', kpi: '📊', trend: '📈', structure: '🏗️',
-          top: '🏆', anomaly: '⚠️', conclusion: '💡', suggestions: '🚀',
-          next_steps: '🎯',
-        };
-        const icon = iconMap[sec.type] || '📄';
-        return `
-          <div class="section">
-            <h2>${icon} ${sec.title}</h2>
-            <div class="analysis-text">${secContent}</div>
-            ${i < sections.length - 1 ? '<hr style="border-color:#e9ecef;margin:20px 0;">' : ''}
-          </div>`;
-      }).join('');
-
-      setReportHtml(html);
-      setReportText('✅ 报告生成完成！正在下载...');
-
-      downloadEChartsHTML(html, filename);
-
-      setTimeout(() => setReportText(''), 3000);
-    } catch (err) {
-      console.error('[Report] 生成失败，完整错误：', err);
-      const msg = err instanceof Error ? err.message : '未知错误';
-      setReportError('❌ 报告生成失败: ' + msg + (err instanceof Error && err.stack ? '\n详情见控制台(F12)' : ''));
-    } finally {
-      setReportGenerating(false);
     }
   };
 
@@ -555,81 +412,10 @@ export default function DashboardPage() {
       <div className="flex-1 min-h-0 overflow-auto relative" ref={screenRef}>
         {loading ? (
           <div className="flex items-center justify-center h-full"><div className="w-8 h-8 rounded-full border-2 border-[#8B5CF6] border-t-transparent animate-spin" /></div>
-        ) : template === 'medical' ? (
-            <SmartDashboard sessionId={ds.sessionId} mode="A" />
-        ) : template === 'report' ? (
-          /* 分析报告生成面板 */
-          <div className="flex-1 flex items-center justify-center p-8 bg-transparent">
-            <div className="max-w-2xl w-full text-center space-y-6 p-12 rounded-2xl bg-white/50 border border-white/60 shadow-[0_8px_32px_rgba(99,102,241,0.10)]" style={{ backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
-              <div className="text-6xl">📊</div>
-              <h2 className="text-2xl font-bold text-slate-800">生成数据分析报告</h2>
-              <p className="text-slate-600 leading-relaxed">
-                AI 将基于<strong className="text-indigo-600">精确统计数据</strong>，自动执行五阶段分析流水线，生成专业数据分析报告：
-              </p>
-              <div className="text-left text-sm text-slate-700 space-y-2 bg-white/40 border border-white/60 rounded-lg p-4">
-                <div>🔍 <strong className="text-slate-800">阶段1-2</strong>：字段识别 → 图表规划（Python pandas 精确计算）</div>
-                <div>📊 <strong className="text-slate-800">阶段3</strong>：统计分析 → 趋势/同比/TOP/异常/结构（代码计算）</div>
-                <div>💡 <strong className="text-slate-800">阶段4</strong>：洞察生成 → 5类洞察（趋势/结构/集中度/异常/风险）</div>
-                <div>📄 <strong className="text-slate-800">阶段5</strong>：报告生成 → 结构化报告（概览→指标→趋势→结构→TOP→异常→结论→建议）</div>
-              </div>
-              {!ds.apiKey && (
-                <div className="text-sm text-amber-700 bg-amber-50/80 border border-amber-300 p-3 rounded-lg">
-                  ⚠️ 请先在左上角配置 AI API Key，报告需要 AI 来编写分析洞察
-                </div>
-              )}
-              <button
-                onClick={handleExportReport}
-                disabled={reportGenerating || !ds.apiKey}
-                className="px-8 py-3 text-base font-semibold rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:from-indigo-600 hover:to-purple-600 hover:shadow-[0_6px_20px_rgba(99,102,241,0.35)] disabled:opacity-50 transition-all"
-              >
-                {reportGenerating ? `⏳ ${reportText}` : '🚀 生成分析报告并下载'}
-              </button>
-              {reportGenerating && (
-                <p className="text-sm text-indigo-600 animate-pulse">{reportText}</p>
-              )}
-              {reportError && (
-                <p className="text-sm text-rose-700 bg-rose-50/80 border border-rose-300 p-3 rounded-lg">{reportError}</p>
-              )}
-              {reportDegraded && (
-                <div className="flex flex-col gap-3 p-4 rounded-lg border border-amber-300 bg-amber-50/80">
-                  <div className="flex items-start gap-2">
-                    <span className="text-amber-600 text-lg leading-none">⚠️</span>
-                    <div className="text-sm">
-                      <div className="font-semibold text-amber-700 mb-1">报告已降级为统计摘要</div>
-                      <p className="leading-relaxed text-slate-700">{reportDegraded.message}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleExportReport}
-                    disabled={reportGenerating}
-                    className="self-start px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 hover:shadow-[0_4px_14px_rgba(99,102,241,0.35)] focus:outline-none focus:shadow-[0_4px_14px_rgba(99,102,241,0.35)] disabled:opacity-50 transition-all"
-                  >
-                    {reportGenerating ? `⏳ ${reportText}` : '🔄 重新生成（AI 洞察版）'}
-                  </button>
-                </div>
-              )}
-              {!reportGenerating && !reportError && !ds.apiKey && (
-                <p className="text-sm text-slate-400">（请先在左上角配置 AI API Key）</p>
-              )}
-            </div>
-          </div>
         ) : (
             <SmartDashboard sessionId={ds.sessionId} mode="A" />
         )}
       </div>
-
-      {/* 报告预览 */}
-      {reportHtml && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-8" onClick={() => setReportHtml('')}>
-          <div className="w-full max-w-4xl h-[80vh] rounded-lg overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center px-4 py-2 bg-[#0f172a]">
-              <span className="text-sm text-slate-300">分析报告</span>
-              <button onClick={() => setReportHtml('')} className="text-slate-500 hover:text-slate-900">✕</button>
-            </div>
-            <iframe srcDoc={reportHtml} className="w-full h-full border-0" sandbox="allow-scripts" />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
