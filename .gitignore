@@ -46,10 +46,7 @@ PRD_DataMind_AI.md
 UI_DESIGN_GUIDE.md
 UI_USAGE_GUIDE.md
 
-# 本地素材（视频与抽帧图片序列，不进 git）
-frontend/public/机器人.mp4
-frontend/public/robot_frames/
-
+# 本地素材（视频与抽帧图片序列，现进 git 供首页机器人动画使用）
 # 本地 AI 超分工具（ncnn-vulkan 版 exe + 模型权重，体积大、非源码，不进 git）
 realesrgan-ncnn-vulkan-20210901-windows.zip
 realesrgan-ncnn-vulkan-20210901-windows/
