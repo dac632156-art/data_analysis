@@ -29,9 +29,9 @@
       <td align="center"><b>③ AI 分析报告</b></td>
     </tr>
     <tr>
-      <td><img src="docs/screenshots/demo-upload.png" width="280"></td>
-      <td><img src="docs/screenshots/demo-dashboard.png" width="280"></td>
       <td><img src="docs/screenshots/demo-report.png" width="280"></td>
+      <td><img src="docs/screenshots/demo-dashboard.png" width="280"></td>
+      <td><img src="docs/screenshots/demo-upload.png" width="280"></td>
     </tr>
   </table>
 </div>
