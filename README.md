@@ -32,8 +32,8 @@
     <tr>
       <td><img src="docs/screenshots/demo-cover.png" width="280"></td>
       <td><img src="docs/screenshots/demo-report.png" width="280"></td>
-      <td><img src="docs/screenshots/demo-upload.png" width="280"></td>
       <td><img src="docs/screenshots/demo-dashboard.png" width="280"></td>
+      <td><img src="docs/screenshots/demo-upload.png" width="280"></td>
     </tr>
   </table>
 </div>
