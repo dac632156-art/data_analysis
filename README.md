@@ -24,15 +24,16 @@
 <div align="center">
   <table>
     <tr>
+      <td align="center"><b>① 动态小机器人</b></td>
       <td align="center"><b>① 智能上传</b></td>
       <td align="center"><b>② 可视化大屏</b></td>
       <td align="center"><b>③ AI 分析报告</b></td>
     </tr>
     <tr>
       <td><img src="docs/screenshots/demo-cover.png" width="280"></td>
+      <td><img src="docs/screenshots/demo-report.png" width="280"></td>
       <td><img src="docs/screenshots/demo-upload.png" width="280"></td>
       <td><img src="docs/screenshots/demo-dashboard.png" width="280"></td>
-      <td><img src="docs/screenshots/demo-report.png" width="280"></td>
     </tr>
   </table>
 </div>
