@@ -56,6 +56,7 @@ interface Props {
   chartNode: Record<string, unknown>;
   title?: string;
   height?: number | string;
+  data?: Array<Record<string, unknown>>;
 }
 
 // 通用格式化器：万/亿按 unitHint 转成 "1404.3万" 这种。
@@ -82,7 +83,7 @@ function makeUnitFormatter(unitHint?: string): (v: any) => string {
   return fmt;
 }
 
-export const EtherealBarChart: React.FC<Props> = ({ chartNode, title, height = 360 }) => {
+export const EtherealBarChart: React.FC<Props> = ({ chartNode, title, height = 360, data: externalData }) => {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -101,6 +102,15 @@ export const EtherealBarChart: React.FC<Props> = ({ chartNode, title, height = 3
     const seriesInput = ((node.series as Array<Record<string, unknown>>) || []);
     const xAxisData = getXData(node);
     const rawData = (node.data as Array<Record<string, unknown>>) || undefined;
+    // 兜底：当 chartNode 为空（ChartData 无 option 字段）但外部传了 data 时，
+    // 用 externalData 补齐 node.data，让老格式兜底路径能走
+    const resolvedNode = (() => {
+      if (rawData !== undefined || seriesInput.length > 0) return node;
+      if (Array.isArray(externalData) && externalData.length > 0) {
+        return { ...node, data: externalData };
+      }
+      return node;
+    })();
     // 轴名来自后端 JSON（模型已正确写入），不再前端写死
     const xAxisName = getAxisName(node, 'xAxis');
     const yAxisName = getAxisName(node, 'yAxis');
@@ -213,14 +223,15 @@ export const EtherealBarChart: React.FC<Props> = ({ chartNode, title, height = 3
           ...(unitHint ? { formatter: makeUnitFormatter(unitHint) } : {}),
         },
       }));
-    } else if (Array.isArray(rawData) && rawData.length > 0) {
+    } else if (Array.isArray(resolvedNode.data) && (resolvedNode.data as any[]).length > 0) {
       // 老私有格式兜底
-      const xs = (node.x as string) || 'x';
-      categories = rawData.map((r) => String(r[xs] ?? ''));
-      const yKeys = Object.keys(rawData[0] || {}).filter((k) => k !== xs);
+      const fallbackData = resolvedNode.data as Array<Record<string, unknown>>;
+      const xs = (resolvedNode.x as string) || 'x';
+      categories = fallbackData.map((r) => String(r[xs] ?? ''));
+      const yKeys = Object.keys(fallbackData[0] || {}).filter((k) => k !== xs);
 
       const items: { category: string; yKey: string; value: number; color: string }[] = [];
-      rawData.forEach((r, i) => {
+      fallbackData.forEach((r, i) => {
         yKeys.forEach((yk, yi) => {
           items.push({
             category: String(r[xs] ?? ''),

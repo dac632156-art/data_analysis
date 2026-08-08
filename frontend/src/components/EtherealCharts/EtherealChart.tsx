@@ -139,7 +139,7 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
       return <EtherealRetentionMatrix chartNode={chartNode} rawData={matrixData} title={title} cardBgUrl={cardBgUrl} valueFormat={resolveValueFormat(rawType, slot, valueFormat)} height={wrapperHeight} />;
     }
     case 'bar':
-      return <EtherealBarChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
+      return <EtherealBarChart chartNode={chartNode} title={title} data={data as Array<Record<string, unknown>> | undefined} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     case 'line':
       return <EtherealLineChart chartNode={chartNode} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
     case 'metric':
