@@ -43,6 +43,12 @@ def parse_args():
         default=0.0,
         help="按时间间隔抽样：>0 时启用，每 interval-sec 秒抽 1 张",
     )
+    p.add_argument(
+        "--count",
+        type=int,
+        default=0,
+        help="按目标总张数均匀抽样：>0 时启用（覆盖 step / interval-sec）",
+    )
     return p.parse_args()
 
 
@@ -78,8 +84,12 @@ def main():
     print(f"输出目录  : {out_dir}")
 
     # 决定抽帧策略
-    use_interval = args.interval_sec > 0
-    if use_interval:
+    use_count = args.count > 0
+    if use_count:
+        count = min(args.count, total_frames) if total_frames > 0 else args.count
+        interval_frames = max(1, total_frames / count) if total_frames > 0 else 1
+        print(f"模式      : 按目标总张数（均匀取 {count} 张，约每 {interval_frames:.2f} 帧抽 1 张）")
+    elif args.interval_sec > 0:
         interval_frames = max(1, int(round(args.interval_sec * fps)))
         print(f"模式      : 按时间间隔（每 {args.interval_sec}s ≈ 每 {interval_frames} 帧抽 1 张）")
     else:
@@ -88,20 +98,19 @@ def main():
 
     saved = 0
     frame_idx = 0
-    next_capture = 0  # 下一次该抽的帧序号
+    next_capture = 0.0  # 下一次该抽的帧位置（浮点，支持非整数均匀间隔）
 
     while True:
         ok, frame = cap.read()
         if not ok:
             break  # 读到末尾或解码失败
 
-        if frame_idx >= next_capture:
+        if frame_idx >= int(round(next_capture)):
             saved += 1
             fname = os.path.join(out_dir, f"frame_{saved:04d}.jpg")
             # 用 imencode 编码到内存，再用内置 open 写文件，
             # 绕开 cv2.imwrite 在 Windows 中文路径下写失败的已知 bug。
             # quality=100：抽帧即为近无损链路，避免二次压缩丢失细节
-            # （超分预处理前应保持原始清晰度；已抽好的 80 张图是超分后产物）。
             ok_write, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 100])
             if ok_write:
                 try:

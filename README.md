@@ -19,7 +19,30 @@
 
 ---
 
-## 二、技术栈
+## 二、产品演示
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center"><b>① 动态小机器人</b></td>
+      <td align="center"><b>① 智能上传</b></td>
+      <td align="center"><b>② 可视化大屏</b></td>
+      <td align="center"><b>③ AI 分析报告</b></td>
+    </tr>
+    <tr>
+      <td><img src="docs/screenshots/demo-cover.png" width="280"></td>
+      <td><img src="docs/screenshots/demo-report.png" width="280"></td>
+      <td><img src="docs/screenshots/demo-dashboard.png" width="280"></td>
+      <td><img src="docs/screenshots/demo-upload.png" width="280"></td>
+    </tr>
+  </table>
+</div>
+
+> 从左到右：上传表格 → 自动清洗并生成可视化大屏 → 一键导出 AI 分析报告。新中式国风视觉（白鹤、水墨、彩云）贯穿全流程。
+
+---
+
+## 三、技术栈
 
 - **前端**：React 18 + TypeScript + Vite + Tailwind；图表用 **ECharts 6 + GL（3D 地图）+ wordcloud**
 - **后端**：**FastAPI（Python）**，部署在 Render
@@ -29,7 +52,7 @@
 
 ---
 
-## 三、目录结构
+## 四、目录结构
 
 ```text
 数据分析项目/
@@ -71,7 +94,7 @@
 
 ---
 
-## 四、本地启动
+## 五、本地启动
 
 ### 1. 后端（端口 8001）
 
@@ -110,7 +133,7 @@ npm run dev
 
 ---
 
-## 五、设计原则（架构灵魂）
+## 六、设计原则（架构灵魂）
 
 1. **AI 只动嘴，工人动手** —— LLM 只负责「写洞察、写报告、做轻量决策」，所有算数 / 匹配 / 画图都是确定性 Python 引擎，结果可复现。
 2. **每个 AI 环节都有「没网也能跑」的兜底** —— AI 挂了，系统自动用规则顶上，整条链路不崩。
@@ -128,7 +151,7 @@ npm run dev
 
 ---
 
-## 六、相关文档
+## 七、相关文档
 
 - `知识库/项目架构产品视角.md` —— 一页看懂项目能干啥
 - `知识库/项目架构全景图.md` —— 技术视角系统三层架构图
