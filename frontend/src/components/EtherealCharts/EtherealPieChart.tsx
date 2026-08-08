@@ -250,7 +250,7 @@ export const EtherealPieChart: React.FC<Props> = ({
         borderRadius: 24,
         padding: 20,
         boxSizing: 'border-box',
-        backgroundImage: `url(${CARD_BG_URL})`,
+        backgroundImage: `url(${cardBgUrl})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backdropFilter: 'blur(4px)',

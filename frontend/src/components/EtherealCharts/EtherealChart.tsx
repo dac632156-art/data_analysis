@@ -33,6 +33,8 @@ interface Props {
   title?: string;
   filter?: Record<string, string>;
   cardBgUrl?: string;
+  /** 扇区染色纹理图（饼图专用），传 base64 时覆盖 UMD 内被 stub 的占位图 */
+  sliceTextureUrl?: string;
   /** 下三角矩阵专用：'percent'（留存率，默认）| 'number'（客单价/净毛利等数值） */
   valueFormat?: 'percent' | 'number';
   /** 调用方显式指定图表高度（px 或 '100%' 等）；不传则回落到 '100%' 父容器自适应 */
@@ -87,7 +89,7 @@ function resolveValueFormat(
   return 'percent';
 }
 
-export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, data, title, filter, cardBgUrl, valueFormat, height }) => {
+export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, data, title, filter, cardBgUrl, sliceTextureUrl, valueFormat, height }) => {
   const raw = data as Array<Record<string, unknown>> | undefined;
 
   // 优先用 chartType；其次从 chartNode 里取；都没有再用 slot 兜底（兼容老预览页写法）
@@ -117,7 +119,7 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
   const wrapperHeight: number | string = height ?? '100%';
   switch (type) {
     case 'pie':
-      return <EtherealPieChart option={chartNode as Record<string, unknown>} title={title} cardBgUrl={cardBgUrl} height={wrapperHeight} />;
+      return <EtherealPieChart option={chartNode as Record<string, unknown>} title={title} cardBgUrl={cardBgUrl} sliceTextureUrl={sliceTextureUrl} height={wrapperHeight} />;
     case 'heatmap': {
       // 两种数据来源，最终都用仙气矩阵组件渲染（不回退老组件）：
       // 1) 分析包路径：扁平清单在 chartNode.data 或 raw(=chart.raw_data)；

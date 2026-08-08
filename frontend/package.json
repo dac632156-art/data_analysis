@@ -4,8 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "gen:assets": "node scripts/gen-export-assets.mjs",
+    "predev": "npm run gen:assets",
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run gen:assets && vite build",
+    "build:lib": "npm run gen:assets && vite build --config vite.lib.config.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "preview": "vite preview"

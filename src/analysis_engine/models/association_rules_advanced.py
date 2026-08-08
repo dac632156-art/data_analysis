@@ -244,7 +244,7 @@ def compute_advanced_c(work: pd.DataFrame, seg: pd.DataFrame,
                 "y": seg_count[seg].get(combo, 0),
                 "series": seg,
             })
-    chart = ChartData(slot="ar_c_count_top", chart_type="ranking",
+    chart = ChartData(slot="ar_c_count_top", chart_type="bar",
                       title="各客群常买组合（共现次数，进阶 C）",
-                      x="组合", y="共现次数", data=chart_data)
+                      x="组合", y="共现次数", color="series", data=chart_data)
     return table, chart

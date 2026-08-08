@@ -9,7 +9,10 @@ lerna-debug.log*
 
 node_modules
 dist-ssr
+dist-lib
 *.local
+# 由 scripts/gen-export-assets.mjs 生成（14MB base64，不入库）
+src/utils/exportComponentHTML/assets.generated.ts
 
 # Editor directories and files
 .vscode/*

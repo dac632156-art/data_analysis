@@ -94,13 +94,19 @@ function inferFields(rows: Array<Record<string, unknown>>) {
   const keys = Object.keys(sample);
 
   // 元数据列：用于着色但不参与分类/数值
-  const metaKeys = new Set(['System_Action', 'action', 'status', 'chart_type', 'slot', 'title', 'type', 'color', 'x', 'y']);
+  // 注意：x/y 仅当数据里"只有这两个字段"时才作为分类/数值的兜底语义，
+  // 否则（如含 System_Action/action 等语义字段）仍按元数据排除。
+  const hasOnlyXY = keys.length === 2 && keys.includes('x') && keys.includes('y');
+  const metaKeys = new Set(
+    hasOnlyXY ? ['System_Action', 'action', 'status', 'chart_type', 'slot', 'title', 'type', 'color']
+              : ['System_Action', 'action', 'status', 'chart_type', 'slot', 'title', 'type', 'color', 'x', 'y'],
+  );
 
   // 数值字段：第一个 number 类型的 key（最稳定的语义信号）
   const valueCandidates = keys.filter(
     (k) => !metaKeys.has(k) && typeof sample[k] === 'number',
   );
-  const valueField = valueCandidates[0] || '';
+  const valueField = valueCandidates[0] || (hasOnlyXY ? 'y' : '');
 
   // 分类字段：除元数据列与数值字段外，第一个非空字符串/数字 key
   const categoryCandidates = keys.filter(

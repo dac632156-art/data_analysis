@@ -3,8 +3,11 @@
 替代已删除的 kpi_renderer / table_renderer / insight_renderer / conclusion_renderer，
 逻辑与原四文件保持一致，仅合并到单一模块，避免功能丢失、也避免散落四个文件。
 """
+import logging
 from dataclasses import dataclass, field, asdict
 from typing import Any, List, Optional
+
+_log = logging.getLogger("package_render")
 
 from src.analysis_templates.base import KPIItem, TableData
 from src.echart_generator import GALAXY
@@ -121,26 +124,16 @@ def render_kpis(kpis_raw) -> List[dict]:
     # ★ 按业务价值降序：高业务价值的 KPI 排到前面，被前端 4 个 [3,3,3,3] 槽位优先选中
     out.sort(key=lambda x: x.get("business_value", 0.0), reverse=True)
 
-    # ★ 调试日志：让用户重启后端+重新分析后能在 backend/logs/*.log 里看到每个 KPI 的业务价值分，
-    #   验证排序是否生效（前 4 名应包含 GMV/客单价/净利润/留存率等高价值 KPI）。
-    try:
-        import logging
-        _log = logging.getLogger("package_render")
-        if not _log.handlers:
-            _h = logging.StreamHandler()
-            _h.setFormatter(logging.Formatter("[%(name)s] %(message)s"))
-            _log.addHandler(_h)
-            _log.setLevel(logging.INFO)
-        _log.info(
-            "render_kpis -> %d KPIs (top-8 by business_value): %s",
-            len(out),
-            [
-                f"{k['label']}={k['business_value']:.2f}"
-                for k in out[:8]
-            ],
-        )
-    except Exception:
-        pass
+    # ★ 调试日志（DEBUG 级别）：仅在显式开启 DEBUG 时打印，平时不刷屏。
+    #   用于验证 KPI 业务价值排序是否生效（前 4 名应包含 GMV/客单价/净利润/留存率等高价值 KPI）。
+    _log.debug(
+        "render_kpis -> %d KPIs (top-8 by business_value): %s",
+        len(out),
+        [
+            f"{k['label']}={k['business_value']:.2f}"
+            for k in out[:8]
+        ],
+    )
 
     return out
 

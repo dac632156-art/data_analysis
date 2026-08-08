@@ -27,6 +27,9 @@ echarts.use([
   ToolboxComponent, DataZoomComponent, MarkLineComponent, GraphicComponent,
 ]);
 import type { PackageChartItem, ReportInsight } from '../types/api';
+// ★ 报告导出复用仙气组件树 UMD（与数据看板导出共用同一份 ethereal-core.js）
+// @ts-ignore - ?raw 在 vite/client 已声明
+import etherealCoreJs from '../../dist-lib/ethereal-core.js?raw';
 
 /** 报告页图表高度：等于各仙气图表组件自身默认的标准身高（360px），
  *  外部不再强制 '100%'（避免在无确定高度的卡片里塌缩成扁条）。 */
@@ -85,6 +88,16 @@ function normTitle(s: string): string {
     .toLowerCase();
 }
 
+/** 提取标题中的核心关键词（去掉括号内容、标点），用于宽松匹配 */
+function extractKeywords(s: string): string {
+  return (s || '')
+    .normalize('NFKC')
+    .replace(/[（(][^)）]*[)）]/g, '')  // 去中文/英文括号内容
+    .replace(/[^\u4e00-\u9fff\w]/g, '')  // 只留中文/字母/数字
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+
 /** 判断段落是否提到某个图表标题（子串包含，归一化后匹配） */
 function findChartsInParagraph(
   paragraph: string,
@@ -98,9 +111,21 @@ function findChartsInParagraph(
     const slot = chart.slot || chart.title;
     if (rendered.has(slot)) continue;
     const nt = normTitle(chart.title);
+    // 严格匹配：段落包含完整图表标题
     if (nt && (normPara.includes(nt) || nt.includes(normPara))) {
       found.push(chart);
       rendered.add(slot);
+      continue;
+    }
+    // ★ 宽松匹配（Bug 3 修复）：LLM 可能用缩写/变体引用图表，
+    //   提取核心关键词（去括号内容后），若关键词≥3 字且出现在段落中则匹配
+    const kw = extractKeywords(chart.title);
+    if (kw && kw.length >= 3) {
+      const paraKw = extractKeywords(paragraph);
+      if (paraKw.includes(kw) || kw.includes(paraKw)) {
+        found.push(chart);
+        rendered.add(slot);
+      }
     }
   }
   return found;
@@ -129,82 +154,9 @@ function ChartCard({ chart, k, sectionIndex }: { chart: PackageChartItem; k: str
 
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/**
- * 等待报告区域内所有仙气图表渲染就绪（含饼图异步水彩纹理 img.onload）。
- * EtherealChart 内部用 requestAnimationFrame + 异步图片加载，外部拿不到 Promise，
- * 故采用轮询 canvas 像素非空 + 超时兜底：避免截到空白/中间帧。
- */
-const waitChartsReady = (root: HTMLElement, timeoutMs = 6000): Promise<void> => {
-  const deadline = Date.now() + timeoutMs;
-  const tick = (): Promise<void> =>
-    new Promise<void>((resolve) => {
-      // 给浏览器一帧时间完成绘制
-      requestAnimationFrame(() => {
-        const slots = Array.from(root.querySelectorAll<HTMLElement>('[data-chart-slot]'));
-        const allReady = slots.every((el) => {
-          const cv = el.querySelector('canvas');
-          if (!cv) return false; // 还没挂载 canvas
-          // 检查 canvas 是否真的画了东西（非全透明）
-          try {
-            const ctx = cv.getContext('2d');
-            if (!ctx) return true; // WebGL 等拿不到 2d context，信任已绘制
-            const { width, height } = cv;
-            if (!width || !height) return false;
-            const data = ctx.getImageData(0, 0, Math.min(width, 64), Math.min(height, 64)).data;
-            for (let i = 3; i < data.length; i += 4) {
-              if (data[i] !== 0) return true; // 存在非透明像素
-            }
-            return false; // 全透明 = 还没画
-          } catch {
-            return true; // 跨域/安全限制拿不到像素，信任已绘制
-          }
-        });
-        if (allReady || Date.now() > deadline) resolve();
-        else tick().then(resolve);
-      });
-    });
-  return tick();
-};
-
-/**
- * 遍历带 data-chart-slot 的容器，复用页面已渲染的仙气实例截图（不再裸 echarts.init）。
- * 从 canvas 向上查找挂载了 echarts 实例的祖先节点，getDataURL 截 base64。
- */
-const captureChartImages = (root: HTMLElement): Map<string, string> => {
-  const imgs = new Map<string, string>();
-  const slots = Array.from(root.querySelectorAll<HTMLElement>('[data-chart-slot]'));
-  for (const el of slots) {
-    const slot = el.getAttribute('data-chart-slot');
-    if (!slot || imgs.has(slot)) continue;
-    const cv = el.querySelector('canvas');
-    if (!cv) {
-      console.warn('[导出] 未找到 canvas:', slot);
-      continue;
-    }
-    // 从 canvas 向上找挂了 echarts 实例的祖先
-    let node: HTMLElement | null = cv.parentElement;
-    let inst: any = null;
-    while (node && node !== el.parentElement) {
-      try {
-        inst = (echarts as any).getInstanceByDom(node);
-      } catch { inst = null; }
-      if (inst) break;
-      node = node.parentElement;
-    }
-    if (!inst) {
-      console.warn('[导出] 找不到 echarts 实例:', slot);
-      continue;
-    }
-    try {
-      const url = inst.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: 'transparent' });
-      if (url && url.length > 200) imgs.set(slot, url);
-      else console.warn('[导出] 截图为空:', slot);
-    } catch (e) {
-      console.warn('[导出] getDataURL 失败:', slot, e);
-    }
-  }
-  return imgs;
-};
+// ★ waitChartsReady / captureChartImages 已移除：报告导出不再用截图方案，
+//   改为将 ECharts option JSON 注入 HTML + CDN 实时渲染，与数据看板导出一致。
+//   代码见 handleExportHTML 中「图表 option 注入」部分。
 
 // 报告内 Markdown 局部样式（仅作用于本报告内容，不影响全局）
 // 注意：content 由后端保证不含 Markdown 标题（层级由章节标题控制），h2/h3 仅作兜底样式。
@@ -316,21 +268,27 @@ export default function ReportsPage() {
         });
       } catch {}
 
-      // 2. 复用页面已渲染的仙气实例截图（不再裸 echarts.init）
-      //    页面上的 EtherealChart 已仙气化（水彩/渐变/毛玻璃），导出需与其一致。
-      //    先等图表异步渲染就绪（含饼图水彩纹理 img.onload），避免截到空白。
-      setStatusText('正在准备图表截图…');
-      const reportRoot = document.getElementById('report-content');
-      let chartImgs = new Map<string, string>();
-      let totalCharts = 0;
-      if (reportRoot) {
-        for (const sec of sections) totalCharts += (sec.section_charts || []).length;
-        await waitChartsReady(reportRoot, 6000);
-        chartImgs = captureChartImages(reportRoot);
+      // 2. ★ 收集所有图表：分配唯一 id，将 ECharts option 注入 HTML，
+      //    导出时用 EtherealChart 组件渲染（跟页面一致，非裸 echarts.init）。
+      //    Bug 5 修复：chart.slot 可能为空 → 用 index 兜底生成唯一 key。
+      const chartRegistry: Array<{ id: string; chartType: string; option: any; title: string }> = [];
+      const chartIdMap = new Map<string, string>();
+      for (const sec of sections) {
+        const secCharts = (sec.section_charts || []) as PackageChartItem[];
+        for (let ci = 0; ci < secCharts.length; ci++) {
+          const ch = secCharts[ci];
+          if (!ch || !ch.option) continue;
+          const key = ch.slot || (ch.title + '_' + ci);
+          if (chartIdMap.has(key)) continue;
+          const id = 'chart_' + chartRegistry.length;
+          chartIdMap.set(key, id);
+          chartRegistry.push({ id, chartType: ch.chart_type || '', option: ch.option, title: ch.title || '' });
+        }
       }
-      console.log(`[导出] total charts: ${totalCharts}, got imgs: ${chartImgs.size}`);
+      console.log(`[导出] 图表总数: ${chartRegistry.length}`);
 
       // 3. 构建 HTML body（段落级就近插图，与页面渲染一致）
+      //    图表占位：<div id="chart_N"> 由渲染器里的 EtherealChart 填充
       let bodyHtml = `<h1 style="text-align:center;font-size:1.5rem;margin-bottom:1.5rem;">${escapeHtml(reportTitle || '数据分析报告')}</h1>`;
       for (const sec of sections) {
         bodyHtml += `<h2 style="font-size:1.1rem;font-weight:700;margin:1.5rem 0 0.5rem;color:#0f172a;">${escapeHtml(sec.title)}</h2>`;
@@ -344,20 +302,29 @@ export default function ReportsPage() {
             bodyHtml += marked.parse(block) as string;
             const matched = findChartsInParagraph(block, secCharts, rendered);
             for (const ch of matched) {
-              const url = chartImgs.get(ch.slot || '');
-              if (url) bodyHtml += `<div class="chart-card"><img src="${url}" style="width:100%;display:block;" alt="${escapeHtml(ch.title || '')}" /></div>`;
+              const key = ch.slot || (ch.title + '_' + secCharts.indexOf(ch));
+              const cid = chartIdMap.get(key);
+              if (cid) bodyHtml += `<div class="chart-card"><div id="${cid}" style="width:100%;height:420px;"></div></div>`;
             }
           }
           // 兜底：正文未引用的图放 section 末尾
-          const remaining = secCharts.filter((c) => !rendered.has(c.slot || c.title || ''));
+          const remaining = secCharts.filter((c, ci) => !rendered.has(c.slot || c.title + '_' + ci));
           for (const ch of remaining) {
-            const url = chartImgs.get(ch.slot || '');
-            if (url) bodyHtml += `<div class="chart-card"><img src="${url}" style="width:100%;display:block;" alt="${escapeHtml(ch.title || '')}" /></div>`;
+            const key = ch.slot || (ch.title + '_' + secCharts.indexOf(ch));
+            const cid = chartIdMap.get(key);
+            if (cid) bodyHtml += `<div class="chart-card"><div id="${cid}" style="width:100%;height:420px;"></div></div>`;
           }
         }
       }
-      console.log(`[导出] body imgs: ${(bodyHtml.match(/<img /g) || []).length}`);
 
+      // 4. 序列化图表数据（注入 HTML 供渲染脚本使用）
+      const chartsJson = JSON.stringify(chartRegistry.map(c => ({
+        id: c.id, chartType: c.chartType, option: c.option, title: c.title,
+      }))).replace(/<\/script>/gi, '<\\/script>');
+
+      // 5. 组装完整 HTML：CDN React + 内联 UMD（EtherealChart 组件） + 渲染脚本
+      //    与数据看板导出（exportComponentHTML/index.ts）共用同一份 ethereal-core.js，
+      //    确保导出图表与页面像素级一致（水彩纹理/毛玻璃/渐变等仙气视觉）。
       const html = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -366,13 +333,52 @@ export default function ReportsPage() {
 <style>
   body { max-width:900px; margin:2rem auto; padding:0 1.5rem; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; color:#1e293b; line-height:1.75; }
 ${REPORT_MD_STYLE}
-  img { max-width:100%; height:auto; }
   .chart-card { width:100%; max-width:42rem; margin:1rem auto; }
 </style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script>
+// ===== 仙气看板组件树 UMD（含 echarts/gl，与屏幕共用一份代码）=====
+${etherealCoreJs as unknown as string}
+</script>
 </head>
 <body>
 ${bgBase64 ? `<div style="position:fixed;inset:0;z-index:-1;background-image:url(${bgBase64});background-size:cover;background-position:center;background-repeat:no-repeat;opacity:0.6;"></div>` : ''}
 ${bodyHtml}
+<script>
+// ★ 报告图表渲染器：用 EtherealChart 组件渲染所有图表（与页面一致）
+(function(){
+  var React = window.React;
+  var ReactDOM = window.ReactDOM;
+  var Core = window.EtherealCore;
+  if (!Core || !Core.EtherealChart) {
+    console.error('[报告导出] EtherealCore 未就绪');
+    return;
+  }
+  var charts = ${chartsJson};
+  if (!charts || !charts.length) return;
+
+  function renderAll() {
+    charts.forEach(function(c) {
+      var dom = document.getElementById(c.id);
+      if (!dom) return;
+      try {
+        ReactDOM.createRoot(dom).render(
+          React.createElement(Core.EtherealChart, {
+            slot: c.id,
+            chartType: c.chartType,
+            chartNode: c.option,
+            title: c.title,
+            height: 420,
+          })
+        );
+      } catch(e) { console.error('[报告图表] 渲染失败:', c.id, c.title, e); }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', renderAll);
+  else renderAll();
+})();
+</script>
 </body>
 </html>`;
 

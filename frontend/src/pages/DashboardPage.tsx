@@ -8,7 +8,9 @@ import type { CardItem, CardMeta } from '../components/cardTypes';
 import KPICards, { type KPIItem } from '../components/KPICards';
 import { useData, AI_PROVIDERS } from '../contexts/DataContext';
 import * as api from '../api/client';
-import { generateEChartsDashboardHTML, downloadEChartsHTML } from '../utils/exportEChartsDashboard';
+import { downloadEChartsHTML } from '../utils/exportEChartsDashboard';
+// ★ 动态 import：18MB 水彩图 base64 仅在点击导出时按需加载（代码分割），不拖慢主 bundle
+// type-only 提前声明，运行时通过 import() 懒加载
 import type { EChartItem } from '../types/api';
 
 type TemplateType = 'medical';
@@ -70,6 +72,13 @@ export default function DashboardPage() {
   const [hideChartTitle, setHideChartTitle] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [savedTableData, setSavedTableData] = useState<Record<string, unknown>[]>([]);
+
+  // ★ 数据看板（SmartDashboard）当前模式，唯一真相源，受控传给 SmartDashboard
+  //   默认从 URL ?mode= 参数读取，否则 'A'
+  const [currentMode, setCurrentMode] = useState<'A' | 'B' | 'C'>(() => {
+    const m = searchParams.get('mode')?.toUpperCase();
+    return m === 'B' || m === 'C' ? m : 'A';
+  });
 
   // ──── 数据看板（medical / BigScreenDashboard）状态：来自 /dashboard/cards ────
   const [cards, setCards] = useState<CardItem[]>([]);
@@ -267,26 +276,28 @@ export default function DashboardPage() {
     } finally { setDownloading(false); }
   };
 
-  // ===== HTML 导出 =====
-  const handleExportHTML = () => {
-    // 数据看板(medical) 以 cards 为数据源；其余模板以 echarts 为数据源
-    if (template === 'medical') {
-      if (!cards || cards.length === 0) {
-        alert('暂无数据看板内容，请先生成卡片');
-        return;
-      }
-    } else if (echarts.length === 0) {
-      alert('暂无图表数据');
+  // ===== HTML 导出（SmartDashboard 单文件 HTML，ABC 模式严格与屏幕一致）=====
+  const handleExportHTML = async () => {
+    if (!ds.sessionId) {
+      alert('请先上传数据，再导出看板。');
       return;
     }
-    const tableData = savedTableData.length > 0 ? savedTableData : (ds?.preview || []);
-    const filename = `数据大屏_${displayTitle}_${new Date().toISOString().slice(0, 10)}.html`;
-    // 数据看板（medical）导出以 cards 为数据源，与屏幕上 MedicalDashboard 一致
-    const html = generateEChartsDashboardHTML(
-      template, kpis, echarts, displayTitle, hideChartTitle, navTabs, ringCharts, tableData,
-      undefined, undefined, undefined, 0, cards, cardsMeta,
-    );
-    downloadEChartsHTML(html, filename);
+    setDownloading(true);
+    try {
+      const { generateComponentHTML } = await import('../utils/exportComponentHTML');
+      const html = await generateComponentHTML({
+        mode: currentMode,
+        sessionId: ds.sessionId,
+        title: displayTitle,
+      });
+      const filename = `数据大屏_${currentMode}_${displayTitle}_${new Date().toISOString().slice(0, 10)}.html`;
+      downloadEChartsHTML(html, filename);
+    } catch (err) {
+      console.error('[导出 SmartDashboard HTML] 失败:', err);
+      alert('导出失败：' + (err instanceof Error ? err.message : '未知错误'));
+    } finally {
+      setDownloading(false);
+    }
   };
 
   // ===== 分析包 JSON 下载 =====
@@ -327,7 +338,7 @@ export default function DashboardPage() {
 
   // ★ mock=1 模式：跳转到 SmartDashboard 三模式预览（用真实已保存图表驱动）
   if (isMock) {
-    return <SmartDashboard sessionId={ds.sessionId} mock={true} />;
+    return <SmartDashboard sessionId={ds.sessionId} mock={true} mode={currentMode} onModeChange={setCurrentMode} />;
   }
 
   if (!hasData) {
@@ -413,7 +424,7 @@ export default function DashboardPage() {
         {loading ? (
           <div className="flex items-center justify-center h-full"><div className="w-8 h-8 rounded-full border-2 border-[#8B5CF6] border-t-transparent animate-spin" /></div>
         ) : (
-            <SmartDashboard sessionId={ds.sessionId} mode="A" />
+            <SmartDashboard sessionId={ds.sessionId} mode={currentMode} onModeChange={setCurrentMode} />
         )}
       </div>
     </div>

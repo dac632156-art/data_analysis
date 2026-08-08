@@ -178,7 +178,7 @@ def _pct(v: float) -> str:
     return f"{v * 100:.2f}%"
 
 
-def _base_table_rows(rules):
+def _base_table_rows(rules, has_margin=False, has_revenue=False):
     rows = []
     for r in rules:
         row = {
@@ -188,9 +188,13 @@ def _base_table_rows(rules):
             "置信度": _pct(r["confidence"]),
             "提升度": round(r["lift"], 3),
         }
-        if "avg_margin" in r:
-            row["平均毛利"] = round(r["avg_margin"], 2)
-            row["总收入"] = round(r["total_revenue"], 2)
+        # ★ 与 compute() 中 base_columns 的表级标志严格对齐：
+        #   has_margin/has_revenue 为真时，每行都追加对应字段（无值填 0），
+        #   确保 dict 行的 key 集合 = columns，杜绝前端列数不符导致错位。
+        if has_margin:
+            row["平均毛利"] = round(r.get("avg_margin", 0), 2)
+        if has_revenue:
+            row["总收入"] = round(r.get("total_revenue", 0), 2)
         rows.append(row)
     return rows
 
@@ -421,7 +425,7 @@ class AssociationRulesModel(AnalysisModel):
             suggestions.append(f"进阶 C 未触发：{reason}，故未输出客群/Action 维度结果。")
 
         # 6) 组装表格 / 图表 / KPI
-        base_rows = _base_table_rows(significant)
+        base_rows = _base_table_rows(significant, has_margin=has_margin, has_revenue=has_revenue)
         base_columns = ["前项", "后项", "支持度", "置信度", "提升度"]
         if base_rows:
             if has_margin:

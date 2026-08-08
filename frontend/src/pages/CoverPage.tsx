@@ -13,8 +13,8 @@ const FRAME_PATH = (i: number) =>
 export default function CoverPage() {
   const navigate = useNavigate();
   const [ready, setReady] = useState(false); // 全部帧预加载完成
-  const [currentIdx, setCurrentIdx] = useState(1); // 当前显示的 1-based 帧序号
-  const currentIdxRef = useRef(1);
+  const imgRef = useRef<HTMLImageElement>(null); // 直接改 DOM src，绕开 React 重渲染
+  const currentIdxRef = useRef(1); // 上一次帧号，用于去重
   const readyRef = useRef(false);
 
   // 预加载全部 80 张图，完成后才启用鼠标切换，避免白屏/切换闪烁
@@ -41,7 +41,7 @@ export default function CoverPage() {
     let lastMove = 0;
     const handleMouseMove = (e: MouseEvent) => {
       const now = performance.now();
-      if (now - lastMove < 16) return; // 节流到 ~60fps，避免高频 setState
+      if (now - lastMove < 10) return; // 节流到 ~100fps，跟手更紧（改用 ref 直写后单次切换极轻）
       lastMove = now;
       if (!readyRef.current) return; // 未预加载完不切换，保持首帧
       const ratio = Math.max(0, Math.min(1, e.clientX / window.innerWidth));
@@ -54,7 +54,8 @@ export default function CoverPage() {
       );
       if (idx !== currentIdxRef.current) {
         currentIdxRef.current = idx;
-        setCurrentIdx(idx);
+        // 直接写 DOM，绕开 React setState → 重渲染链路，换图最快最跟手
+        if (imgRef.current) imgRef.current.src = FRAME_PATH(idx);
       }
     };
 
@@ -71,7 +72,8 @@ export default function CoverPage() {
     >
       {/* 机器人抽帧图序列（替代视频，鼠标水平位置映射帧） */}
       <img
-        src={FRAME_PATH(currentIdx)}
+        ref={imgRef}
+        src={FRAME_PATH(1)}
         alt="DataMind AI 智能机器人"
         className="absolute inset-0 w-full h-full object-cover"
         style={{
