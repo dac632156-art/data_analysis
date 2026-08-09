@@ -16,6 +16,7 @@ export default function CoverPage() {
   const imgRef = useRef<HTMLImageElement>(null); // 直接改 DOM src，绕开 React 重渲染
   const currentIdxRef = useRef(1); // 上一次帧号，用于去重
   const readyRef = useRef(false);
+  const lastMoveRef = useRef(0);   // 鼠标移动节流时间戳
 
   // 预加载 160 张帧图，加载完成再显示，避免首帧闪烁
   useEffect(() => {
@@ -34,11 +35,16 @@ export default function CoverPage() {
     };
   }, []);
 
+  // ready 状态变为 true 时，同步给 readyRef（直接改 DOM 用的是 ref，不走 React 重渲染）
+  useEffect(() => {
+    readyRef.current = ready;
+  }, [ready]);
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       const now = performance.now();
-      if (now - lastMove < 10) return; // 节流到 ~100fps，跟手更紧（改用 ref 直写后单次切换极轻）
-      lastMove = now;
+      if (now - lastMoveRef.current < 10) return; // 节流到 ~100fps，跟手更紧（改用 ref 直写后单次切换极轻）
+      lastMoveRef.current = now;
       if (!readyRef.current) return; // 未预加载完不切换，保持首帧
       const ratio = Math.max(0, Math.min(1, e.clientX / window.innerWidth));
       const idx = Math.max(
