@@ -83,9 +83,10 @@ src/mapping/mapping.db
 *.err
 _vite*.log
 
-# Debug / temp scripts and dumps (注意：不要误伤 __init__.py)
+# Debug / temp scripts and dumps (注意：不要误伤 __init__.py 及下划线开头的正式模块)
 _*.py
 !__init__.py
+!backend/routers/_analysis_pipeline.py
 _*.txt
 _*.json
 _*.csv
