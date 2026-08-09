@@ -83,8 +83,9 @@ src/mapping/mapping.db
 *.err
 _vite*.log
 
-# Debug / temp scripts and dumps
+# Debug / temp scripts and dumps (注意：不要误伤 __init__.py)
 _*.py
+!__init__.py
 _*.txt
 _*.json
 _*.csv
