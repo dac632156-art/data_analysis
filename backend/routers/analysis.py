@@ -131,6 +131,9 @@ def _process_one(session_id: str, dataset_id: str, llm_cfg: dict = None) -> tupl
     # 规则引擎路径：新引擎（列名匹配）自动运行全部命中模型
     packages, package_map = run_df_to_packages(df)
     manager.set_dataset_packages(session_id, dataset_id, package_map)
+    # 自动收藏：生成即落 saved_packages，使仪表盘（只读 saved_packages）无需手动点保存即可渲染
+    if package_map:
+        manager.save_packages(session_id, list(package_map.keys()), dataset_id=dataset_id)
     # LLM 决策路径（一期预留）：async stub，返回空包，仅记录决策日志
     try:
         registered = [m.name for m in get_models()]
