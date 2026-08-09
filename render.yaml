@@ -1,8 +1,14 @@
+# Render 部署配置
+# 重要：在 Render 创建 Web Service 时，Root Directory 留空（即整个仓库根），
+# 下面的命令已显式 cd backend，无需在 Render 里单独设置子目录。
 services:
   - type: web
     name: data-analysis
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: PYTHONPATH=.. python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    # 后端依赖在 backend/requirements.txt
+    buildCommand: pip install -r backend/requirements.txt
+    # 进入 backend 目录后用 uvicorn 启动（main.py 已把项目根加入 sys.path，backend 相对导入可正常工作）
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
     autoDeploy: true
