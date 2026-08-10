@@ -32,7 +32,7 @@ export const KPIWidget: React.FC<KPIWidgetProps> = memo(({ widget, onClick, high
   const value = (widget.metadata?.formatted as string) ?? (widget.metadata?.value as string) ?? '';
 
   const TrendIcon = change > 0 ? FiTrendingUp : change < 0 ? FiTrendingDown : FiMinus;
-  const trendColor = change > 0 ? 'text-emerald-400' : change < 0 ? 'text-rose-400' : 'text-slate-400';
+  const trendColor = change > 0 ? 'text-emerald-500' : change < 0 ? 'text-rose-500' : 'text-slate-600';
 
   // 是否应该高亮（如果 highlightLabel 匹配 KPI 名称）
   const isHighlighted = highlightLabel === widget.title || highlightLabel === label;

@@ -21,7 +21,6 @@
     "countup.js": "^2.10.0",
     "echarts": "^6.1.0",
     "echarts-gl": "^2.1.0",
-    "echarts-wordcloud": "^2.1.0",
     "html2canvas": "^1.4.1",
     "lucide-react": "^1.18.0",
     "marked": "^18.0.5",

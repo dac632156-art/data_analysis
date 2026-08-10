@@ -66,7 +66,7 @@ export default function AIModelsPage() {
             placeholder={defaultModel || '默认模型'}
             className="glass-input w-full px-3 py-2.5 text-sm"
           />
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-600 mt-1">
             默认模型：{defaultModel || '—'}
           </p>
         </div>
@@ -81,7 +81,7 @@ export default function AIModelsPage() {
             placeholder={defaultBaseUrl || '默认地址'}
             className="glass-input w-full px-3 py-2.5 text-sm"
           />
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-600 mt-1">
             默认地址：{defaultBaseUrl || '—'}
           </p>
         </div>

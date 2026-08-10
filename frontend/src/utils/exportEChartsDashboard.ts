@@ -1,21 +1,19 @@
 ﻿/* 生成自包含 ECharts 交互式 HTML 大屏文件，保留所有 ECharts 交互和深色主题 */
 import type { EChartItem, ReportDegradation } from '../types/api';
 import type { CardItem, CardMeta } from '../components/cardTypes';
-import { Palette, ChartStyle, withAlpha } from '../theme';
 
-// ★ 导出 HTML 统一配色（Single Source of Truth = frontend/src/theme，禁止写死）
-// 大屏/报告里所有品牌色必须从这里派生；保留 ${color}40 这类 8 位 alpha 写法有效。
+// ★ 导出 HTML 统一配色（内联字面量，原 theme/ 模块已删除，值保持不变）
 const REPORT_THEME = {
-  primary: Palette.primary,
-  primaryHover: Palette.primaryHover,
-  interaction: Palette.interaction,
-  success: Palette.success,
-  danger: Palette.danger,
-  warning: Palette.warning,
-  textMuted: Palette.textMuted,
-  textSecondary: Palette.textSecondary,
-  content: Palette.tooltipContent,
-  glow: (a: number) => withAlpha(Palette.primary, a),
+  primary: '#38BDF8',
+  primaryHover: '#7DD3FC',
+  interaction: '#22D3EE',
+  success: '#34D399',
+  danger: '#FB7185',
+  warning: '#FBBF24',
+  textMuted: '#94A3B8',
+  textSecondary: 'rgba(248,250,252,0.65)',
+  content: '#CBD5E1',
+  glow: (a: number) => `rgba(56,189,248,${a})`,
 };
 
 interface KPI {
@@ -237,7 +235,7 @@ function makeEChartsScript(charts: (EChartItem | { id?: string; title: string; o
       var sName = String(series.name || '');
       var sType = String(series.type || 'bar');
       if (sName === label) return true;
-      if (sType === 'pie' || sType === 'treemap' || sType === 'wordCloud') {
+      if (sType === 'pie' || sType === 'treemap') {
         var data = series.data || [];
         return data.some(function(d) { return typeof d === 'object' && d !== null && !Array.isArray(d) && String(d.name || '') === label; });
       }
@@ -268,7 +266,7 @@ function makeEChartsScript(charts: (EChartItem | { id?: string; title: string; o
       var sType = String(series.type || '');
       if (sName === label) return data.map(function(_, i) { return i; });
       var matching = [];
-      if (sType === 'pie' || sType === 'treemap' || sType === 'wordCloud' || sType === 'radar') {
+      if (sType === 'pie' || sType === 'treemap' || sType === 'radar') {
         data.forEach(function(d, i) {
           if (typeof d === 'object' && d !== null && !Array.isArray(d) && String(d.name || '') === label) matching.push(i);
         });
@@ -369,7 +367,7 @@ function makeEChartsScript(charts: (EChartItem | { id?: string; title: string; o
         var sType = String(s.type || 'bar');
         var data = s.data || [];
         var matched = [];
-        if (['pie', 'treemap', 'wordCloud', 'radar'].indexOf(sType) !== -1) {
+        if (['pie', 'treemap', 'radar'].indexOf(sType) !== -1) {
           data.forEach(function(d, i) {
             if (d && typeof d === 'object' && !Array.isArray(d) && inSet(d.name)) matched.push(i);
           });

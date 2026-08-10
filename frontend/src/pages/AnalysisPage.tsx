@@ -488,8 +488,8 @@ export default function AnalysisPage() {
   if (!hasData) {
     return (
       <div className="page-enter">
-        <h1 className="text-2xl font-bold text-[#f8fafc] mb-4"
-          style={{ textShadow: '0 0 15px rgba(139,92,246,0.3)' }}
+        <h1 className="text-2xl font-bold text-slate-800 mb-4"
+          style={{ textShadow: '0 0 15px rgba(124,58,237,0.3)' }}
         >
           分析可视化
         </h1>
@@ -500,27 +500,27 @@ export default function AnalysisPage() {
     );
   }
 
-  const inputClass = "w-full px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#8B5CF6]/50 transition-colors";
-  const btnClass = "px-4 py-2 text-sm rounded-lg bg-[#8B5CF6]/80 text-white hover:bg-[#8B5CF6] disabled:opacity-50 transition-colors";
-  const btnFullClass = "w-full px-4 py-2 text-sm rounded-lg bg-[#8B5CF6]/80 text-white hover:bg-[#8B5CF6] disabled:opacity-50 transition-colors";
+  const inputClass = "w-full px-3 py-2 text-sm rounded-lg bg-white/50 border border-slate-200 text-slate-700 placeholder-slate-600 focus:outline-none focus:border-[#7c3aed]/50 transition-colors";
+  const btnClass = "px-4 py-2 text-sm rounded-lg bg-[#7c3aed]/80 text-white hover:bg-[#7c3aed] disabled:opacity-50 transition-colors";
+  const btnFullClass = "w-full px-4 py-2 text-sm rounded-lg bg-[#7c3aed]/80 text-white hover:bg-[#7c3aed] disabled:opacity-50 transition-colors";
 
   return (
     <div className="page-enter space-y-6">
-      <h1 className="text-2xl font-bold text-[#f8fafc]"
-        style={{ textShadow: '0 0 15px rgba(139,92,246,0.3)' }}
+      <h1 className="text-2xl font-bold text-slate-800"
+        style={{ textShadow: '0 0 15px rgba(124,58,237,0.3)' }}
       >
         分析可视化
       </h1>
 
       {/* 主操作区：单按钮触发异步分析流水线 */}
-      <div className="glass-card p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 border border-[#8B5CF6]/20"
-        style={{ boxShadow: '0 0 24px rgba(139,92,246,0.12)' }}
+      <div className="glass-card p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 border border-[#7c3aed]/20"
+        style={{ boxShadow: '0 0 24px rgba(124,58,237,0.12)' }}
       >
         <button
           onClick={handleGenerateInsights}
           disabled={pipelineRunning}
-          className="flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-lg bg-gradient-to-r from-[#8B5CF6] to-[#A78BFA] text-white hover:from-[#7C4DF0] hover:to-[#8B5CF6] disabled:opacity-50 transition-all"
-          style={{ boxShadow: '0 0 20px rgba(139,92,246,0.4)' }}
+          className="flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-lg bg-gradient-to-r from-[#7c3aed] to-[#a78bfa] text-white hover:from-[#6d28d9] hover:to-[#7c3aed] disabled:opacity-50 transition-all"
+          style={{ boxShadow: '0 0 20px rgba(124,58,237,0.4)' }}
         >
           <FiTrendingUp className="w-4 h-4" />
           {pipelineRunning ? '分析中…' : '⚡ 生成数据洞察'}
@@ -531,7 +531,7 @@ export default function AnalysisPage() {
       {/* 异步进度面板 */}
       {processStatus && (
         <div className="glass-card p-4 space-y-2">
-          <h3 className="text-sm font-semibold text-slate-300">
+          <h3 className="text-sm font-semibold text-slate-700">
             分析进度（{processStatus.completed}/{processStatus.total}）
           </h3>
           <div className="space-y-1.5">
@@ -542,7 +542,7 @@ export default function AnalysisPage() {
                   st.status === 'running' ? 'bg-[#22D3EE] animate-pulse' :
                   st.status === 'error' ? 'bg-[#FB7185]' : 'bg-slate-600'
                 }`} />
-                <span className="text-slate-400 flex-1 truncate">{did}{st.kind === 'merged' && <span className="ml-2 px-1.5 py-0.5 rounded bg-[#8B5CF6]/20 text-[#A78BFA] text-[10px]">宽表</span>}</span>
+                <span className="text-slate-600 flex-1 truncate">{did}{st.kind === 'merged' && <span className="ml-2 px-1.5 py-0.5 rounded bg-[#7c3aed]/20 text-[#7c3aed] text-[10px]">宽表</span>}</span>
                 <span className="text-slate-500">{st.status}{typeof st.pkg_count === 'number' ? ` · ${st.pkg_count} 包` : ''}</span>
               </div>
             ))}
@@ -552,7 +552,7 @@ export default function AnalysisPage() {
 
       {/* 完成提示 */}
       {computeResult && !pipelineRunning && (
-        <div className="glass-card p-4 text-sm text-slate-300">
+        <div className="glass-card p-4 text-sm text-slate-700">
           {computeResult}
         </div>
       )}

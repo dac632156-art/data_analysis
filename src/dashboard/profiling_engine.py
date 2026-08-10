@@ -83,7 +83,7 @@ _CHART_BASE_VALUE = {
     "line": 0.65, "area": 0.65,
     "bar": 0.62, "hbar": 0.62, "ranking": 0.65,
     "table": 0.65,
-    "bubble": 0.55, "graph": 0.6, "map": 0.6, "wordcloud": 0.4,
+    "bubble": 0.55, "graph": 0.6, "map": 0.6,
 }
 
 

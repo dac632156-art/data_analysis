@@ -6,11 +6,7 @@ import { marked } from 'marked';
 import EChartView, { EChartsOption } from './EChartView';
 import { EtherealChart } from './EtherealCharts/EtherealChart';
 import EtherealTable from './EtherealCharts/EtherealTable';
-import { theme } from '../theme';
 import type { AnalysisPackage, PackageKPIItem, PackageTableData, PackageChartItem } from '../types/api';
-
-const P = theme.palette;
-const C = theme.chart;
 
 // 与 AnalysisPage 的 renderMarkdown 保持一致：洞察/结论由后端 AI 生成（可信源），
 // 用 marked 渲染 Markdown（## 标题、- 列表、**加粗**），避免原始 Markdown 文本裸显。
@@ -65,15 +61,15 @@ function KPIBlock({ kpis }: { kpis: PackageKPIItem[] }) {
       {kpis.map((kpi, i) => {
         const isChange = kpi.kpi_type === 'rate' || kpi.kpi_type === 'change';
         const valueColor = isChange
-          ? (kpi.change && kpi.change.startsWith('-') ? P.danger : P.success)
-          : P.primary;
+          ? (kpi.change && kpi.change.startsWith('-') ? '#FB7185' : '#34D399')
+          : '#38BDF8';
         const arrow = kpi.change ? (kpi.change.startsWith('+') ? '↑' : kpi.change.startsWith('-') ? '↓' : '') : null;
         return (
           <div key={i} className="glass-card" style={{ flex: '1 1 140px', padding: '12px 16px', textAlign: 'center', minWidth: 100 }}>
             <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 4 }}>{kpi.label}</p>
             <p style={{ fontSize: 22, fontWeight: 700, color: valueColor, fontFamily: 'monospace', margin: 0 }}>
               {isChange ? (kpi.value + '%') : kpi.value}
-              {arrow && <span style={{ fontSize: 14, color: arrow === '↑' ? P.success : P.danger }}> {arrow}</span>}
+              {arrow && <span style={{ fontSize: 14, color: arrow === '↑' ? '#34D399' : '#FB7185' }}> {arrow}</span>}
             </p>
           </div>
         );
@@ -125,7 +121,7 @@ function InsightBlock({ insights }: { insights?: unknown[] | unknown }) {
   const list = raw.map((v) => normalizeText(v)).filter((s) => s.trim().length > 0);
   if (list.length === 0) return null;
   return (
-    <div style={{ marginTop: 8, padding: '10px 14px', background: 'rgba(139,92,246,0.059)', borderRadius: 8, border: '1px solid rgba(139,92,246,0.12)' }}>
+    <div style={{ marginTop: 8, padding: '10px 14px', background: 'rgba(124,58,237,0.059)', borderRadius: 8, border: '1px solid rgba(124,58,237,0.12)' }}>
       {list.map((ins, i) => (
         <div key={i} className="md-body" style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: renderMarkdown(ins) }} />
       ))}
@@ -138,8 +134,8 @@ function ConclusionBlock({ conclusions }: { conclusions?: unknown[] | unknown })
   const list = raw.map((v) => normalizeText(v)).filter((s) => s.trim().length > 0);
   if (list.length === 0) return null;
   return (
-    <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(139,92,246,0.059)', borderRadius: 8, border: '1px solid rgba(139,92,246,0.15)' }}>
-      <p style={{ fontSize: 11, color: '#8B5CF6', fontWeight: 600, marginBottom: 6 }}>核心结论</p>
+    <div style={{ marginTop: 12, padding: '12px 16px', background: 'rgba(124,58,237,0.059)', borderRadius: 8, border: '1px solid rgba(124,58,237,0.15)' }}>
+    <p style={{ fontSize: 11, color: '#7c3aed', fontWeight: 600, marginBottom: 6 }}>核心结论</p>
       {list.map((c, i) => (
         <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 12, color: 'var(--text-primary)', margin: '6px 0', lineHeight: 1.6 }}>
           <span style={{ color: '#8B5CF6', fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
@@ -174,7 +170,7 @@ export default function VisualizationRenderer({ packages, selectedPackageIndex =
       <div style={{ marginBottom: 12 }}>
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>分析问题：</span>
         <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>{pkg.business_question}</span>
-        <span style={{ marginLeft: 8, fontSize: 10, color: P.primary, background: hexA(P.primary, 0.1), padding: '1px 8px', borderRadius: 4 }}>
+        <span style={{ marginLeft: 8, fontSize: 10, color: '#38BDF8', background: 'rgba(56,189,248,0.1)', padding: '1px 8px', borderRadius: 4 }}>
           {pkg.analysis_type}
         </span>
       </div>
@@ -204,13 +200,6 @@ export default function VisualizationRenderer({ packages, selectedPackageIndex =
 }
 
 /* ===== 内联样式 ===== */
-const thStyle: React.CSSProperties = {
-  padding: '6px 10px', textAlign: 'left', color: 'var(--text-secondary)', fontSize: 10,
-  borderBottom: `1px solid ${C.grid}`, fontWeight: 500,
-};
-const tdStyle: React.CSSProperties = {
-  padding: '5px 10px', borderBottom: `1px solid ${P.border}`, color: 'var(--text-primary)',
-};
 /** 将 #RRGGBB 转为带 alpha 的 rgba()（用于背景/边框淡色） */
 function hexA(hex: string, alpha: number): string {
   const h = hex.replace('#', '');

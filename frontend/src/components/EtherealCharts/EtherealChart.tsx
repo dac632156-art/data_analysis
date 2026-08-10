@@ -197,7 +197,7 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
       const hasSeries = Array.isArray(opt?.series) && (opt!.series as unknown[]).length > 0;
       if (!hasSeries) {
         return (
-          <div className="flex items-center justify-center w-full h-full text-slate-400 text-xs">
+          <div className="flex items-center justify-center w-full h-full text-slate-600 text-xs">
             暂不支持的图表类型：{rawType}
           </div>
         );

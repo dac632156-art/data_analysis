@@ -1,9 +1,5 @@
-/* KPICards - 通用 KPI 卡片组件（带涨跌箭头）
-   ★ 颜色统一来自 theme/（Galaxy Executive Dashboard） */
+/* KPICards - 通用 KPI 卡片组件（带涨跌箭头） */
 import React from 'react';
-import { theme } from '../theme';
-
-const P = theme.palette;
 
 export interface KPIItem {
   title: string;
@@ -35,7 +31,7 @@ export default function KPICards({ kpis, maxCount = 6, style }: Props) {
   return (
     <div className="flex flex-wrap justify-center gap-3" style={style}>
       {display.map((kpi, i) => {
-        const color = kpi.color || P.primary;
+        const color = kpi.color || '#38BDF8';
         const isUp = kpi.trend === 'up';
         const isDown = kpi.trend === 'down';
         const hasTrend = kpi.trend !== 'flat' && kpi.change != null && kpi.change !== 0;

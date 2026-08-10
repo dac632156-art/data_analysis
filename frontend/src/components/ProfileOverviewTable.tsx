@@ -80,7 +80,7 @@ export function Cell({ cell }: { cell: OverviewCell }) {
 
   // neutral / text
   return (
-    <td className="px-3 py-2 text-slate-300 relative" style={highlightStyle}>
+    <td className="px-3 py-2 text-slate-700 relative" style={highlightStyle}>
       <div
         style={{
           position: 'absolute',
@@ -179,7 +179,7 @@ export default function ProfileOverviewTable({
               <th
                 key={b.title}
                 colSpan={b.keys.length}
-                className="px-2 py-1.5 text-center text-[11px] font-semibold text-[#A78BFA] bg-[#8B5CF6]/10 border-b border-[#8B5CF6]/20"
+                className="px-2 py-1.5 text-center text-[11px] font-semibold text-[#7c3aed] bg-[#7c3aed]/10 border-b border-[#7c3aed]/20"
               >
                 {b.title}
               </th>
@@ -190,7 +190,7 @@ export default function ProfileOverviewTable({
             {columns.map((col) => (
               <th
                 key={col}
-                className="px-3 py-2 text-left text-slate-400 font-semibold whitespace-nowrap"
+                className="px-3 py-2 text-left text-slate-600 font-semibold whitespace-nowrap"
               >
                 {col}
               </th>

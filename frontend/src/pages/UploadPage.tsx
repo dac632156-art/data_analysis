@@ -184,7 +184,7 @@ export default function UploadPage() {
                 <polyline points="14 2 14 8 20 8" />
               </svg>
               <p className="mt-4 text-slate-700 font-medium">拖拽文件到此处 或 点击浏览</p>
-              <p className="mt-1 text-xs text-slate-400">支持 CSV · Excel · JSON · SQLite</p>
+              <p className="mt-1 text-xs text-slate-600">支持 CSV · Excel · JSON · SQLite</p>
             </div>
           </div>
           <input
@@ -208,7 +208,7 @@ export default function UploadPage() {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-900">
             <Database size={18} className="text-violet-500" />已上传报表
-            <span className="text-xs text-slate-400">（{datasets.length}）</span>
+            <span className="text-xs text-slate-600">（{datasets.length}）</span>
           </h2>
           <button
             onClick={handleDeleteAll}
@@ -220,7 +220,7 @@ export default function UploadPage() {
         </div>
 
         {datasets.length === 0 ? (
-          <p className="text-sm text-slate-400 py-6 text-center">暂无报表，请拖拽文件上传。</p>
+          <p className="text-sm text-slate-600 py-6 text-center">暂无报表，请拖拽文件上传。</p>
         ) : (
           <div className="flex flex-col gap-3">
             {datasets.map((ds) => {
@@ -258,7 +258,7 @@ export default function UploadPage() {
                   <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => handleRemove(ds.dataset_id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors"
+                      className="p-1.5 rounded-lg text-slate-600 hover:text-rose-500 hover:bg-rose-50 transition-colors"
                       title="删除该报表"
                     ><Trash2 size={16} /></button>
                   </div>
@@ -318,7 +318,7 @@ export default function UploadPage() {
           </div>
         </div>
       ) : (
-        <p className="text-sm text-slate-400 mt-6 text-center py-6">请选择一张报表以查看预览。</p>
+        <p className="text-sm text-slate-600 mt-6 text-center py-6">请选择一张报表以查看预览。</p>
       )}
 
       {/* 底部操作栏 */}

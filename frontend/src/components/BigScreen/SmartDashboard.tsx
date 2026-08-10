@@ -51,7 +51,7 @@ class ChartErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="w-full h-full flex items-center justify-center text-xs text-slate-400 bg-white/30">
+        <div className="w-full h-full flex items-center justify-center text-xs text-slate-600 bg-white/30">
           <div className="text-center">
             <FiAlertTriangle className="inline mr-1" />
             <span>图表 {this.props.chartType} 渲染降级</span>
@@ -183,7 +183,7 @@ export default function SmartDashboard({ sessionId, mock, mode }: SmartDashboard
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="flex flex-col items-center gap-3 text-slate-300">
+        <div className="flex flex-col items-center gap-3 text-slate-700">
           <div className="w-9 h-9 rounded-full border-2 border-[#8B5CF6] border-t-transparent animate-spin" />
           <span className="text-sm">加载真实已保存图表…</span>
         </div>
@@ -208,7 +208,7 @@ export default function SmartDashboard({ sessionId, mock, mode }: SmartDashboard
 
   if (!remappedData || !layout || layout.assignments.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+      <div className="flex items-center justify-center h-full text-slate-600 text-sm">
         暂无图表可排版。
       </div>
     );
@@ -289,7 +289,7 @@ export default function SmartDashboard({ sessionId, mock, mode }: SmartDashboard
                   }}
                   className="rounded-xl bg-white/35 border border-dashed border-white/50"
                 >
-                  <span className="text-[11px] text-slate-400">— 暂无图表 —</span>
+                  <span className="text-[11px] text-slate-600">— 暂无图表 —</span>
                 </div>
               );
             }

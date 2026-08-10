@@ -17,10 +17,7 @@ DIMENSION_KEYWORDS = [
     '地区', '省份', '省', '城市', '市', '区', '县', '区域',
     '产品类别', '产品名称', '产品', '类目',
     # ★ 2026-07-13 移除「品类」:它是「产品类别」的子串(产品**品类**类),
-    #   会让 select_wordcloud_column 评分时给「产品类别」多加 1 个命中
-    #   (产品+产品类别+品类 = 3)胜过「产品名称」(产品+产品名称 = 2),
-    #   导致问「产品」时系统选错列为「产品类别」而非更精确的「产品名称」。
-    #   「类目」保留:仅在「类目」「产品类目」等独立列名出现,不会与「产品类别」冲突。
+    #   保留「类目」:仅在「类目」「产品类目」等独立列名出现,不会与「产品类别」冲突。
     '渠道', '来源', '终端', '网点', '门店',
     '客户类型', '客户', '用户', '会员等级',
     '部门', '团队', '负责人', '销售',
@@ -241,84 +238,6 @@ class ColumnClassifier:
             if any(kw.lower() in col_lower for kw in kws):
                 result.append(str(col).strip())
         return result
-
-    # --- 词云选列：确定性语义解构（替代「无脑取首列」规则，2026-07-13） ---
-
-    def select_wordcloud_column(self, df: pd.DataFrame, question: str = "") -> Optional[str]:
-        """为词云确定性地选出最适合作词频统计的文本列。
-
-        背景：Planner 历史上对 wordcloud_analysis 模板用 `get_category_columns[0]`
-        这种「无脑取首列」规则，会把订单号/流水号（每行唯一）等低信息量列当作
-        词云维度，导致词云变成 1 个超长词或乱序高频词。改成「确定性语义解构
-        选列」——纯规则、可解释、零成本（不依赖 LLM），与用户已对齐的设计决策一致。
-
-        评分规则：
-          候选 = 非数值 ∧ 非时间（列名+dtype 双重判断） ∧ 非 ID/编码列 ∧ 至少 2 个不同值
-          过滤：nunique ≥ len(df) × 0.95 → 每行几乎都唯一（订单号/流水号场景）
-          评分 = 维度关键词命中数 × 3
-               + 问题实体命中数 × 2
-               + 基数甜区奖励：3 ≤ nunique ≤ 80 → +2；2 ≤ nunique ≤ 200 → +1；其他 0
-          排序：得分降序；并列按基数降序（词越丰富越好）
-        返回：最佳列名（str）或 None（无可用列）。
-        """
-        if df is None or len(df) < 2:
-            return None
-        if df.columns.duplicated().any():
-            df = df.loc[:, ~df.columns.duplicated()]
-
-        n_rows = len(df)
-        q_lower = str(question or "").lower()
-        # 预计算问题中命中的实体集合（用于实体命中奖励）
-        q_entities = set()
-        for ent, kws in SEMANTIC_ENTITIES.items():
-            if any(kw.lower() in q_lower for kw in kws):
-                q_entities.add(ent)
-
-        scored: List[tuple] = []  # (score, nunique, col_name)
-        for col in df.columns:
-            col_lower = str(col).lower().strip()
-            # —— 过滤：ID/编码列 ——
-            if self._is_id_column(col_lower):
-                continue
-            # —— 过滤：纯数值列 ——
-            if pd.api.types.is_numeric_dtype(df[col]):
-                continue
-            # —— 过滤：时间字段（列名含时间关键词或 dtype 是 datetime/period）——
-            if any(kw in col_lower for kw in TIME_KEYWORDS):
-                continue
-            if pd.api.types.is_datetime64_any_dtype(df[col]) or pd.api.types.is_period_dtype(df[col]):
-                continue
-
-            nunique = int(df[col].nunique(dropna=True))
-            if nunique < 2:
-                continue
-            # —— 过滤：每行几乎都唯一（订单号/流水号/UUID 等）——
-            if nunique >= n_rows * 0.95:
-                continue
-
-            # —— 维度关键词命中（产品/类别/地区/渠道/品牌/客户等）——
-            kw_hits = sum(1 for kw in DIMENSION_KEYWORDS if kw in col_lower)
-            # —— 问题实体命中：列名命中的实体也在问题里出现过 ——
-            entity_hits = 0
-            for ent, kws in SEMANTIC_ENTITIES.items():
-                if ent in q_entities and any(kw.lower() in col_lower for kw in kws):
-                    entity_hits += 1
-            # —— 基数甜区奖励 ——
-            if 3 <= nunique <= 80:
-                sweet_bonus = 2
-            elif 2 <= nunique <= 200:
-                sweet_bonus = 1
-            else:
-                sweet_bonus = 0
-
-            score = kw_hits * 3 + entity_hits * 2 + sweet_bonus
-            scored.append((score, nunique, str(col).strip()))
-
-        if not scored:
-            return None
-        # 排序：分数降序 → 基数降序
-        scored.sort(key=lambda x: (-x[0], -x[1]))
-        return scored[0][2]
 
     # --- 私有方法 ---
     @staticmethod

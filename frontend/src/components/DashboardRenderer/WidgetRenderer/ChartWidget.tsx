@@ -118,8 +118,6 @@ export const ChartWidget: React.FC<ChartWidgetProps> = memo(({ widget, onFilter,
     }
 
     const chartType = widget.chart_type || 'bar';
-    // 词云已从后端分析能力移除：任何来源的词云 widget 均不渲染（显示占位）
-    if (chartType === 'wordcloud') return null;
     const axis = buildAxisStyle(theme);
     const base = buildChartBaseConfig(theme, widget.title);
 

@@ -174,8 +174,8 @@ export default function CleanPage() {
     <div className="page-enter space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#f8fafc]"
-            style={{ textShadow: '0 0 15px rgba(139,92,246,0.3)' }}
+          <h1 className="text-2xl font-bold text-slate-800"
+            style={{ textShadow: '0 0 15px rgba(124,58,237,0.3)' }}
           >
             数据清洗
           </h1>
@@ -209,8 +209,8 @@ export default function CleanPage() {
       {hasData ? (
         <>
           {/* AI 智能清洗面板 */}
-          <div className="glass-card p-4 space-y-3" style={{ borderColor: 'rgba(167,139,250,0.3)' }}>
-            <h3 className="text-sm font-semibold text-[#A78BFA] flex items-center gap-2">
+          <div className="glass-card p-4 space-y-3" style={{ borderColor: 'rgba(124,58,237,0.3)' }}>
+            <h3 className="text-sm font-semibold text-[#7c3aed] flex items-center gap-2">
               <FiZap className="w-4 h-4" /> AI 智能清洗
               <span className="text-[10px] text-slate-500 font-normal">— 用自然语言告诉AI你要如何清洗数据</span>
             </h3>
@@ -220,10 +220,10 @@ export default function CleanPage() {
                 onChange={(e) => setAiInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAiClean()}
                 placeholder="例如：把缺失值用均值填充、把日期列转为日期类型、删除利润率大于200%的异常值..."
-                className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[#A78BFA]/50"
+                className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/50 border border-slate-200 text-slate-700 placeholder-slate-600 focus:outline-none focus:border-[#7c3aed]/50"
               />
               <button onClick={handleAiClean} disabled={aiLoading || !aiInput.trim()}
-                className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-[#A78BFA]/20 border border-[#A78BFA]/30 text-[#A78BFA] hover:bg-[#A78BFA]/30 disabled:opacity-50 transition-colors">
+                className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-[#7c3aed]/20 border border-[#7c3aed]/30 text-[#7c3aed] hover:bg-[#7c3aed]/30 disabled:opacity-50 transition-colors">
                 {aiLoading ? <FiLoader className="w-4 h-4 animate-spin" /> : <FiZap className="w-4 h-4" />}
                 {aiLoading ? '分析中...' : '执行'}
               </button>
@@ -231,16 +231,16 @@ export default function CleanPage() {
 
             {/* AI 清洗进度（异步多单元）*/}
             {aiTask && (
-              <div className="p-3 rounded-lg space-y-3" style={{ background: 'rgba(167,139,250,0.059)', border: '1px solid rgba(167,139,250,0.15)' }}>
+              <div className="p-3 rounded-lg space-y-3" style={{ background: 'rgba(124,58,237,0.059)', border: '1px solid rgba(124,58,237,0.15)' }}>
                 {/* 总览条 */}
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-slate-600">
                     已完成 {aiTask.completed} / 共 {aiTask.total} 个处理单元
                   </span>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     aiTask.status === 'done' ? 'bg-emerald-500/15 text-emerald-400'
                     : aiTask.status === 'error' ? 'bg-red-500/15 text-red-400'
-                    : 'bg-[#A78BFA]/15 text-[#A78BFA]'
+                    : 'bg-[#7c3aed]/15 text-[#7c3aed]'
                   }`}>
                     {aiTask.status === 'running' ? '清洗中…' : aiTask.status === 'done' ? '清洗完成' : '清洗出错'}
                   </span>
@@ -249,20 +249,20 @@ export default function CleanPage() {
                 {/* 整体说明（取首个有说明的单元）*/}
                 {(() => {
                   const ex = Object.values(aiTask.datasets).map(d => d.explanation).find(Boolean);
-                  return ex ? <p className="text-sm text-slate-300">{ex}</p> : null;
+                  return ex ? <p className="text-sm text-slate-700">{ex}</p> : null;
                 })()}
 
                 {/* 逐单元卡片 */}
                 <div className="space-y-2">
                   {Object.entries(aiTask.datasets).map(([did, st]) => (
-                    <div key={did} className="p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                    <div key={did} className="p-2.5 rounded-lg bg-white/50 border border-slate-200">
                       <div className="flex items-center gap-2 mb-1.5">
                         <span className={`w-2 h-2 rounded-full ${
                           st.status === 'done' ? 'bg-emerald-400'
                           : st.status === 'error' ? 'bg-red-400'
-                          : 'bg-[#A78BFA] animate-pulse'
+                          : 'bg-[#7c3aed] animate-pulse'
                         }`} />
-                        <span className="text-xs font-medium text-slate-200">
+                        <span className="text-xs font-medium text-slate-700">
                           {st.kind === 'merged' ? '宽表（已合并多表）' : '独立单表'}
                         </span>
                         {st.kind === 'merged' && st.sources && (
@@ -278,7 +278,7 @@ export default function CleanPage() {
                                 {s.success ? '✅' : '❌'}
                               </span>
                               <div>
-                                <span className="text-slate-300">{s.step}</span>
+                                <span className="text-slate-700">{s.step}</span>
                                 {s.reason && <span className="text-slate-500 ml-2">— {s.reason}</span>}
                               </div>
                             </div>
@@ -286,7 +286,7 @@ export default function CleanPage() {
                         </div>
                       )}
                       {typeof st.rows_change === 'number' && st.rows_change !== 0 && (
-                        <p className="text-[11px] text-slate-400 mt-1">
+                        <p className="text-[11px] text-slate-600 mt-1">
                           数据行数：<span className={st.rows_change < 0 ? 'text-red-400' : 'text-green-400'}>{st.rows_change > 0 ? '+' : ''}{st.rows_change}</span>
                         </p>
                       )}
@@ -330,14 +330,14 @@ export default function CleanPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* 列选择 + 缺失值处理 */}
             <div className="glass-card p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                 <FiAlertTriangle className="w-4 h-4 text-yellow-400" /> 缺失值处理
               </h3>
               <div className="flex gap-2">
                 <select
                   value={selectedColumn}
                   onChange={(e) => setSelectedColumn(e.target.value)}
-                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
+                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/50 border border-slate-200 text-slate-700 focus:outline-none focus:border-[#7c3aed]/50"
                 >
                   <option value="">选择列...</option>
                   {columns.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -345,7 +345,7 @@ export default function CleanPage() {
                 <select
                   value={missingMethod}
                   onChange={(e) => setMissingMethod(e.target.value)}
-                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
+                  className="px-3 py-2 text-sm rounded-lg bg-white/50 border border-slate-200 text-slate-700 focus:outline-none focus:border-[#7c3aed]/50"
                 >
                   <option value="fill_mean">均值填充（仅数值）</option>
                   <option value="fill_median">中位数填充（仅数值）</option>
@@ -355,7 +355,7 @@ export default function CleanPage() {
                   <option value="drop">删除含缺失值的行</option>
                   <option value="drop_column">删除该列</option>
                 </select>
-                <button onClick={handleMissing} className="px-4 py-2 text-sm rounded-lg bg-[#8B5CF6]/80 text-white hover:bg-[#8B5CF6] transition-colors">
+                <button onClick={handleMissing} className="px-4 py-2 text-sm rounded-lg bg-[#7c3aed]/80 text-white hover:bg-[#7c3aed] transition-colors">
                   应用
                 </button>
               </div>
@@ -363,7 +363,7 @@ export default function CleanPage() {
 
             {/* 异常值处理 */}
             <div className="glass-card p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                 <FiTrash2 className="w-4 h-4 text-red-400" /> 异常值处理
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed">
@@ -375,7 +375,7 @@ export default function CleanPage() {
                 <select
                   value={selectedColumn}
                   onChange={(e) => setSelectedColumn(e.target.value)}
-                  className="flex-1 min-w-[100px] px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
+                  className="flex-1 min-w-[100px] px-3 py-2 text-sm rounded-lg bg-white/50 border border-slate-200 text-slate-700 focus:outline-none focus:border-[#7c3aed]/50"
                 >
                   <option value="">选择列...</option>
                   {columns.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -383,7 +383,7 @@ export default function CleanPage() {
                 <select
                   value={outlierMethod}
                   onChange={(e) => setOutlierMethod(e.target.value)}
-                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
+                  className="px-3 py-2 text-sm rounded-lg bg-white/50 border border-slate-200 text-slate-700 focus:outline-none focus:border-[#7c3aed]/50"
                 >
                   <option value="iqr">常规检测（推荐）</option>
                   <option value="zscore">严格检测</option>
@@ -391,7 +391,7 @@ export default function CleanPage() {
                 <select
                   value={outlierAction}
                   onChange={(e) => setOutlierAction(e.target.value)}
-                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
+                  className="px-3 py-2 text-sm rounded-lg bg-white/50 border border-slate-200 text-slate-700 focus:outline-none focus:border-[#7c3aed]/50"
                 >
                   <option value="remove">直接删除</option>
                   <option value="cap">拉回边界</option>
@@ -404,21 +404,21 @@ export default function CleanPage() {
 
             {/* 类型转换 */}
             <div className="glass-card p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                 <FiRefreshCw className="w-4 h-4 text-blue-400" /> 数据类型转换
               </h3>
               <div className="flex gap-2">
                 <select
                   value={selectedColumn}
                   onChange={(e) => setSelectedColumn(e.target.value)}
-                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
+                  className="flex-1 px-3 py-2 text-sm rounded-lg bg-white/50 border border-slate-200 text-slate-700 focus:outline-none focus:border-[#7c3aed]/50"
                 >
                   <option value="">选择列...</option>
                   {columns.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
                 <select
                   onChange={(e) => e.target.value && handleConvertType(e.target.value)}
-                  className="px-3 py-2 text-sm rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 focus:outline-none focus:border-[#8B5CF6]/50"
+                  className="px-3 py-2 text-sm rounded-lg bg-white/50 border border-slate-200 text-slate-700 focus:outline-none focus:border-[#7c3aed]/50"
                 >
                   <option value="">转换到...</option>
                   <option value="datetime">日期时间</option>
@@ -431,7 +431,7 @@ export default function CleanPage() {
 
             {/* 恢复原始数据 */}
             <div className="glass-card p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                 <FiRotateCcw className="w-4 h-4 text-emerald-400" /> 数据恢复
               </h3>
               <p className="text-xs text-slate-500">撤销所有清洗操作，恢复到上传时的原始数据</p>
@@ -444,8 +444,8 @@ export default function CleanPage() {
           {/* 数据预览 — notranslate 防止翻译插件篡改表格 DOM */}
           <div translate="no" className="notranslate">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold text-[#f8fafc]">数据预览</h2>
-              <button onClick={refreshAllData} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-900 transition-colors">
+              <h2 className="text-lg font-semibold text-slate-800">数据预览</h2>
+              <button onClick={refreshAllData} className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900 transition-colors">
                 <FiRefreshCw className="w-3 h-3" /> 刷新
               </button>
             </div>

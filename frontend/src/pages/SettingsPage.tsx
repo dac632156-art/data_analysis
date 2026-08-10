@@ -65,7 +65,7 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        <p className="text-xs text-slate-400 flex items-center gap-1.5">
+        <p className="text-xs text-slate-600 flex items-center gap-1.5">
           <FiDatabase className="w-3.5 h-3.5" />
           释放会话后需重新上传数据；AI 配置（API Key 等）会保留在本地。
         </p>

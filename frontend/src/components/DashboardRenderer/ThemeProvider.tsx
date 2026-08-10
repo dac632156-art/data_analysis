@@ -1,32 +1,20 @@
 import React, { createContext, useContext, useMemo, useEffect } from 'react';
 import type { DashboardTheme, DashboardThemeName } from '../../types/dashboard';
-import { galaxyExecutiveTheme, Palette, withAlpha } from '../../theme';
 
 /**
- * ThemeEngine —— 统一主题引擎
+ * ThemeEngine —— 统一主题引擎（内联浅色玻璃/仙气紫，原 theme/ 模块已删除）
  *
- * 4 种专业主题：
- * - Professional Light：白色背景，蓝色强调
- * - Professional Dark：深色背景，紫色强调
- * - Business Blue：深蓝背景，天蓝强调
- * - Corporate Gray：深灰背景，灰色强调
- *
- * 统一控制：
- * - CSS 变量注入（:root）
- * - 字体
- * - 颜色
- * - 边框 / 阴影 / 圆角
- * - 卡片样式
- * - 动画时长
+ * 4 种主题名（light/dark/blue/gray）统一映射到同一套浅色仙气观感，
+ * 保证 Dashboard / Report / Insight / Chart 视觉一致。
  */
 
-// ★ Galaxy Executive Dashboard —— 整个项目唯一的 Theme 来源（theme/ 模块）。
-//   所有主题名（light/dark/blue/gray）统一映射到 Galaxy Executive，
-//   保证 Dashboard / Report / Insight / Chart 视觉完全一致。
-//   未来新增 Light / Finance / Operations 主题：在 theme/ 的 themes 注册表扩展，
-//   再在此构建一个对应的 DashboardTheme 即可，任何图表代码无需改动。
+// ★ 10 色有序分类数据色板（与后端 echart_generator.py 的 BLUE_PALETTE 顺序取值完全一致）
+const SERIES = [
+  '#38BDF8', '#818CF8', '#22D3EE', '#FBBF24', '#F472B6',
+  '#FB923C', '#84CC16', '#C084FC', '#60A5FA', '#2DD4BF',
+];
+
 function buildGalaxyDashboardTheme(): DashboardTheme {
-  const t = galaxyExecutiveTheme;
   return {
     name: 'dark',
     background: 'bg-[var(--db-bg)]',
@@ -34,10 +22,10 @@ function buildGalaxyDashboardTheme(): DashboardTheme {
     cardBorder: 'border-[var(--db-card-border)]',
     text: 'text-[var(--db-text)]',
     textSecondary: 'text-[var(--db-text-secondary)]',
-    accent: t.palette.primary,
-    chartColors: [...t.chart.series],
+    accent: '#38BDF8',
+    chartColors: [...SERIES],
     kpiGradient: 'from-[var(--db-accent)] to-[var(--db-accent-light)]',
-    shadow: t.shadow.card,
+    shadow: '0 2px 12px rgba(0,0,0,0.25)',
     cssVars: {
       // ★ 浅色玻璃主题：背景透明让白鹤透出，卡片/边框白色玻璃，文字深色可读
       '--db-bg': 'transparent',
@@ -45,17 +33,34 @@ function buildGalaxyDashboardTheme(): DashboardTheme {
       '--db-card-border': 'rgba(255,255,255,0.55)',
       '--db-text': '#0f172a',
       '--db-text-secondary': '#475569',
-      '--db-accent': Palette.ai,
-      '--db-accent-light': withAlpha(Palette.ai, 0.20),
+      '--db-accent': '#7c3aed',
+      '--db-accent-light': 'rgba(124,58,237,0.20)',
       '--db-shadow': '0 8px 32px rgba(99,102,241,0.10)',
-      '--db-glow': '0 0 24px rgba(139,92,246,0.18)',
+      '--db-glow': '0 0 24px rgba(124,58,237,0.18)',
     },
-    fontFamily: t.typography.fontFamily,
-    borderRadius: t.border.radius.md,
+    fontFamily: "'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif",
+    borderRadius: '12px',
     cardPadding: '16px',
-    animationDuration: t.animation.duration.base,
-    chart: t.chart,
-    palette: t.palette,
+    animationDuration: 400,
+    chart: {
+      series: [...SERIES],
+      grid: 'rgba(148,163,184,0.35)',
+      axis: 'rgba(100,116,139,0.55)',
+      legend: '#94A3B8',
+      emphasisGlow: 'rgba(124,58,237,0.55)',
+      tooltip: { background: '#0F172A', border: 'rgba(255,255,255,0.08)', content: '#CBD5E1' },
+      radar: { axis: 'rgba(100,116,139,0.15)', split: 'rgba(100,116,139,0.08)', area: 'rgba(56,189,248,0.15)' },
+    },
+    palette: {
+      primary: '#38BDF8',
+      primaryHover: '#7DD3FC',
+      textPrimary: '#0f172a',
+      textMuted: '#94A3B8',
+      pageBg: '#ffffff',
+      success: '#34D399',
+      danger: '#FB7185',
+      border: 'rgba(148,163,184,0.25)',
+    },
   };
 }
 

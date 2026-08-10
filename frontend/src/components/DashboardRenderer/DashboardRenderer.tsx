@@ -329,10 +329,10 @@ const DashboardContent: React.FC<{
       {Object.entries(binder.state.globalFilterValues).filter(([, v]) => v).length > 0 && (
         <div className="flex items-center justify-center gap-3 px-4 py-2 flex-wrap"
           style={{ background: 'rgba(139,92,246,0.10)', borderBottom: '1px solid rgba(139,92,246,0.15)' }}>
-          <span className="text-xs text-[#A78BFA]">🔍 筛选高亮：</span>
+          <span className="text-xs text-[#7c3aed]">🔍 筛选高亮：</span>
           {Object.entries(binder.state.globalFilterValues).filter(([, v]) => v).map(([field, value]) => (
             <span key={field} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded
-              bg-[#8B5CF6]/15 text-[#C4B5FD] border border-[#8B5CF6]/30">
+              bg-[#7c3aed]/15 text-[#a78bfa] border border-[#7c3aed]/30">
               <strong className="text-white">{value}</strong>
               <button onClick={() => binder.clearGlobalFilter(field)}
                 className="text-[#C4B5FD] hover:text-white">✕</button>
@@ -378,19 +378,19 @@ const GlobalFilterBar: React.FC<{
         const scopeBadge = f.scope === 'global' ? '🌐' : f.scope === 'section' ? '📦' : '📌';
         return (
           <div key={f.id} className="flex items-center gap-2 animate-db-scale-in">
-            <label className="text-xs text-slate-400">
+            <label className="text-xs text-slate-600">
               {scopeBadge} {f.name}
             </label>
             {f.widget_type === 'date_range' ? (
               <input
                 type="date"
-                className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-slate-300
+                className="bg-white/50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700
                   focus:outline-none focus:border-indigo-500/50 db-transition"
                 onChange={e => onChange(f.field, e.target.value)}
               />
             ) : (
               <select
-                className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-slate-300
+                className="bg-white/50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700
                   focus:outline-none focus:border-indigo-500/50 db-transition cursor-pointer"
                 onChange={e => onChange(f.field, e.target.value)}
                 defaultValue=""
@@ -416,19 +416,19 @@ GlobalFilterBar.displayName = 'GlobalFilterBar';
 
 const DashboardSkeleton: React.FC = () => (
   <div className="w-full max-w-[1600px] mx-auto px-6 py-8 space-y-6 animate-pulse">
-    <div className="h-8 w-48 bg-white/[0.04] rounded" />
+    <div className="h-8 w-48 bg-slate-100 rounded" />
     <div className="grid grid-cols-4 gap-4">
       {[1, 2, 3, 4].map(i => (
-        <div key={i} className="h-24 bg-white/[0.03] rounded-xl border border-white/[0.04]" />
+        <div key={i} className="h-24 bg-slate-100 rounded-xl border border-slate-200" />
       ))}
     </div>
     <div className="grid grid-cols-3 gap-4">
-      <div className="col-span-2 h-64 bg-white/[0.03] rounded-xl border border-white/[0.04]" />
-      <div className="h-64 bg-white/[0.03] rounded-xl border border-white/[0.04]" />
+      <div className="col-span-2 h-64 bg-slate-100 rounded-xl border border-slate-200" />
+      <div className="h-64 bg-slate-100 rounded-xl border border-slate-200" />
     </div>
     <div className="grid grid-cols-3 gap-4">
       {[1, 2, 3].map(i => (
-        <div key={i} className="h-48 bg-white/[0.03] rounded-xl border border-white/[0.04]" />
+        <div key={i} className="h-48 bg-slate-100 rounded-xl border border-slate-200" />
       ))}
     </div>
   </div>

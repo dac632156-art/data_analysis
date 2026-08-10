@@ -244,10 +244,10 @@ export interface DashboardTheme {
   cardPadding: string;
   /** 动画时长（ms） */
   animationDuration: number;
-  /** 图表专用配色（来自 Theme Engine / theme/ChartStyle） */
-  chart: import('../theme/ChartStyle').ChartStyleToken;
-  /** 基础色板（来自 Theme Engine / theme/Palette） */
-  palette: import('../theme/Palette').PaletteToken;
+  /** 图表专用配色（浅色主题内联，已解耦 theme/） */
+  chart: Record<string, unknown>;
+  /** 基础色板（浅色主题内联，已解耦 theme/） */
+  palette: Record<string, unknown>;
 }
 
 // ============================================================

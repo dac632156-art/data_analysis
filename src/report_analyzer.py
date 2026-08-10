@@ -365,7 +365,7 @@ def plan_charts(fields: Dict[str, Any]) -> List[Dict[str, Any]]:
         "radar": 5, "sunburst": 6, "scatter": 7, "histogram": 8,
         "line": 9, "area": 10, "stacked_bar": 11, "map_3d": 12,
         "heatmap": 13, "bubble": 14, "box": 15, "waterfall": 16,
-        "wordcloud": 17, "funnel": 18,
+        "funnel": 18,
     }
 
     # 去重：同 (analysis_type, dimension, metric) 只保留优先级最高的

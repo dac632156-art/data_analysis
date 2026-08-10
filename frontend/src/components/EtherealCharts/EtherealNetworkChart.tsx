@@ -4,7 +4,6 @@ import { CustomChart } from 'echarts/charts';
 import { TooltipComponent, TitleComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import type { EChartsCoreOption } from 'echarts/core';
-import { Palette } from '../../theme/Palette';
 import 背景 from '../../assets/ethereal/背景.png';
 
 echarts.use([CustomChart, TooltipComponent, TitleComponent, CanvasRenderer]);
@@ -16,19 +15,19 @@ interface Props {
   title?: string;
 }
 
-// 动态调色板：复用 VDS 10 色有序分类色板（SSOT = Palette.ts），不再写死类目→颜色。
+// 动态调色板：复用 VDS 10 色有序分类色板（值内联，原 Palette.ts 已删除），不再写死类目→颜色。
 // 类目按实际出现顺序去重后循环取色，保证任何类目都能上色，不会落灰/变白。
 const CATEGORY_PALETTE: string[] = [
-  Palette.primary, // 星光蓝（数据主色，打头）
-  Palette.catIndigo, // 靛蓝
-  Palette.catSkyBlue, // 天空蓝
-  Palette.catLake, // 湖水绿
-  Palette.catGold, // 金色
-  Palette.catRose, // 玫瑰粉
-  Palette.catCoral, // 珊瑚橙
-  Palette.catLime, // 青柠绿
-  Palette.catLightPurple, // 淡紫
-  Palette.interaction, // 极光青（交互冷色收尾）
+  '#38BDF8', // 星光蓝（数据主色，打头）
+  '#818CF8', // 靛蓝
+  '#60A5FA', // 天空蓝
+  '#2DD4BF', // 湖水绿
+  '#FBBF24', // 金色
+  '#F472B6', // 玫瑰粉
+  '#FB923C', // 珊瑚橙
+  '#84CC16', // 青柠绿
+  '#C084FC', // 淡紫
+  '#22D3EE', // 极光青（交互冷色收尾）
 ];
 
 /** 根据「实际出现的类目列表」动态生成 类目→颜色 映射（循环取色板） */
@@ -177,7 +176,7 @@ export const EtherealNetworkChart: React.FC<Props> = ({ chartNode, title: titleP
           displayName: stripId(name),
           value: Number(n.value || 0),
           category: cat,
-          color: catColorMap.get(cat) || Palette.textMuted,
+          color: catColorMap.get(cat) || '#94A3B8',
         };
       })
       .sort((a, b) => {
@@ -440,7 +439,7 @@ export const EtherealNetworkChart: React.FC<Props> = ({ chartNode, title: titleP
       .map(
         (cat) =>
           `<span style="display:inline-flex;align-items:center;gap:4px;">
-            <span style="width:8px;height:8px;border-radius:50%;background:${catColorMap.get(cat) || Palette.textMuted};display:inline-block;"></span>
+            <span style="width:8px;height:8px;border-radius:50%;background:${catColorMap.get(cat) || '#94A3B8'};display:inline-block;"></span>
             ${cat}
           </span>`,
       )

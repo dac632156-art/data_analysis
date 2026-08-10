@@ -1,9 +1,5 @@
-/* MetricCard - 指标卡片（KPI 脉冲发光）
-   ★ 颜色统一来自 theme/（Galaxy Executive Dashboard） */
+/* MetricCard - 指标卡片（KPI 脉冲发光） */
 import React from 'react';
-import { theme } from '../theme';
-
-const P = theme.palette;
 
 interface Props {
   title: string;
@@ -22,7 +18,7 @@ const iconMap: Record<string, string> = {
   'target': '🎯',
 };
 
-export default function MetricCard({ title, value, icon, color = P.primary, className }: Props) {
+export default function MetricCard({ title, value, icon, color = '#38BDF8', className }: Props) {
   const emoji = icon ? (iconMap[icon] || '📊') : '📊';
 
   return (

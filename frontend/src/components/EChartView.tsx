@@ -13,8 +13,6 @@ import {
   GeoComponent,  // ★ 2D 地图组件
 } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
-// ★ Theme Engine（Single Source of Truth for colors）
-import { theme as GALAXY_THEME } from '../theme';
 // ★ echarts-gl 3D 扩展
 import 'echarts-gl';
 
@@ -34,9 +32,9 @@ echarts.use([
 const CHINA_GEO_LOCAL = '/china.json';
 const CHINA_GEO_URL = 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json';
 
-// ★ 统一强调色（来自 theme/ Theme Engine，禁止写死）
-const EMPHASIS_GLOW = GALAXY_THEME.chart.emphasisGlow; // 银河紫辉光（图表 hover 强调）
-const EMPHASIS_BORDER = '#A78BFA'; // 银河紫（极光青边框改为紫色强调）
+// ★ 统一强调色（仙气紫，原 theme/ 银河紫辉光已内联）
+const EMPHASIS_GLOW = 'rgba(124,58,237,0.55)'; // 仙气紫辉光（图表 hover 强调）
+const EMPHASIS_BORDER = '#7c3aed'; // 仙气紫（边框强调）
 // 地图是否已注册
 let chinaMapRegistered = false;
 let chinaMapLoading: Promise<void> | null = null;
@@ -589,9 +587,6 @@ export default function EChartView({
   // ★ 计算增强后的 option（联动样式 + 高亮/淡化）
   const enhancedOption = useMemo(() => {
     if (!option) return null;
-    // 词云已从后端分析能力移除：任何来源的词云 option 均不渲染
-    const seriesArr = (option.series as Array<Record<string, unknown>>) || [];
-    if (seriesArr.some((s) => String(s.type) === 'wordCloud')) return null;
     const base = enhanceOptionForInteraction(option);
     // 防御：规整 visualMap.text 为 2 元素数组，规避 ECharts endsText.slice(...).reverse 报错
     // （覆盖任何来源：后端生成 / 旧看板包 / 缺 text 或 text 为字符串的情况）
@@ -901,7 +896,7 @@ export default function EChartView({
   if (!option) {
     return (
       <div className="glass-card p-4">
-        {title && !hideTitle && <h3 className="text-sm font-medium text-slate-300 mb-3">{title}</h3>}
+        {title && !hideTitle && <h3 className="text-sm font-medium text-slate-700 mb-3">{title}</h3>}
         <div style={{ height }} className="w-full flex items-center justify-center text-slate-500">
           暂无图表数据
         </div>
@@ -913,7 +908,7 @@ export default function EChartView({
 
   return (
     <div className="glass-card p-4" data-echart-wrapper style={{ overflow: 'hidden' }}>
-      {displayTitle && <h3 className="text-sm font-medium text-slate-300 mb-3">{displayTitle}</h3>}
+      {displayTitle && <h3 className="text-sm font-medium text-slate-700 mb-3">{displayTitle}</h3>}
       <div ref={domRef} style={{ height: `${height}px`, width: '100%', minWidth: 0 }} />
     </div>
   );

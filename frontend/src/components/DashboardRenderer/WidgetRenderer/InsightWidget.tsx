@@ -26,8 +26,8 @@ export const InsightWidget: React.FC<InsightWidgetProps> = memo(({ widget }) => 
   const score = widget.importance_score;
   const icon =
     score >= 80 ? <FiAlertTriangle className="w-4 h-4 text-amber-400" /> :
-    score >= 60 ? <FiZap className="w-4 h-4 text-[#8B5CF6]" /> :
-    <FiInfo className="w-4 h-4 text-slate-400" />;
+    score >= 60 ? <FiZap className="w-4 h-4 text-[#7c3aed]" /> :
+    <FiInfo className="w-4 h-4 text-slate-600" />;
 
   return (
     <div ref={animRef}

@@ -81,7 +81,7 @@ export default function TbHbTable({ data, valueColumn, currentYear, previousYear
       {/* 标题行 */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-slate-300">
+          <h3 className="text-sm font-semibold text-slate-700">
             📋 {valueColumn} · 同环比分析
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -96,30 +96,30 @@ export default function TbHbTable({ data, valueColumn, currentYear, previousYear
 
       {/* 表格 */}
       <div
-        className="overflow-y-auto rounded-lg border border-white/[0.08]"
-        style={{ maxHeight, scrollbarWidth: 'thin', scrollbarColor: 'rgba(139,92,246,0.3) transparent' }}
+        className="overflow-y-auto rounded-lg border border-slate-200"
+        style={{ maxHeight, scrollbarWidth: 'thin', scrollbarColor: 'rgba(124,58,237,0.3) transparent' }}
       >
-        <table className="w-full text-xs text-slate-300">
+        <table className="w-full text-xs text-slate-700">
           {/* 表头 */}
           <thead className="sticky top-0 z-10">
-            <tr className="bg-[#1a1a2e]">
-              <th className="py-2.5 px-3 text-left font-semibold text-slate-400 border-b border-white/[0.08]">
+            <tr className="bg-slate-100">
+              <th className="py-2.5 px-3 text-left font-semibold text-slate-600 border-b border-slate-200">
                 月份
               </th>
               {hasYoY && (
-                <th className="py-2.5 px-3 text-right font-semibold text-slate-400 border-b border-white/[0.08]">
+                <th className="py-2.5 px-3 text-right font-semibold text-slate-600 border-b border-slate-200">
                   {previousYear}年
                 </th>
               )}
-              <th className="py-2.5 px-3 text-right font-semibold text-[#f8fafc] border-b border-white/[0.08]">
+              <th className="py-2.5 px-3 text-right font-semibold text-slate-800 border-b border-slate-200">
                 {currentYear}年
               </th>
               {hasYoY && (
-                <th className="py-2.5 px-3 text-right font-semibold text-slate-400 border-b border-white/[0.08]">
+                <th className="py-2.5 px-3 text-right font-semibold text-slate-600 border-b border-slate-200">
                   同比增长率
                 </th>
               )}
-              <th className="py-2.5 px-3 text-right font-semibold text-slate-400 border-b border-white/[0.08]">
+              <th className="py-2.5 px-3 text-right font-semibold text-slate-600 border-b border-slate-200">
                 环比增长率
               </th>
             </tr>
@@ -136,24 +136,24 @@ export default function TbHbTable({ data, valueColumn, currentYear, previousYear
               return (
                 <tr
                   key={row.period}
-                  className={`border-b border-white/[0.04] transition-colors ${
-                    isEven ? 'bg-white/[0.02]' : 'bg-transparent'
-                  } hover:bg-white/[0.05]`}
+                  className={`border-b border-slate-200 transition-colors ${
+                    isEven ? 'bg-slate-50' : 'bg-transparent'
+                  } hover:bg-slate-100`}
                 >
                   {/* 月份 */}
-                  <td className="py-2.5 px-3 text-slate-300 font-medium whitespace-nowrap">
+                  <td className="py-2.5 px-3 text-slate-700 font-medium whitespace-nowrap">
                     {monthLabel}
                   </td>
 
                   {/* 上年值 */}
                   {hasYoY && (
-                    <td className="py-2.5 px-3 text-right text-slate-400 font-mono tabular-nums whitespace-nowrap">
+                    <td className="py-2.5 px-3 text-right text-slate-600 font-mono tabular-nums whitespace-nowrap">
                       {formatValue(row['上年值'])}
                     </td>
                   )}
 
                   {/* 本年值 */}
-                  <td className={`py-2.5 px-3 text-right font-semibold font-mono tabular-nums whitespace-nowrap ${hasYoY ? 'text-[#f8fafc]' : 'text-[#f8fafc]'}`}>
+                  <td className={`py-2.5 px-3 text-right font-semibold font-mono tabular-nums whitespace-nowrap ${hasYoY ? 'text-slate-800' : 'text-slate-800'}`}>
                     {formatValue(row['本年值'])}
                   </td>
 

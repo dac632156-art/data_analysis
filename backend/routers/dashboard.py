@@ -68,7 +68,7 @@ _CHART_TAB_MAP: dict = {
     "bar": "分类分析", "horizontal_bar": "分类分析", "stacked_bar": "分类分析",
     "grouped_bar": "分类分析", "pie": "分类分析", "treemap": "分类分析",
     "radar": "分类分析", "sankey": "分类分析", "funnel": "分类分析",
-    "map": "分类分析", "map_3d": "分类分析", "wordcloud": "分类分析",
+    "map": "分类分析", "map_3d": "分类分析",
     "sunburst": "分类分析", "waterfall": "分类分析", "box": "分类分析",
     "polar": "分类分析", "parallel": "分类分析",
     "table": "明细查询", "gauge": "数据总览",
@@ -374,20 +374,6 @@ async def api_dashboard_echarts(req: DashboardChartRequest):
             #   不再因 x 为空而误杀同期群图（旧逻辑在取 existing_option 之前就 continue）。
             if not existing_option and not x and not no_x_ok:
                 continue
-
-            # ★ 词云专项（2026-07-13 修复「看板词云全黑」）：已保存包里的词云 option
-            #   可能由旧版代码生成，携带损坏/失效的 textStyle.color ——
-            #   旧版 function(word, params){ word.charCodeAt } 会在 echarts 以 function(params)
-            #   调用时抛错；或旧版 array 形式 color 不被 echarts-wordcloud 2.1.0 支持 → 整图黑/空白。
-            #   词云仅是频率云、无用户定制需保留，故始终用当前 create_wordcloud 重算，
-            #   保证下发给前端的 color 一定是合法 function 字符串（前端再水合为真实 function）。
-            if chart_type == 'wordcloud':
-                try:
-                    regen = create_echart(df, 'wordcloud', x=x, title=title_str)
-                    if regen:
-                        existing_option = regen
-                except Exception as e:
-                    logger.warning(f"词云重算失败，沿用已保存 option: {e}")
 
             # ★ RFM 双轴图专项（2026-08-03 修复「Avg.Profit Margin 离谱」）：
             #   已保存包里的 rfm_dual option 是旧版代码生成的（左轴错填人数、
@@ -826,7 +812,8 @@ async def api_dashboard_schema(req: DashboardSchemaRequest):
 
 
 def _build_schema_sync(packages, title, layout_name, df=None):
-    from src.dashboard import WidgetGenerator, LayoutEngine
+    from src.dashboard.widget_generator import WidgetGenerator
+    from src.dashboard.layout_engine import LayoutEngine
     from src.dashboard.interaction_engine import generate_interactions
     gen = WidgetGenerator()
     widgets = gen.generate_from_dicts(packages)
