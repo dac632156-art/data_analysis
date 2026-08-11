@@ -215,14 +215,15 @@ function dataReducer(state: DataState, action: Action): DataState {
     case 'SET_DATASETS': {
       // 刷新拉回：替换列表。优先用后端标记的 is_active 挑 active；
       // 若本地已知 activeDatasetId 且它仍在列表里，则以本地为准（兼容多 sheet 切换场景）。
+      const list = Array.isArray(action.datasets) ? action.datasets : [];
       const localActive = state.activeDatasetId
-        ? action.datasets.find(d => d.dataset_id === state.activeDatasetId)
+        ? list.find(d => d.dataset_id === state.activeDatasetId)
         : undefined;
-      const ds = localActive || action.datasets.find(d => d.is_active) || undefined;
+      const ds = localActive || list.find(d => d.is_active) || undefined;
       const activeDatasetId = ds ? ds.dataset_id : state.activeDatasetId;
       return {
         ...state,
-        datasets: action.datasets,
+        datasets: list,
         activeDatasetId,
         ...replayToTop(state, ds),
       };
