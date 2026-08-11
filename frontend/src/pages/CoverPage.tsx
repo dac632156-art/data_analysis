@@ -1,7 +1,7 @@
 /* CoverPage - 应用封面（浅色科技 landing + 机器人抽帧图 + 鼠标水平驱动）
  * 用 robot_frames 下 160 张抽帧图渲染，鼠标水平位置 → 当前帧。
  * 纯鼠标驱动：鼠标不动则停在首帧，不会自动播放。
- * 性能优化：用 ref 直接改 DOM 的 img.src，不走 React 重渲染，跟手更及时。
+ * 按需加载：只加载当前帧，不预加载全部 160 张，避免 70MB 首屏负担。
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,55 +12,60 @@ const FRAME_PATH = (i: number) => `/robot_frames/frame_${String(i).padStart(4, '
 
 export default function CoverPage() {
   const navigate = useNavigate();
-  const [ready, setReady] = useState(false); // 全部帧预加载完成
-  const imgRef = useRef<HTMLImageElement>(null); // 直接改 DOM src，绕开 React 重渲染
-  const currentIdxRef = useRef(1); // 上一次帧号，用于去重
-  const readyRef = useRef(false);
-  const lastMoveRef = useRef(0);   // 鼠标移动节流时间戳
+  const [ready, setReady] = useState(false); // 首帧是否已加载
+  const imgRef = useRef<HTMLImageElement>(null);
+  const currentIdxRef = useRef(1);
+  const cacheRef = useRef<Record<number, HTMLImageElement>>({});
+  const rafRef = useRef<number | null>(null);
+  const pendingIdxRef = useRef(1);
 
-  // 预加载 160 张帧图，加载完成再显示，避免首帧闪烁
-  useEffect(() => {
-    let cancelled = false;
-    let loaded = 0;
-    for (let i = 1; i <= TOTAL_FRAMES; i++) {
-      const img = new Image();
-      img.src = FRAME_PATH(i);
-      img.onload = () => {
-        loaded += 1;
-        if (loaded === TOTAL_FRAMES && !cancelled) setReady(true);
-      };
+  // 加载单帧：命中缓存则直接用缓存，否则创建 Image 加载并在 onload 后切换
+  const loadFrame = (idx: number) => {
+    if (cacheRef.current[idx]) {
+      if (imgRef.current) imgRef.current.src = cacheRef.current[idx].src;
+      return;
     }
-    return () => {
-      cancelled = true;
+    const img = new Image();
+    img.src = FRAME_PATH(idx);
+    img.onload = () => {
+      cacheRef.current[idx] = img;
+      if (idx === pendingIdxRef.current && imgRef.current) {
+        imgRef.current.src = img.src;
+      }
+      if (idx === 1) setReady(true);
     };
-  }, []);
+    img.onerror = () => {
+      if (idx === 1) setReady(true); // 首帧失败也显示，避免白屏
+    };
+  };
 
-  // ready 状态变为 true 时，同步给 readyRef（直接改 DOM 用的是 ref，不走 React 重渲染）
+  // 首帧加载
   useEffect(() => {
-    readyRef.current = ready;
-  }, [ready]);
+    loadFrame(1);
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
-      const now = performance.now();
-      if (now - lastMoveRef.current < 10) return; // 节流到 ~100fps，跟手更紧（改用 ref 直写后单次切换极轻）
-      lastMoveRef.current = now;
-      if (!readyRef.current) return; // 未预加载完不切换，保持首帧
-      const ratio = Math.max(0, Math.min(1, e.clientX / window.innerWidth));
-      const idx = Math.max(
-        1,
-        Math.min(TOTAL_FRAMES, Math.round(ratio * SENSITIVITY * TOTAL_FRAMES)),
-      );
-      if (idx !== currentIdxRef.current) {
-        currentIdxRef.current = idx;
-        // 直接写 DOM，绕开 React setState → 重渲染链路，换图最快最跟手
-        if (imgRef.current) imgRef.current.src = FRAME_PATH(idx);
-      }
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const ratio = Math.max(0, Math.min(1, e.clientX / window.innerWidth));
+        const idx = Math.max(
+          1,
+          Math.min(TOTAL_FRAMES, Math.round(ratio * SENSITIVITY * TOTAL_FRAMES)),
+        );
+        if (idx !== currentIdxRef.current) {
+          currentIdxRef.current = idx;
+          pendingIdxRef.current = idx;
+          loadFrame(idx);
+        }
+      });
     };
 
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
 
