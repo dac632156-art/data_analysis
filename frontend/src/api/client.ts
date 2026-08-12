@@ -13,7 +13,12 @@ import type { ChartConfig } from '../types';
 import type { SmartLayoutResponse } from './../types/dashboard';
 
 // 部署时通过环境变量指定后端地址，本地开发走 Vite proxy
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+let API_BASE = import.meta.env.VITE_API_BASE || '/api';
+// 兼容只写根域名的情况：统一追加 /api，避免上传接口 405
+API_BASE = API_BASE.replace(/\/$/, '');
+if (!API_BASE.endsWith('/api')) {
+  API_BASE += '/api';
+}
 
 const api = axios.create({
   baseURL: API_BASE,

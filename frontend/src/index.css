@@ -68,7 +68,7 @@ select option {
   pointer-events: none;
   overflow: hidden;
   background:
-    url('/bg.png') center / cover no-repeat,
+    url('/bg.jpg') center / cover no-repeat,
     radial-gradient(38% 46% at 14% 18%, rgba(129, 140, 248, 0.30), transparent 70%),
     radial-gradient(42% 42% at 86% 12%, rgba(244, 114, 182, 0.26), transparent 70%),
     radial-gradient(48% 48% at 78% 86%, rgba(96, 165, 250, 0.24), transparent 70%),
