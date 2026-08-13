@@ -30,6 +30,20 @@ def _ensure_dir() -> None:
         os.makedirs(parent, exist_ok=True)
 
 
+def _add_user_columns(conn: sqlite3.Connection) -> None:
+    """幂等为三张表补充 user_id 列（兼容升级前的旧库）。
+
+    必须在已持有 conn 时调用（不走 get_connection，避免与 _run_schema 相互递归）。
+    """
+    for table in ("sessions", "datasets", "analysis_packages"):
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN user_id TEXT")
+            conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_user ON {table}(user_id)")
+        except sqlite3.OperationalError:
+            # 列已存在则忽略
+            conn.rollback()
+
+
 def _run_schema(conn: sqlite3.Connection) -> None:
     """执行 schema.sql 建表（幂等）。"""
     schema_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
@@ -38,6 +52,8 @@ def _run_schema(conn: sqlite3.Connection) -> None:
     with open(schema_path, "r", encoding="utf-8") as f:
         conn.executescript(f.read())
     conn.commit()
+    # 幂等为三表补充 user_id 列（兼容升级前的旧库），使用同一 conn 避免递归
+    _add_user_columns(conn)
 
 
 def get_connection() -> sqlite3.Connection:

@@ -2,7 +2,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  FiGrid, FiUpload, FiCpu, FiBarChart2, FiFileText, FiSettings,
+  FiGrid, FiUpload, FiCpu, FiBarChart2, FiFileText, FiSettings, FiClock,
   FiChevronLeft, FiChevronRight,
 } from 'react-icons/fi';
 import { useData } from '../../contexts/DataContext';
@@ -14,6 +14,7 @@ const navItems = [
   { path: '/analysis', label: '数据分析', icon: FiBarChart2 },
   { path: '/dashboard', label: '仪表盘', icon: FiFileText },
   { path: '/reports', label: 'AI报告', icon: FiFileText },
+  { path: '/history', label: '历史记录', icon: FiClock },
   { path: '/settings', label: '系统设置', icon: FiSettings },
 ];
 

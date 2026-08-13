@@ -1,7 +1,14 @@
 /* DataMind AI - 全局数据状态管理 */
 import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
-import { createSession, listDatasets } from '../api/client';
+import { createSession, listDatasets, setSessionPage, restoreSessionHistory } from '../api/client';
 import type { ColumnInfo, DataInfo, CleaningStep } from '../types';
+
+// 跨 context 信号：AuthContext 登出时 dispatch 这个事件，
+// DataContext 监听后清掉本设备的 sessionId 与所有 React 内存里的业务数据，
+// 避免登出后仍展示上一个用户的上传文件。
+// 走 window 自定义事件而不是 context 互相 import，避免循环依赖。
+export const AUTH_LOGOUT_EVENT = 'datamind:auth-logout';
+export const AUTH_LOGIN_EVENT = 'datamind:auth-login';
 
 export interface AiProviderConfig {
   id: string;
@@ -247,6 +254,10 @@ interface DataContextType {
   /** 确保当前有有效 sessionId：有则保留，无则创建新会话并写入 localStorage。
    *  不在初始化 effect 中盲目换新，避免死守旧 id 或误换新 id。 */
   ensureValidSession: () => Promise<string>;
+  /** 记录会话当前所在页面（供历史恢复智能跳转）。 */
+  setCurrentPage: (page: string) => void;
+  /** 从「历史会话」一键恢复：切换本地会话到目标 session 并重建全部数据。 */
+  restoreSession: (sessionId: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -268,6 +279,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return sid;
   }, [state.sessionId, dispatch]);
 
+  // 拉回会话全部数据集 + API 配置，并重建 active。供初始化与历史恢复复用。
+  const loadSessionData = useCallback(async (sid: string) => {
+    const res = await listDatasets(sid);
+    dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
+    const active = res.datasets.find((d) => d.is_active);
+    if (active) dispatch({ type: 'SELECT_DATASET', datasetId: active.dataset_id });
+    dispatch({
+      type: 'SET_API_CONFIG',
+      apiKey: res.api_key ?? '',
+      aiProvider: res.ai_provider ?? '',
+      customModel: res.custom_model ?? '',
+      customBaseUrl: res.custom_base_url ?? '',
+    });
+  }, [dispatch]);
+
   // 初始化：从 localStorage 恢复 session 或创建新 session，并全局拉回已上传数据集，
   // 使任意页面（仪表盘/分析/清洗/AI报告）刷新后无需先进入上传页即可拿到 hasData 所需数据。
   useEffect(() => {
@@ -276,28 +302,67 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const sid = await ensureValidSession();
       if (!alive || !sid) return;
       try {
-        const res = await listDatasets(sid);
-        if (!alive) return;
-        dispatch({ type: 'SET_DATASETS', datasets: res.datasets });
-        const active = res.datasets.find((d) => d.is_active);
-        if (active) dispatch({ type: 'SELECT_DATASET', datasetId: active.dataset_id });
-        // API 配置回放独立于 datasets 是否为空：response 根级始终携带（即便无数据集也要恢复）
-        dispatch({
-          type: 'SET_API_CONFIG',
-          apiKey: res.api_key ?? '',
-          aiProvider: res.ai_provider ?? '',
-          customModel: res.custom_model ?? '',
-          customBaseUrl: res.custom_base_url ?? '',
-        });
+        await loadSessionData(sid);
       } catch {
         // 会话暂无数据集，忽略；任由页面展示空态
       }
     })();
     return () => { alive = false; };
-  }, [ensureValidSession, dispatch]);
+  }, [ensureValidSession, loadSessionData]);
+
+  // 记录当前页面（志愿者/已登录均可），供历史恢复时智能跳转。
+  const setCurrentPage = useCallback((page: string) => {
+    if (!page) return;
+    const sid = state.sessionId || localStorage.getItem('sessionId');
+    if (sid) {
+      // 不阻塞主流程：失败静默忽略（如未登录态不可恢复）
+      setSessionPage(sid, page).catch(() => {});
+    }
+  }, [state.sessionId]);
+
+  // 从历史记录恢复会话：后端校验归属后，前端切换本地 sessionId 并重建数据。
+  const restoreSession = useCallback(async (sessionId: string) => {
+    await restoreSessionHistory(sessionId);
+    localStorage.setItem('sessionId', sessionId);
+    dispatch({ type: 'SET_SESSION', sessionId });
+    try {
+      await loadSessionData(sessionId);
+    } catch {
+      // 忽略：恢复后页面随 last_page 跳转，空态也可接受
+    }
+  }, [dispatch, loadSessionData]);
+
+  // 监听 AuthContext 派发的登出事件：清掉本设备 sessionId 与 React 内存中的全部业务数据，
+  // 防止「登出后页面仍展示上一个用户上传的文件」。
+  // 注意：登出后不要立即创建新 session，否则会被后续登录误当作"游客 session"回填成一条
+  // 0 数据 0 分析包的空历史记录。游客若继续操作（如进入上传页），会在用到时通过
+  // ensureValidSession 自然创建，且不会被加入历史（user_id 仍为 NULL）。
+  useEffect(() => {
+    const onLogout = () => {
+      dispatch({ type: 'CLEAR_DATA' });
+    };
+    window.addEventListener(AUTH_LOGOUT_EVENT, onLogout);
+    return () => window.removeEventListener(AUTH_LOGOUT_EVENT, onLogout);
+  }, [dispatch]);
+
+  // 监听 AuthContext 派发的登录事件：把后端分配的 sessionId 同步进 React state。
+  // 修复「登录后 React state.sessionId 与 localStorage.sessionId 不一致」的 bug
+  // （此前登出清掉 localStorage 重建新游客 session 后，登录时回填它，回到空的内存里，
+  // 再加上历史记录看到的就是这个无数据的 session）。
+  useEffect(() => {
+    const onLogin = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail as { sessionId?: string } | undefined;
+      const sid = detail?.sessionId;
+      if (sid && sid !== state.sessionId) {
+        dispatch({ type: 'SET_SESSION', sessionId: sid });
+      }
+    };
+    window.addEventListener(AUTH_LOGIN_EVENT, onLogin);
+    return () => window.removeEventListener(AUTH_LOGIN_EVENT, onLogin);
+  }, [dispatch, state.sessionId]);
 
   return (
-    <DataContext.Provider value={{ state, dispatch, ensureValidSession }}>
+    <DataContext.Provider value={{ state, dispatch, ensureValidSession, setCurrentPage, restoreSession }}>
       {children}
     </DataContext.Provider>
   );

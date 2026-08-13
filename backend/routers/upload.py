@@ -3,14 +3,15 @@
 """
 import io
 import asyncio
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Body
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Body, Header
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import pandas as pd
 import numpy as np
 
 from src.data_loader import load_csv, load_json, load_sqlite, get_data_info, get_column_info, identify_excel_data_sheets
 from backend.services.session_manager import manager
+from backend.services.auth import get_optional_user
 from config import MAX_FILE_SIZE_BYTES, MAX_UPLOAD_SIZE_MB, QUOTA_BYTES
 
 router = APIRouter()
@@ -90,12 +91,17 @@ async def release_slot(session_id: str = Body(..., embed=True)):
 
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
+async def upload_file(file: UploadFile = File(...), session_id: str = Form(""),
+                     authorization: Optional[str] = Header(default=None)):
     """
     上传数据文件
     支持 CSV/Excel/JSON/SQLite 格式
     返回数据预览和字段信息；每张文件作为独立数据集追加（不覆盖旧表）
     """
+    # 解析登录态（游客可为 None；登录用户把数据归属到其 user_id，B1 修复）
+    current_user = get_optional_user(authorization)
+    current_user_id = str(current_user["id"]) if current_user else None
+
     # 创建或使用已有会话（前置，便于累计额度判断）
     if not session_id:
         # 正常路径前端必带 sessionId（已预占插槽），此兜底理论不触发；仍计入上限以保一致
@@ -188,6 +194,7 @@ async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
                 preview=preview,
                 set_active=(idx == 0),
                 account_quota=(idx == 0),
+                user_id=current_user_id,
             )
             meta = {
                 "dataset_id": dataset_id,
@@ -238,6 +245,10 @@ async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
         )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
+        # 配额超额：crud.save_dataset 抛 QuotaExceededError → 403 QUOTA_EXCEEDED（建议 3）
+        from backend.db.crud import QuotaExceededError
+        if isinstance(e, QuotaExceededError):
+            raise HTTPException(status_code=403, detail="QUOTA_EXCEEDED: " + str(e))
         import traceback as _traceback
         import logging as _logging
         tb = _traceback.format_exc()

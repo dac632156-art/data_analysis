@@ -5,6 +5,8 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import AuthButton from '../components/AuthButton';
+import AuthBrandLogo from '../components/AuthBrandLogo';
 
 const TOTAL_FRAMES = 160;
 const SENSITIVITY = 0.8; // 鼠标滑到右 80% 才走到最后一帧（沿用原手感）
@@ -91,16 +93,13 @@ export default function CoverPage() {
       {/* 顶部 Header：只保留左上角 logo */}
       <header className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-8 py-6">
         <div className="flex items-center gap-3">
-          <div
-            className="w-8 h-8 rounded-full flex-shrink-0"
-            style={{
-              background: 'radial-gradient(circle at 30% 30%, #38BDF8 0%, #8B5CF6 70%, #22D3EE 100%)',
-              boxShadow: '0 2px 10px rgba(56,189,248,0.35)',
-            }}
-          />
+          <AuthBrandLogo size={32} />
           <span className="text-lg font-bold tracking-tight" style={{ color: '#0F172A' }}>
             DataMind AI
           </span>
+        </div>
+        <div className="z-20">
+          <AuthButton />
         </div>
       </header>
 

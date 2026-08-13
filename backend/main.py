@@ -4,7 +4,6 @@ DataMind AI - FastAPI 后端入口
 """
 import os
 import sys
-import shutil
 import traceback
 
 # 添加项目根目录到 sys.path，以便导入现有模块
@@ -21,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, Response
 
 # 导入路由
-from backend.routers import upload, data, clean, chart, dashboard, insights, report, analysis
+from backend.routers import upload, data, clean, chart, dashboard, insights, report, analysis, auth, history
 from backend.services.session_manager import manager
 from backend.db.connection import init_db
 
@@ -65,20 +64,15 @@ def _startup_init_db():
     except Exception as exc:
         _logger.warning(f"清理历史脏会话失败(可忽略): {exc}")
 
-    # 冷启动全量释放：清空所有上传数据（库 + 落盘），恢复到空白状态。
-    # 与用户约定一致：重启后端即释放全部数据（数据集/分析包/已保存图表/落盘 pkl）。
+    # 冷启动清理：仅释放游客（user_id IS NULL）数据，保留登录用户及其落盘 pkl。
+    # 与用户约定一致：重启后端即释放游客数据（数据集/分析包/已保存图表/落盘 pkl），
+    # 但登录用户的数据归属已归集，不应被误删（clear_guest_data 内部先收路径再删行最后删文件）。
     try:
         from backend.db import crud as _crud
-        _crud.clear_all_data()
-        _logger.info("已清空全部上传数据（SQLite）")
-        # 删除落盘 pickle 目录并重建空目录（先判断存在，避免目录不存在报错）
-        _originals = os.path.join(project_root, "data", "originals")
-        if os.path.exists(_originals):
-            shutil.rmtree(_originals)
-        os.makedirs(_originals, exist_ok=True)
-        _logger.info(f"已清空落盘目录: {_originals}")
+        _deleted = _crud.clear_guest_data()
+        _logger.info(f"已清理游客上传数据（{_deleted} 个数据集），登录用户数据已保留")
     except Exception as exc:
-        _logger.warning(f"冷启动清空数据失败(可忽略): {exc}")
+        _logger.warning(f"冷启动清空游客数据失败(可忽略): {exc}")
 
 
 # CORS 配置 - 演示阶段允许所有来源（生产环境应限制）
@@ -99,6 +93,8 @@ app.include_router(dashboard.router, prefix="/api", tags=["仪表盘"])
 app.include_router(insights.router, prefix="/api", tags=["AI 洞察"])
 app.include_router(report.router, prefix="/api", tags=["报告生成"])
 app.include_router(analysis.router, prefix="/api", tags=["分析执行"])
+app.include_router(auth.router, tags=["认证"])
+app.include_router(history.router, tags=["历史记录"])
 
 
 # 全局异常处理器：捕获所有未处理的异常，返回详细错误信息
@@ -135,6 +131,13 @@ async def new_session():
 async def clear_session(session_id: str = Query(...)):
     """结束会话：级联清空该会话全部数据（落盘文件 + SQLite 数据集/分析包 + 已保存图表），释放插槽"""
     manager.clear_data(session_id)
+    return {"status": "ok"}
+
+
+@app.post("/api/session/page")
+async def set_session_page(session_id: str = Query(...), page: str = Query(...)):
+    """记录会话当前所在页面，供历史恢复时智能跳转。游客态（无归属）亦允许，仅作轻量标记。"""
+    manager.set_current_page(session_id, page)
     return {"status": "ok"}
 
 
