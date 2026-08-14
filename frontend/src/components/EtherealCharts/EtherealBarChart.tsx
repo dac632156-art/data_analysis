@@ -34,13 +34,20 @@ function getXData(opt: Record<string, unknown>): string[] {
   return Array.isArray(data) ? data.map((v) => String(v ?? '')) : [];
 }
 
+// 占位轴名：后端字面量兼容层或历史数据残留的内部占位列名/通用占位符，
+// 不应被渲染成轴名（否则会出现 "x"/"y"/"__x__"/"__y__" 挤在轴外的乱码）。
+const PLACEHOLDER_AXIS_NAMES = new Set(['__x__', '__y__', 'x', 'y', 'value', 'category']);
+
 // 从 option 的 xAxis/yAxis 读取轴名（后端已按模型正确写入），无则 undefined（不显示轴名）
 function getAxisName(opt: Record<string, unknown>, key: 'xAxis' | 'yAxis'): string | undefined {
   const axis = opt[key] as Record<string, unknown> | Array<Record<string, unknown>> | undefined;
   if (!axis) return undefined;
   const first = Array.isArray(axis) ? axis[0] : axis;
   const name = first?.name;
-  return typeof name === 'string' && name.length > 0 ? name : undefined;
+  if (typeof name !== 'string' || name.length === 0) return undefined;
+  // 过滤占位轴名：内部占位列名或纯 "x"/"y" 等通用占位符不渲染
+  if (PLACEHOLDER_AXIS_NAMES.has(name.trim().toLowerCase())) return undefined;
+  return name;
 }
 
 function extractSeriesValues(raw: unknown): number[] {

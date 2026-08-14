@@ -10,6 +10,8 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+backend/.env
+backend/.env.local
 
 # OS files
 .DS_Store
@@ -102,3 +104,20 @@ _debug_echarts.txt
 # Tool/agent skill bundles (not project source)
 .claude/
 .agents/
+
+# Local debug / temp / junk files (kept on disk, never committed)
+0]
+{variant_map.get(c.lower()
+_netcheck.py
+_netcheck2.py
+_verify_clean.py
+_verify_e2e.py
+_verify_run_analysis.py
+build_log.txt
+gitpush.ps1
+nul
+plan.md
+src/_check_na.py
+src/_dbg_repair.py
+src/_verify_fix.py
+src/_verify_map_merge.py

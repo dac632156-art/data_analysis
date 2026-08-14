@@ -1,7 +1,13 @@
 ﻿"""
-AI Agent 核心 - 使用原生 DeepSeek API 实现函数调用
+AI Agent 核心 - 使用原生 OpenAI 兼容 API 实现函数调用
 不依赖 LangChain，更简单、更可控
+
+默认 AI 提供方为 Agnes（OpenAI 兼容协议）。API Key 从环境变量 AGNES_API_KEY 读取。
 """
+import os
+import ast
+import copy
+import logging
 import pandas as pd
 import json
 import openai
@@ -9,10 +15,88 @@ import threading
 import unicodedata
 import difflib
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger("agent")
+
+# 图表意图关键词：仅当用户消息含这些词时，才对 LLM 开放 generate_chart（延后到独立一轮）
+_CHART_INTENT_KEYWORDS = (
+    "图", "图表", "可视化", "画", "绘制", "柱状", "条形", "折线", "曲线", "饼图",
+    "散点", "雷达", "热力", "树图", "趋势图", "分布图", "bar", "line", "pie", "chart",
+    "plot", "可视化展示", "做个图", "来张图",
+)
+
+# 清洗意图关键词（收窄版）：仅含「明确动手/分析」词时，才对 LLM 开放
+# clean_data 体检态（弹清洗选择框）。已删除「看看/咋样/最高/分布/对比」等口语词，
+# 避免用户随口一问就被误判为要清洗——清洗必须经用户明确表达才触发。
+_CLEAN_INTENT_KEYWORDS = (
+    "分析", "跑模型", "清洗", "缺失", "缺失值", "预处理", "处理缺失", "去重",
+    "修复", "整理数据", "清理",
+)
+
+
+# 产出工具意图关键词：报告/大屏仅在用户明确表达对应意图时，才对 LLM 开放对应产出工具。
+_REPORT_INTENT_KEYWORDS = (
+    "报告", "分析报告", "分析报表", "生成报告", "写报告", "出报告", "报告分析", "总结报告",
+)
+_BIGSCREEN_INTENT_KEYWORDS = (
+    "大屏", "数据大屏", "可视化大屏", "驾驶舱", "看板大屏", "大屏展示", "大屏可视化",
+)
+# 分析意图关键词：已清洗后，用户表达"分析/跑模型/趋势/排行"等意愿才放开三分析工具，
+# 避免用户随口聊天也被误放开动手工具。
+_ANALYSIS_INTENT_KEYWORDS = (
+    "分析", "跑模型", "业务模型", "趋势", "排行", "排名", "结构", "占比", "相关性",
+    "异常", "分布", "统计", "洞察", "总结一下", "分析一下", "帮我分析",
+)
+
+
+def _has_chart_intent(text: str) -> bool:
+    """判断用户消息是否包含图表/可视化意图。"""
+    if not text:
+        return False
+    t = text.lower()
+    return any(kw in t for kw in _CHART_INTENT_KEYWORDS)
+
+
+def _has_report_intent(text: str) -> bool:
+    """判断用户消息是否包含生成报告意图。"""
+    if not text:
+        return False
+    t = text.lower()
+    return any(kw in t for kw in _REPORT_INTENT_KEYWORDS)
+
+
+def _has_bigscreen_intent(text: str) -> bool:
+    """判断用户消息是否包含生成大屏意图。"""
+    if not text:
+        return False
+    t = text.lower()
+    return any(kw in t for kw in _BIGSCREEN_INTENT_KEYWORDS)
+
+
+def _has_analysis_intent(text: str) -> bool:
+    """判断用户消息是否包含调用三分析工具（业务模型/通用统计/自由写码）的意图。"""
+    if not text:
+        return False
+    t = text.lower()
+    return any(kw in t for kw in _ANALYSIS_INTENT_KEYWORDS)
+
+
+def _has_clean_intent(text: str) -> bool:
+    """判断用户消息是否包含明确的清洗/分析动手意图。
+
+    命中才对 LLM 开放 clean_data（体检态，弹清洗选择框）；否则
+    未清洗数据下也不放任何动手工具，杜绝 LLM 自作主张弹清洗框。
+    """
+    if not text:
+        return False
+    t = text.lower()
+    return any(kw in t for kw in _CLEAN_INTENT_KEYWORDS)
+
 from src.ai_agent.prompts import (
     SYSTEM_PROMPT, REPORT_SYSTEM_PROMPT, REPORT_USER_PROMPT_TEMPLATE,
     INSIGHTS_SYSTEM_PROMPT, INSIGHTS_USER_PROMPT_TEMPLATE,
     REPORT_BI_SYSTEM_PROMPT, REPORT_BI_USER_PROMPT_TEMPLATE,
+    CHAT_SYSTEM_PROMPT,
 )
 from src.report_analyzer import run_full_analysis
 from src.report_builder import ReportBuilder
@@ -21,8 +105,16 @@ from src.report_builder import SECTION_DISPLAY_NAME
 class DataAnalysisAgent:
     """数据分析 AI Agent（原生 DeepSeek API 实现）"""
 
-    def __init__(self, api_key: str, model: str = "deepseek-chat", base_url: str = "https://api.deepseek.com"):
-        """初始化 Agent"""
+    def __init__(self, api_key: str = None, model: str = "agnes-2.0-flash", base_url: str = "https://apihub.agnes-ai.com/v1"):
+        """初始化 Agent（默认使用 Agnes，OpenAI 兼容协议）
+
+        api_key 不传时从环境变量 AGNES_API_KEY 读取（后端 backend/.env 已内置）；
+        若仍为空则显式报错，避免静默拿到 None 调 API。
+        """
+        if api_key is None:
+            api_key = os.environ.get("AGNES_API_KEY", "")
+        if not api_key:
+            raise ValueError("缺少 AGNES_API_KEY：请在 backend/.env 中配置 Agnes API Key")
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
@@ -62,59 +154,58 @@ class DataAnalysisAgent:
 """
         return summary
 
-    def _execute_code(self, code: str, df: pd.DataFrame, timeout_sec: int = 20) -> str:
-        """执行 Python 代码分析数据（带超时保护，防止死循环卡死整个服务）"""
-        result_container = {"result": None, "error": None, "done": False}
+    def _execute_code(self, code: str, df: pd.DataFrame, timeout_sec: int = 18) -> str:
+        """执行 Python 代码分析数据（带超时保护），返回文本结论字符串。
 
-        def _run():
-            try:
-                # 使用 df 的副本，避免修改原始数据
-                local_vars = {"df": df.copy(), "pd": pd, "np": __import__('numpy')}
-                exec_globals = {}
-                exec(code, exec_globals, local_vars)
+        兼容 analyze() 旧路径（第189行），内部委托模块级 _execute_code_structured，
+        只取其中的 text 部分。结构化 chart 数据对旧路径无意义，丢弃。
+        """
+        return _execute_code_structured(code, df, timeout_sec).get("text", "")
 
-                if 'result' in local_vars:
-                    result_container["result"] = str(local_vars['result'])
-                else:
-                    result_container["result"] = "代码执行成功，但未返回结果。"
-            except Exception as e:
-                result_container["error"] = f"代码执行出错：{str(e)}"
-            finally:
-                result_container["done"] = True
-
-        thread = threading.Thread(target=_run, daemon=True)
-        thread.start()
-        thread.join(timeout=timeout_sec)
-
-        if not result_container["done"]:
-            return f"[WARN] 代码执行超时（>{timeout_sec}秒），已跳过。"
-        if result_container["error"]:
-            return result_container["error"]
-        return result_container["result"]
-
-    def analyze(self, user_query: str, df: pd.DataFrame) -> str:
+    def analyze(self, user_query: str, df: pd.DataFrame, mode: str = "analysis") -> str:
         """分析用户问题，返回 AI 回答
-        
+
+        mode="analysis"（默认）：兼容旧逻辑——分析类请求走 generate_insights 返回结构化 JSON，
+            通用对话走 SYSTEM_PROMPT 且保留代码执行能力（供分析页等旧调用方使用）。
+        mode="chat"：纯对话模式——始终用 CHAT_SYSTEM_PROMPT，禁止代码/工具调用格式，
+            不解析执行任何代码，直接把 AI 文本返回前端（聊天页用）。
+
         当用户询问分析/图表时，返回结构化 JSON（同 generate_insights 格式），
         包含 insights 和 intents，以便前端生成可执行的分析计划。
         """
         try:
             data_summary = self._get_data_summary(df)
-            
+
+            # ===== 聊天模式：纯对话，不走分析分支、不执行代码 =====
+            if mode == "chat":
+                messages = [
+                    {"role": "system", "content": CHAT_SYSTEM_PROMPT},
+                    {"role": "user", "content": f"用户问题：{user_query}\n\n当前数据摘要：\n{data_summary}\n\n请直接用中文回答用户问题。"}
+                ]
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=0.3,
+                    max_tokens=2048,
+                    timeout=60,
+                )
+                return response.choices[0].message.content
+
+            # ===== 分析模式（默认，保持旧行为）=====
             # 判断是否为分析/图表相关请求（覆盖自然语言变体）
-            is_analysis_request = any(kw in user_query for kw in 
+            is_analysis_request = any(kw in user_query for kw in
                 ['图表', '建议', '推荐', '分析方向', '做什么', '画什么', '地图', '省份', '词云', '词频',
                  '分析', '可视化', '生成', '统计', '对比', '趋势', '分布',
                  '规律', '特点', '特征', '关系', '变化', '增长', '下降', '排名',
                  '占比', '构成', '分类', '分组', '比较', '看看', '查看', '展示',
                  '画图', '作图', '怎么样', '如何', '哪个', '哪些'])
-            
+
             if is_analysis_request:
                 # 分析请求：直接调用 generate_insights 返回结构化 JSON
                 result = self.generate_insights(df, user_query)
                 # V3 意图补强已移除（analysis_library 删除，新流程由列名匹配引擎决定分析）
                 return result
-            
+
             # 通用对话：直接回答
             _chart_hint = (
                 '\n\n如果用户询问分析方向或图表建议，请在\u201c分析建议\u201d章节中，'
@@ -228,6 +319,656 @@ class DataAnalysisAgent:
         except Exception as e:
             import json as _json
             return _json.dumps({"insights": f"生成洞察报告出错：{str(e)}", "intents": []})
+
+    # ======================================================================
+    # Chat 智能体：OpenAI function calling 循环
+    # ======================================================================
+
+    def _get_llm_cfg(self) -> Dict[str, Any]:
+        """构造列名映射/合并需要的 llm_cfg（与 analysis.py 一致）。"""
+        return {
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+            "model": self.model,
+        }
+
+    def _current_df(self, manager, session_id: str):
+        """取当前参与分析的 df：
+        - 优先取 is_merged 宽表（清洗后入库的），否则 active_df。
+        - 单表直接用；多表由 _resolve_tool_call 的 clean_data 分支负责合并。
+        """
+        session = manager.get_session(session_id)
+        if session is None:
+            return None
+        # 优先 merged 数据集
+        for did, ds in session.datasets.items():
+            if getattr(ds, "is_merged", False):
+                df = manager.get_dataset_df(session_id, did)
+                if df is not None:
+                    return df
+        # 否则 active
+        if session.active_dataset_id:
+            return manager.get_dataset_df(session_id, session.active_dataset_id)
+        return None
+
+    def _resolve_tool_call(self, name: str, args: Dict[str, Any], manager, session_id: str,
+                           user_message: str = "") -> Dict[str, Any]:
+        """执行单个工具调用，返回 {tool, status, summary, data}。
+
+        df 由这里注入（不依赖 tools_registry.dispatch，避免缺 df 报错）。
+        user_message 用于判断 clean_data 的 method 是否来自用户 choice 续接（防 LLM 跳过弹窗）。
+        """
+        llm_cfg = self._get_llm_cfg()
+        # 注：数据侦察（get_data_profile）在分析对话中不再对 LLM 开放——
+        # 上传时后端已自动侦察并存入 session.data_profile，且数据快照由
+        # _snapshot_for_prompt 注入上下文，LLM 不需要也不能再调用侦察工具。
+
+        if name == "clean_data":
+            # 先判断单表/多表
+            session = manager.get_session(session_id)
+            if session is None:
+                return {"tool": name, "status": "fail", "summary": "会话不存在", "data": {}}
+            datasets = [(did, manager.get_dataset_df(session_id, did))
+                        for did in session.datasets.keys()]
+            valid = [(did, df) for did, df in datasets if df is not None and not df.empty]
+
+            method = args.get("method")
+            # 门禁（修 bug，非强制拦截）：clean_data 的"执行态"只能来自用户 choice 续接。
+            # 若 LLM 在第一轮就自行带 method 调用（未经用户从弹窗选择），视为跳过体检态，
+            # 忽略 method、强制退回体检态，让系统先把可选项弹给用户。
+            is_choice_continuation = "我选择执行" in (user_message or "")
+            if method and not is_choice_continuation:
+                logger.warning("clean_data 门禁：LLM 未经用户选择就带 method=%s 调用，强制退回体检态", method)
+                method = None
+
+            # 体检态（无 method）→ 直接对当前 df 扫描建议
+            if not method:
+                from tools_registry import clean_data as _clean_data
+                cur = self._current_df(manager, session_id)
+                res = _clean_data(cur, None)
+                return {"tool": name, "status": "ok" if res.ok else "fail",
+                        "summary": res.suggestion or "",
+                        "data": res.data if res.ok else {"error": res.reason},
+                        "await_choice": True}
+
+            # 执行态：单表直接取，多表先合并
+            if len(valid) <= 1:
+                merged_df = self._current_df(manager, session_id)
+                sources = [did for did, _ in valid]
+                keys: List[str] = []
+            else:
+                from src.merge.dataset_merger import build_analysis_units
+                file_names = {did: (session.datasets[did].file_name or did) for did, _ in valid}
+                units = build_analysis_units(valid, file_names=file_names, llm_cfg=llm_cfg)
+                merged_unit = next((u for u in units if u.kind == "merged"), None)
+                if merged_unit is None or merged_unit.df is None:
+                    # 无关联键/无法合并 → 退化为所有表纵向拼接，保证可执行
+                    merged_df = pd.concat([df for _, df in valid], ignore_index=True, sort=False)
+                    sources = [did for did, _ in valid]
+                    keys = []
+                else:
+                    merged_df = merged_unit.df
+                    sources = merged_unit.sources
+                    keys = merged_unit.keys
+
+            # 列名映射（跟 analysis.py 流水线一致）
+            from src.mapping.column_mapper import map_dataset_columns
+            try:
+                mapped_df = map_dataset_columns(session_id, None, merged_df, llm_cfg)
+            except Exception as e:
+                mapped_df = merged_df  # 映射失败降级为不映射，避免阻断
+
+            # 执行清洗
+            from tools_registry import clean_data as _clean_data
+            actions = [{"method": method}]
+            res = _clean_data(mapped_df, actions)
+            if not res.ok:
+                return {"tool": name, "status": "fail", "summary": res.reason or "清洗失败", "data": {}}
+            cleaned_df = res.data.get("cleaned_df")
+            summary = res.data.get("summary", {})
+
+            # 写回 session：注册成 merged 宽表（不抢占 active 视图）
+            if cleaned_df is not None:
+                manager.add_merged_dataset(
+                    session_id, cleaned_df, sources=sources, keys=keys,
+                    file_name="聊天清洗宽表",
+                )
+            preview_rows = int(cleaned_df.shape[0]) if cleaned_df is not None else 0
+            preview_cols = list(cleaned_df.columns) if cleaned_df is not None else []
+
+            # 清洗完成后仅返回清洗结果。不再代码硬串联三分析（方案X已废弃）：
+            # 完整分析交由 LLM 在后续轮次按用户意图调用业务模型分析/通用统计/自由写码工具，
+            # 三个工具会把完整 AnalysisPackage 写入 session.analysis_packages，供产出工具消费。
+
+            return {
+                "tool": name, "status": "ok",
+                "summary": res.suggestion or "清洗完成",
+                # preview_rows / preview_cols 由 cleaned_df 直接推导，不依赖 clean_data 内部键名
+                "data": {"summary": summary,
+                         "preview_rows": preview_rows,
+                         "preview_cols": preview_cols},
+            }
+
+        if name == "run_analysis_model":
+            df = self._current_df(manager, session_id)
+            from src.mapping.column_mapper import map_dataset_columns
+            try:
+                mapped_df = map_dataset_columns(session_id, None, df, llm_cfg)
+            except Exception:
+                mapped_df = df
+            from tools_registry import run_analysis_model
+            intents = args.get("intents") or []
+            # 传入 manager / session_id：run_analysis_model 会把完整 AnalysisPackage 写入
+            # session.analysis_packages，供 generate_chart / generate_bigscreen / generate_report 读取。
+            res = run_analysis_model(mapped_df, intents, manager=manager, session_id=session_id)
+            return {"tool": name, "status": "ok" if res.ok else "fail",
+                    "summary": res.suggestion or "",
+                    "data": res.data if res.ok else {"error": res.reason}}
+
+        if name == "run_general_statistics":
+            df = self._current_df(manager, session_id)
+            from src.mapping.column_mapper import map_dataset_columns
+            try:
+                mapped_df = map_dataset_columns(session_id, None, df, llm_cfg)
+            except Exception:
+                mapped_df = df
+            from tools_registry import run_general_statistics
+            res = run_general_statistics(mapped_df)
+            return {"tool": name, "status": "ok" if res.ok else "fail",
+                    "summary": res.suggestion or "",
+                    "data": res.data if res.ok else {"error": res.reason}}
+
+        if name == "generate_chart":
+            df = self._current_df(manager, session_id)
+            from src.mapping.column_mapper import map_dataset_columns
+            try:
+                mapped_df = map_dataset_columns(session_id, None, df, llm_cfg)
+            except Exception:
+                mapped_df = df
+            from tools_registry import generate_chart
+            logger.info("generate_chart 入参: chart_type=%s args=%s", args.get("chart_type"), args)
+            # 去掉 df 和 chart_type 后，其余参数透传给 create_chart
+            chart_kwargs = {k: v for k, v in args.items() if k not in ("df", "chart_type")}
+            res = generate_chart(mapped_df, args.get("chart_type", ""), **chart_kwargs)
+            return {"tool": name, "status": "ok" if res.ok else "fail",
+                    "summary": res.suggestion or "",
+                    "data": res.data if res.ok else {"error": res.reason}}
+
+        if name == "execute_python":
+            df = self._current_df(manager, session_id)
+            from tools_registry import execute_python
+            logger.info("execute_python 入参 code=\n%s", args.get("code", ""))
+            res = execute_python(df, args.get("code", ""))
+            return {"tool": name, "status": "ok" if res.ok else "fail",
+                    "summary": res.suggestion or "",
+                    "data": res.data if res.ok else {"error": res.reason}}
+
+        if name == "generate_report":
+            from tools_registry import generate_report
+            # 产出工具吃 session.analysis_packages（由三分析工具写入的完整 AnalysisPackage）。
+            res = generate_report(manager, session_id)
+            return {"tool": name, "status": "ok" if res.ok else "fail",
+                    "summary": res.suggestion or "",
+                    "data": res.data if res.ok else {"error": res.reason}}
+
+        if name == "generate_bigscreen":
+            from tools_registry import generate_bigscreen
+            # 产出工具吃 session.analysis_packages（由三分析工具写入的完整 AnalysisPackage）。
+            res = generate_bigscreen(manager, session_id)
+            return {"tool": name, "status": "ok" if res.ok else "fail",
+                    "summary": res.suggestion or "",
+                    "data": res.data if res.ok else {"error": res.reason}}
+
+        return {"tool": name, "status": "fail", "summary": f"未知工具：{name}", "data": {}}
+
+    def _is_dataset_cleaned(self, manager, session_id: str) -> bool:
+        """状态位：session 中是否已存在 is_merged 清洗宽表（clean_data 执行态写过）。
+
+        上传时后端只写 session.data_profile、不建 is_merged 宽表，故初始为 False；
+        清洗完成后置 True，主循环据此判定「已清洗」并决定是否放开 generate_chart。
+        """
+        try:
+            session = manager.get_session(session_id)
+            if session is None:
+                return False
+            return any(
+                getattr(d, "is_merged", False)
+                for d in session.datasets.values()
+            )
+        except Exception:
+            return False
+
+    def agentic_chat(self, message: str, session_id: str, history: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+        """Chat 智能体主入口：function calling 循环 + 结构化响应。
+
+        参数：
+        - message：用户本轮消息
+        - session_id：会话 ID（用于取 df / 写回清洗结果 / 存对话历史）
+        - history：已有对话 messages（含 system/user/assistant/tool 角色），None 表示从零构建
+
+        返回：
+        {
+            "kind": "text" | "choice" | "tool_executing",
+            "content": str,
+            "choices": [{"id","label","description"}, ...],   # kind="choice" 才有
+            "tool_results": [{"tool","status","summary"}, ...],
+            "data_preview": {"rows","columns","head"},        # 清洗后可选
+            "messages": [...],                                 # 更新后的完整 messages，供路由写回 session
+        }
+        """
+        from backend.services.session_manager import manager as _default_manager
+        manager = _default_manager
+
+        # 构建 messages
+        if history is not None:
+            messages = list(history)
+            # 确保 system 在最前
+            if not messages or messages[0].get("role") != "system":
+                messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}] + messages
+        else:
+            messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+            # 附上数据快照，帮助 LLM 理解数据（不污染用户消息）
+            snap = self._snapshot_for_prompt(manager, session_id)
+            if snap:
+                messages.append({"role": "system", "content": f"当前数据快照：\n{snap}"})
+
+        messages.append({"role": "user", "content": message})
+
+        function_defs = None
+        try:
+            # 注意：tools_registry 位于 src/ 包下，需用 src. 前缀 import
+            # （sys.path 含 project_root，src 是其下包；顶层 tools_registry.py 不存在，
+            #  之前 from tools_registry 会抛 ModuleNotFoundError 被静默吞掉，导致 tools 永不传给 LLM）
+            from src.tools_registry import get_function_definitions
+            function_defs = get_function_definitions()
+        except Exception as e:
+            # 打出来，避免再被静默吞掉导致"LLM 不调工具"却查不到原因
+            print(f"[agentic_chat] WARN get_function_definitions failed: {type(e).__name__}: {e}")
+            function_defs = None
+
+        tool_results: List[Dict[str, Any]] = []
+        max_rounds = 8
+        # 本轮对话工具调用计数（函数内局部变量，每轮 agentic_chat 重建，不持久化到 session）。
+        # 用于重复调用熔断：防止 LLM 在 function calling 循环里对同一工具反复调用、
+        # 撑满 max_rounds 被强制截断（切断大类 A 死循环源：循环无重复调用上限）。
+        # 只读快照类工具严格限 1 次；动手/出图类工具给少量冗余上限防失控。
+        _tool_call_counts: Dict[str, int] = {}
+        _TOOL_CALL_LIMITS: Dict[str, int] = {
+            "get_data_profile": 1,
+            "run_analysis_model": 3,
+            "run_general_statistics": 3,
+            "execute_python": 3,
+            "generate_chart": 3,
+            "generate_report": 3,
+            "generate_bigscreen": 3,
+            "clean_data": 3,
+        }
+
+        for _round in range(max_rounds):
+            try:
+                create_kwargs: Dict[str, Any] = {
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": 0.3,
+                    "timeout": 120,
+                }
+                if function_defs:
+                    # 状态机下发（意图门禁版）：清洗是平等 LLM 工具，三分析/产出工具均由 LLM 按意图调用。
+                    # ① 未清洗 + 用户原话含清洗意图词 → 只放开 clean_data（体检态弹选项框）
+                    # ② 已清洗 + 分析词 → 放开三分析工具（run_analysis_model / run_general_statistics / execute_python）
+                    # ③ 已清洗 + 图表词 → 放开 generate_chart
+                    # ④ 已清洗 + 报告词 → 放开 generate_report
+                    # ⑤ 已清洗 + 大屏词 → 放开 generate_bigscreen
+                    # ⑥ 其余（纯聊天/提问/无对应意图词）→ 不放任何动手工具，纯文字回答
+                    #    注意：三个分析工具写入 session.analysis_packages，产出工具（图/大屏/报告）读它作为输入。
+                    def _names_eq(t, n):
+                        return t.get("function", {}).get("name") == n
+                    is_cleaned = self._is_dataset_cleaned(manager, session_id)
+                    if (not is_cleaned) and _has_clean_intent(message):
+                        tools_for_round = [t for t in function_defs if _names_eq(t, "clean_data")]
+                    elif is_cleaned:
+                        if _has_analysis_intent(message):
+                            tools_for_round = [t for t in function_defs
+                                               if _names_eq(t, "run_analysis_model")
+                                               or _names_eq(t, "run_general_statistics")
+                                               or _names_eq(t, "execute_python")]
+                        elif _has_chart_intent(message):
+                            tools_for_round = [t for t in function_defs if _names_eq(t, "generate_chart")]
+                        elif _has_report_intent(message):
+                            tools_for_round = [t for t in function_defs if _names_eq(t, "generate_report")]
+                        elif _has_bigscreen_intent(message):
+                            tools_for_round = [t for t in function_defs if _names_eq(t, "generate_bigscreen")]
+                        else:
+                            tools_for_round = []
+                    else:
+                        tools_for_round = []
+                    # 没有任何工具可下放时，强制 LLM 直接文字回答（不允许它自己发明工具调用）
+                    if not tools_for_round:
+                        create_kwargs.pop("tools", None)
+                        create_kwargs.pop("tool_choice", None)
+                    else:
+                        create_kwargs["tools"] = tools_for_round
+                        create_kwargs["tool_choice"] = "auto"
+                response = self.client.chat.completions.create(**create_kwargs)
+            except Exception as e:
+                return {
+                    "kind": "text",
+                    "content": f"AI 服务调用失败：{str(e)}",
+                    "choices": [], "tool_results": tool_results,
+                    "data_preview": None, "messages": messages,
+                }
+
+            msg = response.choices[0].message
+            # 诊断日志（print 不受 logging 级别过滤，确保终端可见）
+            print(f"[agentic_chat] round={_round} has_tool_calls={bool(msg.tool_calls)} content_len={len(msg.content or '')}")
+            # 把 assistant 消息（含 tool_calls）加入历史
+            assistant_msg: Dict[str, Any] = {"role": "assistant", "content": msg.content or ""}
+            if msg.tool_calls:
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                    } for tc in msg.tool_calls
+                ]
+            messages.append(assistant_msg)
+
+            # 没有工具调用 → 直接返回最终回答
+            if not msg.tool_calls:
+                content = msg.content or ""
+                content = self._strip_tool_tags(content)  # 兜底：剥离可能泄露的工具标签
+                # 规范兜底：若 LLM 未写文字总结，但确实跑出了 ok 结果，
+                # 补一轮请求强制 LLM 基于全部结果写完整总结（不污染 messages 历史）
+                ok_results = [tr for tr in tool_results if tr.get("status") == "ok"]
+                if not content.strip() and ok_results:
+                    content = self._force_summary_from_results(messages, ok_results)
+                    content = self._strip_tool_tags(content)
+                # 判断是否是在等用户选择（上一轮有 await_choice 工具）
+                return {
+                    "kind": self._classify_response(content, tool_results),
+                    "content": content,
+                    "choices": self._extract_choices(tool_results),
+                    "tool_results": tool_results,
+                    "data_preview": self._build_data_preview(tool_results),
+                    "messages": messages,
+                }
+
+            # 执行每个 tool_call
+            for tc in msg.tool_calls:
+                tool_name = tc.function.name
+                try:
+                    fn_args = json.loads(tc.function.arguments or "{}")
+                except Exception:
+                    fn_args = {}
+                print(f"[agentic_chat] round={_round} tool={tool_name} args={fn_args}")
+
+                # —— 重复调用熔断 ——
+                # 同一轮对话内该工具已被调用达到上限时，不再执行真工具，直接返回
+                # 固定提示逼 LLM 收口（不再回灌完整 data、不 append 新 tool 消息）。
+                _tool_call_counts[tool_name] = _tool_call_counts.get(tool_name, 0) + 1
+                _limit = _TOOL_CALL_LIMITS.get(tool_name, 3)
+                if _tool_call_counts[tool_name] > _limit:
+                    print(f"[agentic_chat] circuit-break tool={tool_name} count={_tool_call_counts[tool_name]} limit={_limit}")
+                    tool_results.append({
+                        "tool": tool_name,
+                        "status": "ok",
+                        "summary": "数据快照已在上下文中，无需重复调用；请基于已有信息直接给出分析结论或调用其他工具。",
+                        "await_choice": False,
+                        "data": {},
+                    })
+                    # 把熔断提示作为 tool 消息回灌，让 LLM 看到"该工具已饱和"，促其收口
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": "该工具已达到调用上限，数据快照已在上下文中，请直接给出结论。",
+                    })
+                    continue
+
+                result = self._resolve_tool_call(tool_name, fn_args, manager, session_id,
+                                                 user_message=message)
+                print(f"[agentic_chat] round={_round} tool_result status={result.get('status')} summary={result.get('summary','')[:200]} await_choice={result.get('await_choice')}")
+
+                # 体检态：暂停等用户选择，不回灌 LLM、不继续循环
+                if result.get("await_choice"):
+                    tool_results.append({
+                        "tool": result.get("tool"),
+                        "status": result.get("status"),
+                        "summary": result.get("summary"),
+                        "await_choice": True,
+                        "data": result.get("data", {}),
+                    })
+                    content = self._strip_tool_tags(
+                        result.get("summary") or "已扫描数据，请选择缺失值填充方式："
+                    )
+                    return {
+                        "kind": "choice",
+                        "content": content,
+                        "choices": self._extract_choices(tool_results),
+                        "tool_results": tool_results,
+                        "data_preview": None,
+                        "messages": messages,
+                    }
+
+                # 非体检态：正常记录并回灌 LLM
+                tool_results.append({
+                    "tool": result.get("tool"),
+                    "status": result.get("status"),
+                    "summary": result.get("summary"),
+                    "await_choice": result.get("await_choice", False),
+                    "data": result.get("data", {}),
+                })
+                # 工具结果回灌给 LLM
+                # 规范：注入「总结义务」+ 从 data 抽出的结论文字，让 LLM 最终必须覆盖该工具结果
+                tool_name = tc.function.name
+                conclusions = self._extract_conclusions(result.get("data", {}))
+                feedback_lines = [
+                    f"【工具执行结果】你已通过工具「{tool_name}」完成分析。",
+                    "下面是该工具的分析结论，你必须在最终回复中覆盖这个工具的分析结果，不得遗漏。",
+                ]
+                if conclusions:
+                    feedback_lines.append(conclusions)
+                feedback_lines.append(
+                    "完整数据（供引用细节）："
+                    + self._truncate_tool_data(result.get("data", {}))
+                )
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": "\n".join(feedback_lines),
+                })
+
+        # 超过 8 轮仍未结束 → 强制收尾（正常有熔断，通常不会走到这）
+        return {
+            "kind": "text",
+            "content": self._strip_tool_tags(
+                "分析步骤较多，已自动终止以避免过长响应。你可以继续追问或分步执行。"
+            ),
+            "choices": [], "tool_results": tool_results,
+            "data_preview": self._build_data_preview(tool_results),
+            "messages": messages,
+        }
+
+    @staticmethod
+    def _truncate_tool_data(data: Any, max_chars: int = 4000) -> str:
+        """将工具回灌 data 序列化为 JSON 字符串并做长度截断。
+
+        防止 get_data_profile 等工具的完整快照（含逐列统计）随每轮回灌不断
+        累积进 messages 历史，导致历史膨胀、LLM 更易迷失而反复调工具（大类 D）。
+        超限时截断并附提示，结论文字已由 _extract_conclusions 单独抽取回灌，截断不影响总结。
+        """
+        try:
+            text = json.dumps(data, ensure_ascii=False, default=str)
+        except Exception:
+            text = str(data)
+        if len(text) > max_chars:
+            return text[:max_chars] + f"…（已截断，原长 {len(text)} 字符，完整结论见上方分析结论）"
+        return text
+
+    @staticmethod
+    def _extract_conclusions(data: Dict[str, Any]) -> str:
+        """从工具 data 抽取分析结论文字，供回灌 LLM 时辅助其写总结。
+
+        业务模型 / 自由写码的结果都在 data.packages[].conclusion；
+        通用统计的逐列文字在其 data 结构化字段里（已由回灌 JSON 携带），这里无需特殊处理。
+        """
+        if not isinstance(data, dict):
+            return ""
+        packages = data.get("packages") or []
+        parts = []
+        for pkg in packages:
+            if not isinstance(pkg, dict):
+                continue
+            conclusion = (pkg.get("conclusion") or "").strip()
+            if conclusion:
+                title = pkg.get("type") or "分析"
+                parts.append(f"【{title}】{conclusion}")
+        return "\n".join(parts)
+
+    def _force_summary_from_results(self, messages: List[Dict[str, Any]],
+                                    ok_results: List[Dict[str, Any]]) -> str:
+        """收尾兜底：当 LLM 最终未写文字总结但确有 ok 结果时，补一轮请求强制其写完整总结。
+
+        - 用 messages 深拷贝，绝不污染原 messages（避免写回 session 带人工提示）。
+        - tool_choice='none' 且不传 tools，避免再次触发工具调用陷入循环。
+        - 失败/仍为空返回 ""，由调用方兜底保持原 content。
+        """
+        try:
+            summary_msgs = copy.deepcopy(messages)
+            n = len(ok_results)
+            tool_names = "、".join(tr.get("tool", "分析工具") for tr in ok_results)
+            summary_msgs.append({
+                "role": "user",
+                "content": (
+                    f"以下是本次已完成的分析结果（共 {n} 个工具：{tool_names}），"
+                    "请基于全部结果写一段完整中文总结，必须覆盖每一个工具的分析结论，"
+                    "一个都不能遗漏，不要只总结其中一个。直接输出总结文字，无需再调用工具。"
+                ),
+            })
+            resp = self.client.chat.completions.create(
+                model=self.model,
+                messages=summary_msgs,
+                temperature=0.3,
+                timeout=120,
+                tool_choice="none",
+            )
+            return (resp.choices[0].message.content or "").strip()
+        except Exception as e:
+            print(f"[agentic_chat] _force_summary_from_results failed: {type(e).__name__}: {e}")
+            return ""
+
+    def _snapshot_for_prompt(self, manager, session_id: str) -> str:
+        """生成给 LLM 的精简数据快照（来自 data_recon.scan）。
+
+        异常不再静默吞掉；当 scan 失败或 df 为 None 时，若 session.data_profile
+        已由 chat 路由写好，则降级为 data_profile 文本，确保 LLM 永远看得到数据。
+        """
+        try:
+            from src.data_recon import scan
+            df = self._current_df(manager, session_id)
+            if df is not None:
+                snap = scan(df)
+                lines = [f"行数={snap['rows']}，列数={snap['column_count']}"]
+                for c in snap["columns_detail"]:
+                    line = f"- {c['name']}（{c['kind']}，缺失{c['missing']}）"
+                    if c.get("stats"):
+                        s = c["stats"]
+                        line += f" 范围[{s.get('min')}~{s.get('max')}] 均值{s.get('mean')}"
+                    lines.append(line)
+                return "\n".join(lines)
+            # df 为 None：尝试用 data_profile 兜底
+            return self._snapshot_from_data_profile(manager, session_id)
+        except Exception as e:
+            print(f"[agentic_chat] _snapshot_for_prompt failed: {type(e).__name__}: {e}")
+            return self._snapshot_from_data_profile(manager, session_id)
+
+    def _snapshot_from_data_profile(self, manager, session_id: str) -> str:
+        """兜底：把 session.data_profile（chat 路由已算好的侦察结果）转成文本快照。"""
+        try:
+            session = manager.get_session(session_id)
+            dp = getattr(session, "data_profile", None)
+            if not dp:
+                return ""
+            rows = dp.get("rows")
+            cols = dp.get("columns")
+            lines = [f"行数={rows}，列数={len(cols) if isinstance(cols, list) else cols}"]
+            for c in (cols or []):
+                name = c.get("name") if isinstance(c, dict) else c
+                kind = c.get("kind") if isinstance(c, dict) else ""
+                lines.append(f"- {name}（{kind}）")
+            return "\n".join(lines)
+        except Exception as e:
+            print(f"[agentic_chat] _snapshot_from_data_profile failed: {type(e).__name__}: {e}")
+            return ""
+
+    @staticmethod
+    def _strip_tool_tags(content: str) -> str:
+        """兜底清洗：剥离 LLM 可能写进回复的工具调用/结果标签及其内部内容。
+
+        防止 LLM 不守 prompt 时把 <tool_call>...</tool_call>、<tool_result>...</tool_result>
+        这类文本（含原始 JSON/字段清单）直接甩给用户。仅匹配已知工具名的标签，
+        避免误伤用户正常对话里出现的字面量。
+        """
+        if not content:
+            return content
+        import re
+        known = r"(?:get_data_profile|clean_data|run_analysis_model|execute_python)"
+        pattern = re.compile(
+            r"<tool_call>\s*(" + known + r")\b.*?</tool_call>"
+            r"|<tool_result>.*?</tool_result>",
+            re.DOTALL | re.IGNORECASE,
+        )
+        cleaned = pattern.sub("", content)
+        return cleaned.strip()
+
+    def _classify_response(self, content: str, tool_results: List[Dict[str, Any]]) -> str:
+        """判断返回类型：若本轮有清洗建议在等用户选择 → choice，否则 text。
+
+        优先级：clean_data 体检态返回里的 await_choice 是最可靠信号（系统明确在等用户选
+        填充方式），直接判定 choice；仅在无 await_choice 时，回退到摘要含"建议/缺失"的字眼判断。
+        """
+        for tr in tool_results:
+            if tr.get("tool") == "clean_data" and tr.get("status") == "ok":
+                # 第一优先：系统已明确 await_choice（体检态无 method 调用）
+                if tr.get("await_choice"):
+                    return "choice"
+                # 回退：摘要语境含清洗建议关键词
+                if "建议" in (tr.get("summary") or "") or "缺失" in (tr.get("summary") or ""):
+                    return "choice"
+        return "text"
+
+    def _extract_choices(self, tool_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """从清洗体检态结果提取前端选择按钮（4 种填充方法）。
+
+        防御：只接受 method 为字符串且非空的备选项；若 method 是对象/数组/None，
+        直接跳过该备选项（不生成 [object Object] 垃圾 id），避免前端收到后
+        发给后端导致 LLM 无法解析。
+        """
+        for tr in tool_results:
+            if tr.get("tool") == "clean_data" and tr.get("status") == "ok":
+                data = tr.get("data") or {}
+                alts = data.get("available_alternatives") or data.get("recommendation", {}).get("alternatives")
+                if alts:
+                    return [
+                        {"id": a["method"], "label": a.get("label"),
+                         "description": a.get("description", "")}
+                        for a in alts
+                        if isinstance(a.get("method"), str) and a.get("method")
+                    ]
+        return []
+
+    def _build_data_preview(self, tool_results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """清洗执行成功后，取清洗后宽表的预览（前若干行）。"""
+        for tr in tool_results:
+            if tr.get("tool") == "clean_data" and tr.get("status") == "ok":
+                data = tr.get("data") or {}
+                if data.get("preview_cols"):
+                    return {
+                        "rows": data.get("preview_rows"),
+                        "columns": data.get("preview_cols"),
+                        "head": [],  # 实际 head 由路由取最新 merged df 填充
+                    }
+        return None
 
     def generate_report(
         self,
@@ -460,6 +1201,143 @@ class DataAnalysisAgent:
                 }
 
 
+
+
+def _chart_is_suspect(chart: Dict[str, Any]) -> bool:
+    """校验 execute_python 返回的 LLM 简单格式图表数据是否可疑（未聚合/结构错乱）。
+
+    LLM 约定 chart 结构（见 prompts.py）：
+      bar/line:  {"chart_type": "bar"/"line", "x": [类目...], "y": [数值...]}
+      pie/ranking/table: {"chart_type": ..., "data": [...]}
+
+    典型坏 case：LLM 未按 x 聚合，直接把原始流水塞进 y，导致
+    len(y) 远大于 len(x)、数值糊成超长未聚合流水（如 19691958574052734）。
+
+    仅做结构性校验（x/y 长度不一致），不做数值量级判断（避免误伤大额金融数据）。
+    """
+    if not isinstance(chart, dict):
+        return False
+    ct = str(chart.get("chart_type", "")).lower()
+    x = chart.get("x")
+    y = chart.get("y")
+    # 仅 bar/line 用 x+y；pie/ranking/table 用 data，不在此校验
+    if ct not in ("bar", "line"):
+        return False
+    if not isinstance(x, (list, tuple)) or not isinstance(y, (list, tuple)):
+        return False
+    # x/y 长度不一致 → 未按类目聚合，判定可疑
+    return len(x) != len(y)
+
+
+def _execute_code_structured(code: str, df, timeout_sec: int = 18) -> Dict[str, Any]:
+    """受限沙箱执行 LLM 生成的 Python 代码，返回结构化结果。
+
+    返回 {"text": str, "chart": Optional[dict]} 或 {"error": str}。
+    这是模块级函数（不带 self），供 tools_registry.execute_python 跨模块调用。
+
+    安全策略（方案2，同进程受限 globals）：
+    - AST 预检：禁危险名/危险方法、import 仅放行白名单库；
+    - exec_globals 仅注入 df/pd/np + 白名单内置函数（禁 __import__）；
+    - 超时使用 daemon 线程 join，不建子进程、不碰 syscall；
+    - 使用 df.copy() 防止污染原始数据。
+    """
+    # 1) AST 预检（exec 前拦截）
+    pre = _SAFE_EXEC_AST_CHECK(code)
+    if pre is not None:
+        logger.warning("execute_python 沙箱拦截: 原因=%s | 代码=\n%s", pre, code)
+        return {"error": f"[沙箱拦截] {pre}"}
+
+    result_container: Dict[str, Any] = {"text": "", "chart": None, "error": None, "done": False}
+
+    def _run():
+        try:
+            import numpy as np  # ⚠️ agent.py 顶部未 import numpy，沙箱内必须本地导入
+            local_vars = {"df": df.copy(), "pd": pd, "np": np}
+            # 受控内置函数白名单（禁用 __import__ 等）
+            safe_builtins = {
+                "print": print, "len": len, "range": range, "str": str, "int": int,
+                "float": float, "list": list, "dict": dict, "set": set, "tuple": tuple,
+                "min": min, "max": max, "sum": sum, "abs": abs, "round": round,
+                "sorted": sorted, "zip": zip, "enumerate": enumerate, "bool": bool,
+                "type": type, "isinstance": isinstance, "format": format, "repr": repr,
+                "chr": chr, "ord": ord, "any": any, "all": all, "map": map, "filter": filter,
+            }
+            exec_globals = {"__builtins__": safe_builtins}
+
+            # 允许 LLM 的 import 白名单库在沙箱内可用
+            exec(code, exec_globals, local_vars)
+
+            raw = local_vars.get("result", None)
+            if raw is None:
+                result_container["text"] = "代码执行成功，但未返回 result 变量。"
+            elif isinstance(raw, dict) and "text" in raw:
+                result_container["text"] = str(raw.get("text", ""))
+                chart = raw.get("chart", None)
+                if isinstance(chart, dict) and chart.get("chart_type"):
+                    # ★ 数值合理性校验：LLM 未按类目聚合（x/y 长度不一致）时，
+                    #   丢弃可疑 chart（置空），避免前端渲染出未聚合的乱码柱状图；
+                    #   文字结论 text 仍保留，用户仍能看到分析结论。
+                    if _chart_is_suspect(chart):
+                        logger.warning(
+                            "execute_python 返回可疑图表数据（x/y 长度不一致，疑似未聚合），"
+                            "已丢弃该图：chart_type=%s x_len=%s y_len=%s",
+                            chart.get("chart_type"),
+                            len(chart.get("x")) if isinstance(chart.get("x"), (list, tuple)) else "?",
+                            len(chart.get("y")) if isinstance(chart.get("y"), (list, tuple)) else "?",
+                        )
+                    else:
+                        result_container["chart"] = chart
+            else:
+                result_container["text"] = str(raw)
+        except Exception as e:
+            result_container["error"] = f"代码执行出错：{str(e)}"
+        finally:
+            result_container["done"] = True
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    thread.join(timeout=timeout_sec)
+
+    if not result_container["done"]:
+        return {"error": f"[WARN] 代码执行超时（>{timeout_sec}秒），已跳过。"}
+    if result_container["error"]:
+        return {"error": result_container["error"]}
+    return {"text": result_container["text"], "chart": result_container["chart"]}
+
+
+def _SAFE_EXEC_AST_CHECK(code: str) -> Optional[str]:
+    """模块级 AST 预检（供 _execute_code_structured 调用，避免依赖类方法）。"""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return f"代码语法错误：{str(e)}"
+
+    DANGEROUS_NAMES = {
+        "os", "subprocess", "sys", "shutil", "pathlib", "socket", "requests",
+        "urllib", "http", "open", "eval", "exec", "compile", "__import__",
+        "exit", "quit", "input", "breakpoint", "globals", "locals", "vars",
+        "getattr", "setattr", "delattr", "memoryview",
+    }
+    IMPORT_BLOCK_MSG = (
+        "沙箱禁止任何 import 语句。pandas 已注入为 `pd`、numpy 已注入为 `np`、"
+        "数据已注入为 `df`，请直接使用这些变量，不要写 import。"
+    )
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in DANGEROUS_NAMES:
+            return f"禁止使用的名称：{node.id}（沙箱不允许操作系统/动态执行等危险调用）"
+        if isinstance(node, ast.Attribute):
+            if node.attr in {"system", "popen", "remove", "rmdir", "unlink",
+                              "rename", "rmtree", "chmod", "kill", "call"}:
+                return f"禁止调用的危险方法：{node.attr}"
+        if isinstance(node, ast.Import):
+            logger.warning("execute_python import被拦截(一律禁止): %s | 代码=\n%s",
+                           ", ".join(a.name for a in node.names), code)
+            return f"[沙箱拦截] {IMPORT_BLOCK_MSG}"
+        if isinstance(node, ast.ImportFrom):
+            logger.warning("execute_python import被拦截(一律禁止): %s | 代码=\n%s",
+                           node.module, code)
+            return f"[沙箱拦截] {IMPORT_BLOCK_MSG}"
+    return None
 
 
 # ============================================================
@@ -1736,7 +2614,7 @@ def _build_fallback_from_packages(
         sections.append({
             "type": "management_suggestions",
             "title": "管理建议",
-            "content": "\n".join(f"- {c}" for c in all_conclusions[:5]),
+            "content": "；".join(str(c).strip() for c in all_conclusions[:5]) + "。",
             "chart_titles": [],
         })
 

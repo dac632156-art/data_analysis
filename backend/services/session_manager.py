@@ -110,6 +110,9 @@ class SessionData:
         self.reserved_at: float = 0.0         # 占用插槽的时间戳（用于预约超时释放）
         self.created_at: float = time.time()
         self.last_access: float = time.time()
+        # ===== Chat 智能体扩展 =====
+        self.data_profile: Dict[str, Any] = {}   # 上传后 data_recon 侦察结果
+        self.messages: List[Dict[str, Any]] = []  # 智能体对话历史（LLM messages 数组）
 
     # ===== df / df_original / original_path 委托到 active 数据集（向后兼容下游 ~30 处 get_data 调用）=====
     def _active_dataset(self) -> Optional["Dataset"]:

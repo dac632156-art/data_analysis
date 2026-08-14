@@ -16,6 +16,25 @@ _MAX_CATEGORY = 50          # 类目轴类别上限
 _MAX_PIE_SLICES = 20        # 饼图/树图/词云扇区上限
 _COHORT_WINDOW_MONTHS = 12   # cohort 图表滚动窗口大小（首单月行数 × Index_j 列数）
 
+# ========== 字面量兼容层占位列名 ==========
+# LLM 传数组字面量（如 x='["天猫","私域"]'）时，_coerce_literal_df 会构造
+# 内部 DataFrame，列名固定为 __x__/__y__。这些内部占位名绝不能当作轴名/系列名
+# 写进 option，否则前端会渲染出 "y/x" 挤在轴外的乱码（见 create_chart 字面量路径）。
+_PLACEHOLDER_COLS = {"__x__", "__y__"}
+
+
+def _is_placeholder_col(name: Optional[str]) -> bool:
+    """判断列名是否为字面量兼容层的内部占位列名（__x__/__y__）。"""
+    return name in _PLACEHOLDER_COLS
+
+
+def _axis_name_or_none(name: Optional[str]) -> Optional[str]:
+    """返回可安全写入 xAxis.name/yAxis.name/series.name 的轴名：
+    内部占位列名（__x__/__y__）返回 None（不渲染轴名），其余原样返回。"""
+    if _is_placeholder_col(name):
+        return None
+    return name
+
 # ★ Galaxy AI Analytics 统一配色（与前端 frontend/src/theme 模块保持一致）
 # 10 色有序分类色板，禁止彩虹 / 每图随机配色。后端无法 import TS，此为常数镜像，
 # 修改颜色时务必同步 frontend/src/theme/Palette.ts 与 ChartStyle.ts。
@@ -252,13 +271,22 @@ def create_bar_chart(df: pd.DataFrame, x: str, y: Optional[str] = None,
         option["yAxis"] = {"type": "category", "data": x_data, "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
         option["xAxis"] = {"type": "value", "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
     else:
+        x_axis_name = _axis_name_or_none(x)
+        y_axis_name = _axis_name_or_none(y)
         option["xAxis"] = {"type": "category", "data": x_data,
-                           "name": x, "nameLocation": "middle", "nameGap": 30,
                            "axisLabel": {"rotate": 30 if len(x_data) > 8 else 0, "hideOverlap": True},
                            "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
         option["yAxis"] = {"type": "value",
-                           "name": y, "nameLocation": "middle", "nameGap": 40,
                            "axisLine": {"lineStyle": {"color": "rgba(255,255,255,0.08)"}}}
+        # 仅当轴名非占位列名（__x__/__y__）时写入，避免占位符渲染成轴名乱飞
+        if x_axis_name is not None:
+            option["xAxis"]["name"] = x_axis_name
+            option["xAxis"]["nameLocation"] = "middle"
+            option["xAxis"]["nameGap"] = 30
+        if y_axis_name is not None:
+            option["yAxis"]["name"] = y_axis_name
+            option["yAxis"]["nameLocation"] = "middle"
+            option["yAxis"]["nameGap"] = 40
 
     if color and color in df.columns:
         groups = df_plot[color].unique()
@@ -273,11 +301,13 @@ def create_bar_chart(df: pd.DataFrame, x: str, y: Optional[str] = None,
             })
         option["series"] = series_list
     else:
-        option["series"] = [{
-            "name": y, "type": "bar",
-            "data": [{"value": v, "itemStyle": {"color": WARM_COLORS[i % len(WARM_COLORS)]}}
-                     for i, v in enumerate(y_values)]
-        }]
+        series_name = _axis_name_or_none(y)
+        series_item = {"type": "bar", "data": [{"value": v, "itemStyle": {"color": WARM_COLORS[i % len(WARM_COLORS)]}}
+                     for i, v in enumerate(y_values)]}
+        # 仅当系列名非占位列名时写入，避免占位符污染 legend
+        if series_name is not None:
+            series_item["name"] = series_name
+        option["series"] = [series_item]
 
     return option
 
@@ -327,13 +357,17 @@ def create_line_chart(df: pd.DataFrame, x: str, y: Optional[str] = None,
             })
         option["series"] = series_list
     else:
-        option["series"] = [{
-            "name": y, "type": "line",
+        series_name = _axis_name_or_none(y)
+        series_item = {
+            "type": "line",
             "data": df_plot[y].fillna(0).tolist(),
             "smooth": True,
             "lineStyle": {"color": WARM_COLORS[0]},
             "itemStyle": {"color": WARM_COLORS[0]},
-        }]
+        }
+        if series_name is not None:
+            series_item["name"] = series_name
+        option["series"] = [series_item]
     return option
 
 
@@ -2332,10 +2366,83 @@ CHART_FUNCTIONS = {
 }
 
 
+def _parse_literal(value: Any) -> Optional[Any]:
+    """若 value 是 JSON 数组字符串或已是 list/tuple，返回解析后的列表；否则返回 None。
+
+    用于让 generate_chart 同时支持「传数据框列名」与「传现成数组字面量」两种用法。
+    """
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        # 形如 ["a","b"] 或 [1,2,3] 或 [{"维度":..,"数值":..}]
+        if s[0] in ("[", "（"):
+            try:
+                parsed = json.loads(s)
+                if isinstance(parsed, (list, tuple)):
+                    return list(parsed)
+            except (json.JSONDecodeError, ValueError):
+                return None
+    return None
+
+
+def _coerce_literal_df(df: pd.DataFrame, chart_type: str, **kwargs) -> Optional[pd.DataFrame]:
+    """当 LLM 直接传入现成数组字面量（而非列名）时，构造一张纯数据 DataFrame 供现有绘图函数使用。
+
+    支持三种字面量形态：
+      1. x=[...], y=[...]                      → 分类/数值列
+      2. data=[{"维度":..,"数值":..}, ...]      → 维度/数值对（ranking/pie 友好）
+      3. data=[{"name":..,"value":..}, ...]     → 别名形态
+    返回 None 表示未检测到字面量（走原有「列名」路径）。
+    """
+    x_lit = _parse_literal(kwargs.get("x"))
+    y_lit = _parse_literal(kwargs.get("y"))
+    data_lit = _parse_literal(kwargs.get("data"))
+
+    if x_lit is not None and y_lit is not None:
+        # 长度不齐时以短为准截断
+        n = min(len(x_lit), len(y_lit))
+        return pd.DataFrame({"__x__": x_lit[:n], "__y__": y_lit[:n]})
+
+    if data_lit is not None:
+        rows = []
+        for item in data_lit:
+            if isinstance(item, dict):
+                dim = item.get("维度") or item.get("name") or item.get("dim") or ""
+                val = item.get("数值") or item.get("value") or item.get("val") or 0
+                rows.append({"__x__": dim, "__y__": val})
+            else:
+                # 退化：单值序列，索引作为 x
+                rows.append({"__x__": str(len(rows)), "__y__": item})
+        if rows:
+            return pd.DataFrame(rows)
+
+    return None
+
+
 def create_chart(df: pd.DataFrame, chart_type: str, **kwargs) -> Optional[Dict[str, Any]]:
     """统一 ECharts 图表创建入口，返回 ECharts option 字典（自动降采样护栏）"""
     if chart_type not in CHART_FUNCTIONS:
         raise ValueError(f"不支持的图表类型: {chart_type}。支持: {list(CHART_FUNCTIONS.keys())}")
+
+    # ★ 字面量兼容层：若 LLM 直接传入现成数组（而非列名），构造纯数据 DataFrame 并改写 x/y
+    literal_df = _coerce_literal_df(df, chart_type, **kwargs)
+    if literal_df is not None:
+        df = literal_df
+        # 用构造出的内部列名覆盖 x/y，使下游绘图函数无需改动
+        if kwargs.get("x") is not None:
+            kwargs["x"] = "__x__"
+        if kwargs.get("y") is not None:
+            kwargs["y"] = "__y__"
+        # ranking 缺省时也补上 x/y
+        if "x" not in kwargs:
+            kwargs["x"] = "__x__"
+        if "y" not in kwargs:
+            kwargs["y"] = "__y__"
 
     option = CHART_FUNCTIONS[chart_type](df, **kwargs)
     if option is not None:

@@ -24,6 +24,39 @@ from src.utils.json_serializer import sanitize_json
 
 logger = logging.getLogger("analysis_engine")
 
+# LLM（或前端）可能传的口语化意图名 → 引擎内部模型 name。
+# 设计意图：LLM 不应关心引擎内部模型名，这里做一层兜底归一化。
+# 值为 None 表示「放行某一类模糊模型」（见 CLUSTER_NAMES）。
+INTENT_ALIASES = {
+    "rfm分析": "rfm_user_segmentation",
+    "rfm 分析": "rfm_user_segmentation",
+    "rfm": "rfm_user_segmentation",
+    "用户流失预测": "churn_rule",
+    "流失预测": "churn_rule",
+    "流失": "churn_rule",
+    "漏斗分析": "funnel",
+    "漏斗": "funnel",
+    "转化漏斗": "funnel",
+    "关联规则挖掘": "association_rules",
+    "关联规则": "association_rules",
+    "购物篮": "association_rules",
+    "同期群分析": "同期群与用户状态跃迁模型",
+    "同期群": "同期群与用户状态跃迁模型",
+    "cohort": "同期群与用户状态跃迁模型",
+    "用户画像": "user_profile",
+    "画像": "user_profile",
+    "用户生命周期价值": "CLV",
+    "clv": "CLV",
+    # 「趋势分析」引擎无对应模型，不映射（查不到静默跳过，避免张冠李戴到 cohort）
+    "聚类": None,  # None = 放行所有聚类类模型
+}
+
+# 聚类类模型 name 集合（供「聚类」模糊意图放行）
+CLUSTER_NAMES = {
+    "user_seg", "sku_seg", "geo_seg",
+    "activity_seg", "category_seg", "churn_seg",
+}
+
 
 def run_analysis(df: pd.DataFrame, intents: Optional[List[str]] = None) -> List[AnalysisPackage]:
     if df is None:
@@ -35,11 +68,36 @@ def run_analysis(df: pd.DataFrame, intents: Optional[List[str]] = None) -> List[
     # 不跨请求保留，上线不增加常驻内存）。
     upstream: dict = {}
 
+    # 预归一化 LLM 传来的意图：查别名表 → 模型名集合 + 是否放行聚类
+    _names: set = set()
+    _allow_cluster = False
+    if intents:
+        for raw in intents:
+            if not raw:
+                continue
+            key = str(raw).strip().lower()
+            target = INTENT_ALIASES.get(key)
+            if target is None:
+                if key in INTENT_ALIASES:
+                    # 显式映射到 None（模糊词如「聚类」）→ 放行聚类类模型
+                    _allow_cluster = True
+                elif raw in CLUSTER_NAMES:
+                    # 别名表未命中，但本身就是聚类模型名 → 放行聚类类
+                    _allow_cluster = True
+                else:
+                    # 兼容前端直接传真实 name/display_name
+                    _names.add(raw)
+            else:
+                _names.add(target)
+
     def _match_intents(model) -> bool:
         if not intents:
             return True
-        names = [str(x) for x in intents if x]
-        return model.name in names or model.display_name in names
+        if model.name in _names or model.display_name in _names:
+            return True
+        if _allow_cluster and model.name in CLUSTER_NAMES:
+            return True
+        return False
 
     # ---------- Phase 1：生产者（无上游依赖，串行执行） ----------
     for model in models:

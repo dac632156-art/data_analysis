@@ -205,6 +205,15 @@ async def upload_file(file: UploadFile = File(...), session_id: str = Form("")):
             if first_meta is None:
                 first_meta = meta
 
+            # 上传即侦察：扫描 df 结构存 session，供 Chat 智能体后续直接用
+            try:
+                from src.data_recon import scan
+                session = manager.get_session(session_id)
+                if session is not None:
+                    session.data_profile = scan(df)
+            except Exception:
+                pass
+
         if not created:
             raise HTTPException(status_code=400, detail="文件内容为空或无法读取")
 

@@ -179,19 +179,34 @@ def _component_join_cols(edges: List[Tuple[int, int, str, str, float]],
 
 
 def _merge_two(dfa: pd.DataFrame, dfb: pd.DataFrame,
-                a_col: str, b_col: str) -> Optional[pd.DataFrame]:
-    """按 (a_col, b_col) inner join 两表。非键同名列由 pandas 自动加 _x/_y 区分。
+                a_col: str, b_col: str,
+                b_did: Optional[str] = None) -> Optional[pd.DataFrame]:
+    """按 (a_col, b_col) inner join 两表。
+
+    避免 pandas 默认 _x/_y 后缀污染：合并前对右表「非键且列名已存在于左表」的冲突列
+    加确定性前缀「原列名_<b_did 缩写>」（前缀来源用 did 而非文件名，稳定无特殊字符）。
+    合并后该列名为「原列名_<didB>」而非「原列名_x」，下游可读且不与 _2 混淆。
+    非冲突列（右表独有列名）不加前缀。关联键列一律不动（键名匹配不受影响）。
 
     返回合并后 df；0 行或异常返回 None。
     键列处理：删除右表关联键列（inner 后恒等于左表关联键，冗余），
     左表关联键若被加后缀 _x 则还原为原名，便于后续链式合并的键名匹配。
     """
+    dfb_prep = dfb
+    if b_did:
+        # did 缩写为去掉非字母数字后的短串，保证列名安全
+        did_tag = re.sub(r"[^0-9A-Za-z\u4e00-\u9fa5]", "", str(b_did)) or "r"
+        conflict_cols = [c for c in dfb.columns
+                         if c != b_col and c in dfa.columns]
+        if conflict_cols:
+            rename_map = {c: f"{c}_{did_tag}" for c in conflict_cols}
+            dfb_prep = dfb.rename(columns=rename_map)
     try:
         merged = pd.merge(
-            dfa, dfb,
+            dfa, dfb_prep,
             left_on=a_col, right_on=b_col,
             how="inner",
-            suffixes=("_x", "_y"),
+            suffixes=("", "_y"),
         )
     except Exception:
         return None
@@ -199,12 +214,12 @@ def _merge_two(dfa: pd.DataFrame, dfb: pd.DataFrame,
         return None
     # 删除右表关联键列（inner 后恒等于左表关联键，冗余）
     if a_col == b_col:
-        # 同名合并：两列变为 a_col_x / a_col_y，删右(y)、左还原为原名
+        # 同名合并：两列变为 a_col / a_col_y，删右(y)、左还原为原名
         right_key = a_col + "_y"
-        left_key = a_col + "_x"
+        left_key = a_col
         if right_key in merged.columns:
             merged = merged.drop(columns=[right_key])
-        if left_key in merged.columns and a_col not in merged.columns:
+        if left_key in merged.columns:
             merged = merged.rename(columns={left_key: a_col})
     else:
         # 异名合并：右键若与左表其它列碰撞则加 _y，否则原名
@@ -238,7 +253,7 @@ def _greedy_merge_component(tables: List[Tuple[str, pd.DataFrame]]) -> Tuple[Opt
             if not cands:
                 continue
             a_col, b_col, _score = cands[0]
-            new_df = _merge_two(acc_df, df_k, a_col, b_col)
+            new_df = _merge_two(acc_df, df_k, a_col, b_col, b_did=did_k)
             if new_df is None or len(new_df) == 0:
                 continue
             # 合并后存活的键列名恒为左侧累加器列 a_col（右表键列在 _merge_two
@@ -333,7 +348,9 @@ def build_analysis_units(
                         renamed.append((did, df))
                     tables = renamed
             except Exception as e:
-                _logger.warning("跨表协同映射失败，降级为 pandas _x/_y：%s", e)
+                # 协同映射失败：跳过语义化重命名，保留原列名；
+                # 后续 _merge_two 会用确定性 did 前缀区分同名列，不再污染为 _x/_y。
+                _logger.warning("跨表协同映射失败，降级为保留原列名（合并时以 did 前缀区分）：%s", e)
         merged_df, sources, keys = _greedy_merge_component(tables)
         if merged_df is None:
             # 连通分量内一张都没合进来（边都被 0 行过滤）→ 各自单表

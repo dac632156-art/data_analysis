@@ -107,6 +107,20 @@ export interface ChatResponse {
   intents?: Array<Record<string, string>>;
 }
 
+/** 智能体聊天响应（function calling 结构化输出） */
+export interface ChatSendResponse {
+  success: boolean;
+  kind: 'text' | 'choice' | 'tool_executing';
+  content: string;
+  choices: Array<{ id: string; label: string; description?: string }>;
+  tool_results: Array<{ tool: string; status: string; summary?: string; data?: any }>;
+  data_preview?: {
+    rows?: number;
+    columns?: string[];
+    head?: Array<Record<string, any>>;
+  } | null;
+}
+
 /** 报告 section（五阶段分析流水线输出） */
 export interface ReportSection {
   type: 'overview' | 'kpi' | 'trend' | 'structure' | 'top' | 'anomaly' | 'conclusion' | 'suggestions' | 'next_steps' | 'error';

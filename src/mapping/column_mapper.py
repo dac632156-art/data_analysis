@@ -246,29 +246,177 @@ def _score_history(columns: List[str], new_unmapped: List[str],
 # ===== LLM 对齐兜底（STEP7） =====
 
 def _extract_json(text: str) -> str:
-    """从 LLM 文本中尽力提取 JSON 片段。"""
-    text = text.strip()
-    if text.startswith("```"):
-        lines = text.split("\n")
+    """兼容别名：旧调用方仍可用，内部转调鲁棒版。"""
+    return _robust_extract_json(text)
+
+
+def _robust_extract_json(text: str, max_preview: int = 2000) -> str:
+    """从 LLM 文本中鲁棒提取 JSON 片段。
+
+    兼容场景：
+    - ```json / ``` 代码块包裹
+    - 前后带解释文字（找首个 { / [ 到末个 } / ]）
+    - 被截断的 JSON（尽力补闭合括号、去尾部逗号、去 // 注释）
+    - 纯对象 {...} 或纯数组 [...]
+
+    解析失败抛出 ValueError，message 含原文前 max_preview 字符便于定位。
+    """
+    if not text or not isinstance(text, str):
+        raise ValueError("响应为空，未找到 JSON")
+
+    raw = text.strip()
+
+    # 1) 先尝试直接解析原文（最常见：纯 JSON 无包裹）
+    try:
+        json.loads(raw)
+        return raw
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 2) 去 ``` 代码块包裹（支持 ```json / ```）
+    if raw.startswith("```"):
+        lines = raw.split("\n")
         if lines[0].startswith("```"):
             lines = lines[1:]
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
-        text = "\n".join(lines).strip()
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        raise ValueError("响应中未找到 JSON")
-    return text[start:end + 1]
+        raw = "\n".join(lines).strip()
+        try:
+            json.loads(raw)
+            return raw
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # 3) 提取首个对象 / 数组子串
+    first_obj = raw.find("{")
+    last_obj = raw.rfind("}")
+    first_arr = raw.find("[")
+    last_arr = raw.rfind("]")
+
+    candidates = []
+    has_obj = first_obj != -1 and (last_obj > first_obj or last_obj == -1)
+    if has_obj:
+        # 截断场景（末尾无 }）：从首个 { 取到串尾，交给 repair 补闭合
+        end = last_obj + 1 if last_obj != -1 else len(raw)
+        candidates.append(raw[first_obj:end])
+    has_arr = first_arr != -1 and (last_arr > first_arr or last_arr == -1)
+    if has_arr:
+        end = last_arr + 1 if last_arr != -1 else len(raw)
+        candidates.append(raw[first_arr:end])
+
+    last_err = None
+    for cand in candidates:
+        # 3a) 尝试直接解析子串
+        try:
+            json.loads(cand)
+            return cand
+        except (json.JSONDecodeError, ValueError) as e:
+            last_err = e
+        # 3b) 截断修复：去 // 与 # 注释、去尾部逗号、补闭合括号
+        fixed = _repair_truncated_json(cand)
+        try:
+            json.loads(fixed)
+            return fixed
+        except (json.JSONDecodeError, ValueError) as e:
+            last_err = e
+
+    preview = (text or "")[:max_preview].replace("\n", "\\n")
+    raise ValueError(
+        f"响应中未找到可用 JSON（末次错误：{last_err}）；响应原文前 {max_preview} 字符：{preview}"
+    )
 
 
-def llm_fallback(unmapped: List[str], sample: object,
-                 llm_cfg: Dict, standard_fields: List[str],
-                 file_name: Optional[str] = None) -> Dict[str, str]:
-    """LLM 对齐兜底：优先复用现有标准字段，否则才自定义新标准名。
+def _repair_truncated_json(s: str) -> str:
+    """尽力修复被截断/带噪声的 JSON 字符串。"""
+    # 去 // 与 # 行内/行尾注释（仅处理简单情形，避免误伤字符串内 #）
+    cleaned_lines = []
+    for line in s.split("\n"):
+        # 去掉行尾注释（# 或 //），但保留字符串内的
+        stripped = _strip_line_comment(line)
+        cleaned_lines.append(stripped)
+    body = "\n".join(cleaned_lines).strip()
 
-    返回 {原始列: 标准字段}。异常上抛由调用方捕获降级。
-    file_name：可选，喂给 LLM 帮助推断业务语义（方案 B）。
+    # 先补闭合括号：统计未闭合的 { 与 [
+    stack = []
+    in_str = False
+    esc = False
+    for ch in body:
+        if esc:
+            esc = False
+            continue
+        if ch == "\\":
+            esc = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch in "{[":
+            stack.append(ch)
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+    # 逆序补闭合
+    close_map = {"{": "}", "[": "]"}
+    for open_ch in reversed(stack):
+        body += close_map[open_ch]
+
+    # 后去尾部逗号（含串尾逗号 / }, ] 前逗号，需先剥掉字符串内可能的逗号干扰）
+    body = re.sub(r",(\s*[}\]])", r"\1", body)
+    # 处理补括号后出现在最末的裸逗号（如 "...\"d\",}" 已变 "d",}" 被上条覆盖；
+    # 但 "d", 结尾且无括号的情况上面补括号后已变成 "d",}，再被覆盖）
+    body = body.strip()
+    if body.endswith(","):
+        body = body[:-1]
+
+    return body
+
+
+def _strip_line_comment(line: str) -> str:
+    """去掉一行中的 // 或 # 注释，但不破坏字符串字面量内的 #。"""
+    in_str = False
+    esc = False
+    out = []
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if esc:
+            out.append(ch)
+            esc = False
+            i += 1
+            continue
+        if ch == "\\":
+            out.append(ch)
+            esc = True
+            i += 1
+            continue
+        if ch == '"':
+            in_str = not in_str
+            out.append(ch)
+            i += 1
+            continue
+        if not in_str:
+            if ch == "/" and i + 1 < len(line) and line[i + 1] == "/":
+                break
+            if ch == "#":
+                break
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _call_llm_json(system_prompt: str, user_prompt: str,
+                  llm_cfg: Dict, max_tokens: int = 2048,
+                  max_retries: int = 1) -> str:
+    """调用 LLM 并返回「已解析前的原始 content 文本」（由调用方决定如何解析）。
+
+    健壮性：
+    - 失败（网络/超时/接口异常）自动重试 max_retries 次（默认 1，共 2 次）。
+    - client 自身 max_retries=0，重试由本函数手动循环控制。
+    - 返回的是 LLM 文本原文，便于上层在解析失败时把原文打进日志。
+
+    仍失败则上抛最后一次异常，由调用方降级。
     """
     import openai
 
@@ -279,6 +427,37 @@ def llm_fallback(unmapped: List[str], sample: object,
     client = openai.OpenAI(api_key=api_key, base_url=base_url,
                            timeout=120.0, max_retries=0)
 
+    last_err = None
+    for attempt in range(max_retries + 1):
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0,
+                max_tokens=max_tokens,
+                timeout=120,
+            )
+            content = resp.choices[0].message.content
+            if content is None:
+                raise ValueError("LLM 返回空 content")
+            return content.strip()
+        except Exception as e:  # 网络/超时/接口/空内容，均重试
+            last_err = e
+            _logger.warning("[_call_llm_json] 第 %d 次调用失败：%s", attempt + 1, e)
+    raise last_err
+
+
+def llm_fallback(unmapped: List[str], sample: object,
+                 llm_cfg: Dict, standard_fields: List[str],
+                 file_name: Optional[str] = None) -> Dict[str, str]:
+    """LLM 对齐兜底：优先复用现有标准字段，否则才自定义新标准名。
+
+    返回 {原始列: 标准字段}。异常上抛由调用方捕获降级。
+    file_name：可选，喂给 LLM 帮助推断业务语义（方案 B）。
+    """
     sample_str = json.dumps(sample, ensure_ascii=False)[:1500]
     fields_str = "、".join(standard_fields) if standard_fields else "（暂无已有标准字段）"
 
@@ -300,18 +479,21 @@ def llm_fallback(unmapped: List[str], sample: object,
         "（避免与已有字段同义重复，如已有「成交金额」就不要造「成交额」）；\n"
         "3. 只输出 JSON，格式：{\"原始列名\": \"标准字段名\", ...}，不要输出任何解释文字。"
     )
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "你是列名映射助手，只输出 JSON。"},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0,
-        max_tokens=1024,
-        timeout=120,
-    )
-    content = resp.choices[0].message.content.strip()
-    parsed = json.loads(_extract_json(content))
+    content = ""
+    try:
+        content = _call_llm_json(
+            "你是列名映射助手，只输出 JSON。",
+            prompt,
+            llm_cfg,
+            max_tokens=2048,
+            max_retries=1,
+        )
+        parsed = json.loads(_robust_extract_json(content))
+    except Exception as e:
+        # 上抛，由调用方（map_dataset_columns）捕获后降级为原列名透传
+        _logger.warning("[llm_fallback] JSON 解析失败，原文前 2000 字符：%s",
+                        content[:2000])
+        raise
     return {str(k): str(v) for k, v in parsed.items() if str(k) in unmapped}
 
 
@@ -330,12 +512,6 @@ def coordinate_map_component(
     返回 {did: {原始列名: 标准名}}，仅含非关联键列的跨表消歧重命名。
     异常上抛由调用方捕获降级（退化回 pandas _x/_y）。
     """
-    import openai
-
-    api_key = llm_cfg.get("api_key")
-    base_url = llm_cfg.get("base_url") or "https://api.deepseek.com"
-    model = llm_cfg.get("model") or "deepseek-chat"
-
     variant_map, standard_fields = load_global_dict()
     join_norms = {_norm(c) for c in (join_cols or [])}
 
@@ -376,20 +552,21 @@ def coordinate_map_component(
         "即 0、1、...），不要输出任何解释文字。\n"
         f"标准字段清单（可优先复用）：\n{fields_str}\n"
     )
-    client = openai.OpenAI(api_key=api_key, base_url=base_url,
-                           timeout=120.0, max_retries=0)
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "你是列名映射助手，只输出 JSON。"},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0,
-        max_tokens=2048,
-        timeout=120,
-    )
-    content = resp.choices[0].message.content.strip()
-    parsed = json.loads(_extract_json(content))
+    content = ""
+    try:
+        content = _call_llm_json(
+            "你是列名映射助手，只输出 JSON。",
+            prompt,
+            llm_cfg,
+            max_tokens=2048,
+            max_retries=1,
+        )
+        parsed = json.loads(_robust_extract_json(content))
+    except Exception as e:
+        # 上抛，由调用方（dataset_merger）捕获后降级为保留原列名
+        _logger.warning("[coordinate_map_component] JSON 解析失败，原文前 2000 字符：%s",
+                        content[:2000])
+        raise
     result: Dict[str, Dict[str, str]] = {}
     for i, (did, _df) in enumerate(tables):
         mp = parsed.get(str(i))
@@ -413,7 +590,7 @@ def map_dataset_columns(session_id, dataset_id, df: pd.DataFrame,
 
     dataset_id 仅用于日志/后续扩展，指纹计算只基于 columns，故次路径（analysis/run）
     传 None 也无影响。llm_cfg 形如 {"api_key":..., "base_url":..., "model":...}，
-    缺 api_key 时 LLM 兜底降级为「已有映射」，不阻断分析。
+    缺 api_key 时 LLM 兜底降级为「原列名透传」，不阻断分析。
     """
     if df is None or len(df.columns) == 0:
         return df
@@ -499,7 +676,12 @@ def map_dataset_columns(session_id, dataset_id, df: pd.DataFrame,
                     if c in columns:
                         mapping[c] = s
             except Exception as e:
-                _logger.warning("LLM 映射兜底失败，退化为已有映射：%s", e)
+                # 收紧降级：不再用可能错误的「已有映射」，未映射列保留原列名透传。
+                # LLM 原文已由 llm_fallback 内部 warning 打印（前 2000 字符）。
+                _logger.warning(
+                    "LLM 映射兜底失败，未映射列保留原列名透传（不再使用旧映射）：%s；未映射列=%s",
+                    e, still_unmapped,
+                )
         else:
             _logger.info("无 LLM 配置，未映射列保留原列名：%s", still_unmapped)
 

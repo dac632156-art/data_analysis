@@ -3,7 +3,7 @@
 import axios from 'axios';
 import type {
   UploadResponse, PreviewResponse, StatsResponse,
-  InsightsResponse, ChatResponse,
+  InsightsResponse, ChatResponse, ChatSendResponse,
   AIReportResponse, KPIResponse, EChartResponse, EChartItem,
   DatasetInfo, DatasetListResponse,
   ProcessSubmitResponse, ProcessStatusResponse,
@@ -452,6 +452,21 @@ export const runReasoning = async (
 export const chatAnalyze = async (sessionId: string, question: string, apiKey: string, baseUrl?: string, model?: string) => {
   const { data } = await api.post<ChatResponse>('/chat/analyze', {
     session_id: sessionId, question, api_key: apiKey, base_url: baseUrl, model,
+  });
+  return data;
+};
+
+/** 聊天页专用：只走后端默认的 Agnes，前端不传任何模型参数。
+ * choice 可选：用户点击清洗方案后回传的 method id（多轮续接）。 */
+export const chatSend = async (
+  sessionId: string,
+  message: string,
+  choice?: string,
+): Promise<ChatSendResponse> => {
+  const { data } = await api.post<ChatSendResponse>('/chat/send', {
+    session_id: sessionId,
+    message,
+    choice: choice ?? null,
   });
   return data;
 };

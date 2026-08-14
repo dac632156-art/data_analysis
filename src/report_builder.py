@@ -313,45 +313,45 @@ class ReportBuilder:
 
                 kpis = pkg.get("kpis", [])
                 if kpis:
-                    blocks.append("**KPI 指标**：")
+                    kpi_parts = []
                     for k in kpis:
-                        change_str = f" ({k['change']})" if k.get("change") else ""
-                        blocks.append(f"- {k['label']}：{k['value']}{change_str}")
+                        change_str = f"（{k['change']}）" if k.get("change") else ""
+                        kpi_parts.append(f"{k['label']} {k['value']}{change_str}")
+                    blocks.append("**KPI 指标**：" + "；".join(kpi_parts) + "。")
                     blocks.append("")
 
                 tables = pkg.get("tables", [])
                 if tables:
                     for t in tables:
-                        cols = " | ".join(t.get("columns", []))
-                        blocks.append(f"- 表格「{t['title']}」列：{cols}，共 {t['total_rows']} 行")
+                        cols = "、".join(t.get("columns", []))
                         rows = t.get("rows", [])
-                        for row in rows:
-                            # 紧凑格式：行数据用 | 连接，一条一行
-                            if isinstance(row, list):
-                                blocks.append(f"  {' | '.join(str(v) for v in row)}")
-                            else:
-                                blocks.append(f"  {row}")
+                        total = t.get("total_rows") or (len(rows) if isinstance(rows, list) else 0)
+                        # 取前 3 行作为关键样例，用自然句式概括（不输出 | 分隔的原始表）
+                        sample_desc = ""
+                        if isinstance(rows, list) and rows:
+                            samples = []
+                            for row in rows[:3]:
+                                if isinstance(row, list):
+                                    samples.append("、".join(str(v) for v in row))
+                                else:
+                                    samples.append(str(row))
+                            sample_desc = " 例如：" + "；".join(samples)
+                        blocks.append(f"**表格「{t['title']}」**：共 {total} 行，列包括 {cols}。{sample_desc}")
                     blocks.append("")
 
                 insights = pkg.get("insights", [])
                 if insights:
-                    blocks.append("**数据洞察**：")
-                    for ins in insights:
-                        blocks.append(f"- {str(ins).strip()}")
+                    blocks.append("**数据洞察**：" + "；".join(str(ins).strip() for ins in insights) + "。")
                     blocks.append("")
 
                 conclusions = pkg.get("conclusions", [])
                 if conclusions:
-                    blocks.append("**分析结论**：")
-                    for c in conclusions:
-                        blocks.append(f"- {str(c).strip()}")
+                    blocks.append("**分析结论**：" + "；".join(str(c).strip() for c in conclusions) + "。")
                     blocks.append("")
 
                 recommendations = pkg.get("recommendations", [])
                 if recommendations:
-                    blocks.append("**建议**：")
-                    for r in recommendations:
-                        blocks.append(f"- {str(r).strip()}")
+                    blocks.append("**建议**：" + "；".join(str(r).strip() for r in recommendations) + "。")
                     blocks.append("")
 
                 findings = pkg.get("findings", [])
@@ -363,19 +363,22 @@ class ReportBuilder:
                         fcat = f.get("category", "")
                         ftitle = f.get("title", "")
                         fsev = f.get("severity", "")
-                        header = f"- [{fcat}] {ftitle}" if fcat else f"- {ftitle}"
-                        if fsev:
-                            header += f"（严重度：{fsev}）"
-                        blocks.append(header)
+                        prefix = f"[{fcat}] " if fcat else ""
+                        sev = f"（严重度：{fsev}）" if fsev else ""
+                        line = f"关于 {prefix}{ftitle}{sev}："
+                        parts = []
                         fmeaning = f.get("business_meaning", "")
                         if fmeaning:
-                            blocks.append(f"  业务含义：{fmeaning}")
+                            parts.append(f"业务含义为{fmeaning}")
                         fimpact = f.get("business_impact", "")
                         if fimpact:
-                            blocks.append(f"  业务影响：{fimpact}")
+                            parts.append(f"业务影响为{fimpact}")
                         frec = f.get("recommendation", "")
                         if frec:
-                            blocks.append(f"  建议：{frec}")
+                            parts.append(f"建议{frec}")
+                        if parts:
+                            line += "；".join(parts) + "。"
+                        blocks.append(line)
                     blocks.append("")
 
                 charts = pkg.get("chart_data", [])

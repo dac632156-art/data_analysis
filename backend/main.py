@@ -14,6 +14,8 @@ sys.path.insert(0, project_root)
 # 加载 .env 环境变量（优先于 config 导入，本地开发可覆盖默认值，生产环境无 .env 文件自动用默认值）
 from dotenv import load_dotenv
 load_dotenv(os.path.join(project_root, ".env"))
+# 同时加载 backend/.env（Agnes Key 等后端专属密钥放在此处，已被 gitignore 忽略，不进仓库）
+load_dotenv(os.path.join(project_root, "backend", ".env"))
 
 from fastapi import FastAPI, Request, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse, Response
 
 # 导入路由
-from backend.routers import upload, data, clean, chart, dashboard, insights, report, analysis
+from backend.routers import upload, data, clean, chart, dashboard, insights, report, analysis, chat
 from backend.services.session_manager import manager
 from backend.db.connection import init_db
 
@@ -99,6 +101,7 @@ app.include_router(dashboard.router, prefix="/api", tags=["仪表盘"])
 app.include_router(insights.router, prefix="/api", tags=["AI 洞察"])
 app.include_router(report.router, prefix="/api", tags=["报告生成"])
 app.include_router(analysis.router, prefix="/api", tags=["分析执行"])
+app.include_router(chat.router, prefix="/api", tags=["聊天对话"])
 
 
 # 全局异常处理器：捕获所有未处理的异常，返回详细错误信息
