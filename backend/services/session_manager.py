@@ -98,6 +98,13 @@ class SessionData:
         self.df_undo_stack: List[pd.DataFrame] = []  # 撤销栈（最多保存 20 步）
         self.cleaning_history: List[Dict] = []
         self.analysis_history: List[Dict] = []
+        # 任务1：AI 会话多轮聊天历史（chat/analyze 追问回路统一维护）
+        # 每条形如 {"role": "user"|"assistant"|"tool", "content": str, "ts": float}
+        self.chat_history: List[Dict[str, Any]] = []
+        # 任务1：用户偏好档案卡（防偏好锁死：只记"用户最近的真实业务意图"，不记风格取向）
+        # 形如 {"last_business_question": "哪个品卖得不好"}，AI 决策时查此卡避免重复反问，
+        # 但用户最新指令优先（见任务3 系统提示词）。写入即覆盖。
+        self.user_preferences: Dict[str, Any] = {}
         self.saved_charts: List[Dict[str, Any]] = []  # 用户从分析页保存的图表 [{"title":..., "option":..., "saved_at":...}, ...]
         self.analysis_packages: Dict[str, Any] = {}     # 临时分析结果（key=pkg_id, value=AnalysisPackage）
         self.saved_packages: List[Dict[str, Any]] = []   # 用户保存的分析包
@@ -108,6 +115,8 @@ class SessionData:
         self.custom_title: str = ""          # 用户手动编辑的仪表盘标题
         self.holds_slot: bool = False        # 是否已占用"数据插槽"（限流=持有数据的会话，上限 max_sessions）
         self.reserved_at: float = 0.0         # 占用插槽的时间戳（用于预约超时释放）
+        self.user_id: Optional[str] = None    # 登录用户归属（方案 A）：None=游客；回填后存 user_id 字符串
+        self.last_page: str = "upload"         # 会话"上次最后访问页面"，用于历史恢复智能跳转
         self.created_at: float = time.time()
         self.last_access: float = time.time()
         # ===== Chat 智能体扩展 =====
@@ -246,8 +255,12 @@ class SessionManager:
             "custom_title": session.custom_title,
             "holds_slot": session.holds_slot,
             "reserved_at": session.reserved_at,
+            "user_id": session.user_id,
+            "last_page": session.last_page,
             "cleaning_history": session.cleaning_history,
             "analysis_history": session.analysis_history,
+            "chat_history": session.chat_history,
+            "user_preferences": session.user_preferences,
             "saved_charts": session.saved_charts,
             "df_undo_stack": session.df_undo_stack,
             "created_at": session.created_at,
@@ -268,8 +281,12 @@ class SessionManager:
         session.custom_title = state.get("custom_title", "")
         session.holds_slot = state.get("holds_slot", False)
         session.reserved_at = state.get("reserved_at", 0.0)
+        session.user_id = state.get("user_id")
+        session.last_page = state.get("last_page") or "upload"
         session.cleaning_history = state.get("cleaning_history", []) or []
         session.analysis_history = state.get("analysis_history", []) or []
+        session.chat_history = state.get("chat_history", []) or []
+        session.user_preferences = state.get("user_preferences", {}) or {}
         session.saved_charts = state.get("saved_charts", []) or []
         session.df_undo_stack = state.get("df_undo_stack", []) or []
         if state.get("_created_at") is not None:
@@ -301,26 +318,35 @@ class SessionManager:
                 ds.original_path or "",
                 1 if ds.dataset_id == session.active_dataset_id else 0,
                 ds.uploaded_at or time.time(),
+                user_id=session.user_id,
             )
-        # 2) 分析包
-        for bucket in session.dataset_packages.values():
+        # 2) 分析包（B5 修复：用真实 dataset_id，保证历史按文件分组非空）
+        # dataset_packages 是 {dataset_id: {pkg_id: pkg}}，第一层 key 即真实 dataset_id
+        for did, bucket in (session.dataset_packages or {}).items():
             if isinstance(bucket, dict):
                 for pid, pkg in bucket.items():
                     payload = _safe_payload(pkg)
                     if payload is not None:
-                        crud.save_package(pid, session_id, "", payload, None, time.time())
+                        crud.save_package(pid, session_id, did, payload, None, time.time(),
+                                     user_id=session.user_id)
+        # analysis_packages / saved_packages 是扁平结构，从 pkg 内部 dataset_id 取（缺失则回退空）
         for pid, pkg in (session.analysis_packages or {}).items():
             payload = _safe_payload(pkg)
             if payload is not None:
-                crud.save_package(pid, session_id, "", payload, None, time.time())
+                _did = payload.get("dataset_id") or ""
+                crud.save_package(pid, session_id, _did, payload, None, time.time(),
+                                 user_id=session.user_id)
         for pkg in session.saved_packages:
             pid = pkg.get("id")
             if pid:
-                crud.save_package(pid, session_id, "", pkg, pkg.get("saved_at"), time.time())
+                _did = pkg.get("dataset_id") or ""
+                crud.save_package(pid, session_id, _did, pkg, pkg.get("saved_at"), time.time(),
+                                 user_id=session.user_id)
         # 3) 会话轻量状态
         crud.save_session_state(
             session_id, self._serialize_session(session),
             session.created_at, session.last_access,
+            user_id=session.user_id,
         )
 
     def _load_session_from_db(self, session_id: str) -> Optional["SessionData"]:
@@ -494,12 +520,90 @@ class SessionManager:
                 session.last_access = time.time()
                 crud.touch_session(session_id, session.last_access)
             return session
-    
+
+    def set_current_page(self, session_id: str, page: str) -> None:
+        """记录会话当前页面，供历史恢复时智能跳转。"""
+        if not page:
+            return
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = self._load_session_from_db(session_id)
+            if session is None:
+                return
+            session.last_page = page
+            session.last_access = time.time()
+            # 轻量落库：仅更新 state（含 last_page）与 last_access
+            crud.save_session_state(
+                session_id, self._serialize_session(session),
+                session.created_at, session.last_access,
+                user_id=session.user_id,
+            )
+
+    def reassign_user_to_session(self, session_id: str, user_id: str) -> bool:
+        """登录回填：把游客 session 归属到登录用户（方案 A）。
+
+        安全策略：
+          - 必须有真实工作（至少 1 个 datasets 或 1 个 analysis_packages），
+            否则视为空游客 session，拒绝绑定（防止 history 列表堆满 0 数据 0 分析包的空记录）。
+          - 通过后，更新内存 session.user_id + 落库，再做 DB 层时间窗回填。
+        返回是否成功回填。
+        """
+        uid = crud.to_user_id_str(user_id)
+        if uid is None:
+            return False
+        # 先做非空判定（DB 层），空 session 完全不碰 → 返回 False 让 auth 路由走新建兜底
+        try:
+            if not crud.session_has_real_work(session_id):
+                return False
+        except Exception as e:
+            import logging as _logging
+            _logging.getLogger("session").warning(f"非空判定失败（按拒绝处理）: {e}")
+            return False
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is not None:
+                session.user_id = uid
+                self._persist_session(session_id)  # 内存态落库，携带 user_id
+        # 再对 DB 做带时间窗的安全回填（覆盖重启后内存丢失的场景）
+        try:
+            return crud.reassign_session_to_user(session_id, uid)
+        except Exception as e:
+            import logging as _logging
+            _logging.getLogger("session").warning(f"reassign_session_to_user DB 回填失败: {e}")
+            # 内存态已更新，视为成功（至少本次会话归属正确）
+            return True
+
+    def assign_new_session_to_user(self, user_id) -> str:
+        """登录路径：直接新建一个会话并绑定到登录用户，避免空游客 session 污染历史。
+
+        - 新建 session（uuid）→ 立即落库并 user_id=user_id 绑定
+        - 返回新 session_id 给前端，前端用其覆盖 localStorage.sessionId
+        用于：登录请求带的 session_id 是空 session 时（crud.reassign_session_to_user 会返回 False），
+        仍要给登录用户一个有效的、归属正确的 session 以便后续上传文件落库。
+        """
+        uid = crud.to_user_id_str(user_id)
+        if uid is None:
+            return ""
+        new_sid = self.create_session()
+        with self._lock:
+            session = self._sessions.get(new_sid)
+            if session is not None:
+                session.user_id = uid
+                self._persist_session(new_sid)  # 落库，携带 user_id
+        # 库里同步回填（虽然内存已设，但这次在 DB 上也绑定一次以保一致；同时触发 prune_user_sessions）
+        try:
+            crud.reassign_session_to_user(new_sid, uid)
+        except Exception as e:
+            import logging as _logging
+            _logging.getLogger("session").warning(f"assign_new_session_to_user 绑定失败: {e}")
+        return new_sid
+
     def add_dataset(self, session_id: str, df: pd.DataFrame, *, file_name: str,
                     file_size_bytes: int, rows: int, columns: List[str],
                     column_info: List[dict], preview: List[dict],
                     dataset_id: Optional[str] = None, set_active: bool = True,
-                    account_quota: bool = True) -> str:
+                    account_quota: bool = True, user_id: Optional[str] = None) -> str:
         """新增一个数据集（不覆盖旧表）。返回 dataset_id。
 
         原始数据落盘(pickle)以释放内存；非 active 数据集仅保留 pickle、释放内存 df（防 OOM）。
@@ -887,6 +991,58 @@ class SessionManager:
         """获取清洗历史"""
         session = self.get_session(session_id)
         return session.cleaning_history if session else []
+
+    # ===== 任务1：AI 会话多轮聊天历史 =====
+    def append_history(self, session_id: str, role: str, content: str,
+                        artifacts_tags: Optional[List[str]] = None,
+                        is_summarized: bool = False) -> None:
+        """追加一条会话聊天记录（供 agent ReAct 循环 / 路由调用，维护多轮上下文）。
+
+        role 取值建议："user" / "assistant" / "tool"。
+        artifacts_tags: 该轮产出的轻量标签列表（如 ["图表:营收环形图"]），
+                       用于避免把大段产物原文塞进上下文导致 AI 上下文膨胀，默认空列表。
+        is_summarized: 该条是否已被滚动摘要压缩过，默认 False（供后续"记忆瘦身"识别新笔记）。
+        """
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = SessionData()
+                self._sessions[session_id] = session
+            session.chat_history.append({
+                "role": role,
+                "content": content,
+                "ts": time.time(),
+                "artifacts_tags": artifacts_tags or [],
+                "is_summarized": is_summarized,
+            })
+            session.last_access = time.time()
+            self._persist_session(session_id)
+
+    def get_history(self, session_id: str) -> List[Dict[str, Any]]:
+        """获取会话聊天历史（按时间正序），供 agent 拼装 ctx["history"]。"""
+        session = self.get_session(session_id)
+        return session.chat_history if session else []
+
+    # ===== 任务1：用户偏好档案卡（防偏好锁死）=====
+    def set_user_preference(self, session_id: str, key: str, value: Any) -> None:
+        """写入/覆盖一项用户偏好（写入即覆盖，保证偏好跟随最新意图，不被锁死）。
+
+        约定：偏好只记录"用户最近的真实业务意图"（如最近一次明确的业务问题），
+        不干预"分析任务选型"的细节。例：set_user_preference(sid, "last_business_question", "哪个品卖得不好")
+        """
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None:
+                session = SessionData()
+                self._sessions[session_id] = session
+            session.user_preferences[key] = value
+            session.last_access = time.time()
+            self._persist_session(session_id)
+
+    def get_user_preferences(self, session_id: str) -> Dict[str, Any]:
+        """获取全部用户偏好（agent 自行 .get(key) 查单项；用户最新指令优先于此处值）。"""
+        session = self.get_session(session_id)
+        return session.user_preferences if session else {}
     
     def set_api_key(self, session_id: str, api_key: str):
         """设置 API Key"""

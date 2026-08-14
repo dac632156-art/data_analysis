@@ -52,3 +52,66 @@ CREATE INDEX IF NOT EXISTS idx_packages_dataset ON analysis_packages(dataset_id)
 
 -- 说明：saved_packages（用户已保存的分析包列表）已并入 sessions.state_json，
 --       无需独立表；如需独立审计可后续拆分，但本版遵循最小改动原则。
+
+-- ============================================================
+-- 用户账户表（登录系统核心）
+-- ============================================================
+-- token_version：改密 / 退出时 +1，使旧 JWT 立即失效（无需黑名单）。
+-- storage_used / dataset_limit：P2 配额地基（P1 仅落列，dataset_limit 默认 10）。
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    username       TEXT UNIQUE NOT NULL,
+    password_hash  TEXT NOT NULL,
+    token_version  INTEGER DEFAULT 0,
+    storage_used   INTEGER DEFAULT 0,
+    dataset_limit  INTEGER DEFAULT 10,
+    created_at     REAL
+);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+-- 三表 user_id 列（可空 TEXT）：用于数据归属归集。
+-- 通过 crud._ensure_user_columns() 幂等 ALTER 添加（兼容旧库），
+-- 写入时一律经 crud.to_user_id_str 与 users.id 对齐，避免 int→TEXT 隐式转换污染。
+
+-- ============================================================
+-- 收藏 / 分组表（P2：用户对个人分析包收藏与分组管理）
+-- ============================================================
+-- 关联：user_id(users.id) + package_id(analysis_packages.package_id)，每个用户对同一
+--       分析包最多一条收藏记录（UNIQUE 约束）。
+-- is_starred：是否已收藏（0/1）。取消收藏时置 0 而非删除行，方便保留历史分组/重命名。
+-- display_name：用户对该分析包的自定义显示名（覆盖原始标题），可空。
+-- group_name：所属分组名，默认「默认分组」。
+-- sort_order：同组内排序权重（越小越靠前）。
+CREATE TABLE IF NOT EXISTS favorites (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       TEXT NOT NULL,
+    package_id    TEXT NOT NULL,
+    is_starred    INTEGER NOT NULL DEFAULT 0,
+    display_name  TEXT,
+    group_name    TEXT NOT NULL DEFAULT '默认分组',
+    sort_order    INTEGER NOT NULL DEFAULT 0,
+    created_at    REAL NOT NULL,
+    UNIQUE(user_id, package_id)
+);
+CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_user_pkg ON favorites(user_id, package_id);
+
+-- ============================================================
+-- 分享链接表（P2：用户将分析包生成公开只读分享）
+-- ============================================================
+-- share_id：对外暴露的短标识（非自增，避免被遍历猜测），后端用短随机串生成。
+-- package_id：被分享的分析包（analysis_packages.package_id）。
+-- user_id：分享者（users.id）。
+-- expire_at：过期时间戳（REAL，秒），可空表示永久有效。
+-- 鉴权：GET /api/shared/{share_id} 无需登录即可读取（公开只读），其余写操作需登录。
+CREATE TABLE IF NOT EXISTS shares (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    share_id   TEXT UNIQUE NOT NULL,
+    package_id TEXT NOT NULL,
+    user_id    TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    expire_at  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_shares_share_id ON shares(share_id);
+CREATE INDEX IF NOT EXISTS idx_shares_user ON shares(user_id);
+

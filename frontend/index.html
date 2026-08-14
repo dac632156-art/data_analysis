@@ -6,6 +6,11 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DataMind AI - 数据分析智能体</title>
+    <!-- 预加载背景图，避免首屏白屏；JS 加载前先用同色系渐变兜底 -->
+    <link rel="preload" as="image" href="/bg.jpg" />
+    <style>
+      html, body { min-height: 100vh; background: linear-gradient(135deg, #eef2ff 0%, #faf5ff 45%, #fdf2f8 100%); }
+    </style>
   </head>
   <body>
     <div id="root"></div>

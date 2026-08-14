@@ -13,7 +13,12 @@ import type { ChartConfig } from '../types';
 import type { SmartLayoutResponse } from './../types/dashboard';
 
 // 部署时通过环境变量指定后端地址，本地开发走 Vite proxy
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+let API_BASE = import.meta.env.VITE_API_BASE || '/api';
+// 兼容只写根域名的情况：统一追加 /api，避免上传接口 405
+API_BASE = API_BASE.replace(/\/$/, '');
+if (!API_BASE.endsWith('/api')) {
+  API_BASE += '/api';
+}
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -32,8 +37,41 @@ api.interceptors.request.use((config) => {
   ) {
     config.data.model = config.data.model.toLowerCase();
   }
+  // 注入登录态：已登录用户的所有业务请求自动携带 Bearer token
+  const token = localStorage.getItem('datamind_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
+
+// 401 统一处理：业务接口先尝试 refresh 续期并重试一次；失败（refresh 过期）才跳登录
+import { tryRefresh } from '../lib/api';
+api.interceptors.response.use(
+  (res) => res,
+  async (err) => {
+    const status = err.response?.status;
+    const url = err.config?.url || '';
+    const isAuthCall = url.includes('/auth/');
+    const isSessionCall = url.includes('/session/');
+    if (status === 401 && !isAuthCall && !isSessionCall) {
+      const newToken = await tryRefresh();
+      if (newToken && err.config) {
+        err.config.headers.Authorization = `Bearer ${newToken}`;
+        return api.request(err.config);
+      }
+      // 续期失败：记录来源并跳登录
+      const current = window.location.pathname + window.location.search + window.location.hash;
+      sessionStorage.setItem('datamind_post_login_redirect', current);
+      if (!window.location.pathname.startsWith('/login') &&
+          !window.location.pathname.startsWith('/register')) {
+        window.location.href = '/login';
+      }
+    }
+    // 原有网络错误重试逻辑在下方拦截器中继续处理
+    return Promise.reject(err);
+  },
+);
 
 // 后端休眠/无响应时的自动重试（同时支持 Render 部署版和本地 dev）
 let _wakePromise: Promise<void> | null = null;
@@ -482,6 +520,21 @@ export const selectDataset = async (sessionId: string, datasetId: string): Promi
 /** 拉回会话全部数据集（刷新后恢复列表）*/
 export const listDatasets = async (sessionId: string): Promise<DatasetListResponse> => {
   const { data } = await api.get<DatasetListResponse>('/data/datasets', { params: { session_id: sessionId } });
+  return data;
+};
+
+/** 记录会话当前所在页面（供历史恢复智能跳转） */
+export const setSessionPage = async (sessionId: string, page: string): Promise<void> => {
+  await api.post('/session/page', null, { params: { session_id: sessionId, page } });
+};
+
+/** 恢复指定历史会话：返回后端会话状态，前端据此切换本地会话 */
+export const restoreSessionHistory = async (
+  sessionId: string,
+): Promise<{ session_id: string; state: Record<string, unknown>; last_page: string }> => {
+  const { data } = await api.post<{ session_id: string; state: Record<string, unknown>; last_page: string }>(
+    `/history/sessions/${encodeURIComponent(sessionId)}/restore`,
+  );
   return data;
 };
 

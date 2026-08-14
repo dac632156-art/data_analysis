@@ -1,9 +1,10 @@
 /* Layout - 全局布局（浅色玻璃拟态） */
 import React, { useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { FiMenu } from 'react-icons/fi';
 import Sidebar from './Sidebar';
 import ErrorBoundary from '../ErrorBoundary';
+import AuthButton from '../AuthButton';
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -15,9 +16,6 @@ export default function Layout() {
   });
   // 移动端抽屉侧边栏开关（与桌面端 collapsed 无关）
   const [mobileOpen, setMobileOpen] = useState(false);
-  // ★ 大屏路由：放掉 max-w-7xl 限制，让 SmartDashboard 网格铺满 main 容器
-  const { pathname } = useLocation();
-  const isWideRoute = pathname.startsWith('/dashboard');
 
   const toggleCollapsed = () => {
     setCollapsed((c) => {
@@ -42,20 +40,26 @@ export default function Layout() {
       />
       {/* translate="not" 阻止浏览器翻译插件修改此区域 DOM，防止 React 虚拟 DOM 引用失效导致 insertBefore 崩溃 */}
       <main
-        className={`${collapsed ? 'md:ml-20' : 'md:ml-64'} ml-0 ${isWideRoute ? 'h-screen p-2 md:p-3' : 'h-screen p-4 md:p-6'} relative z-10 flex flex-col transition-all duration-300`}
+        className={`${collapsed ? 'md:ml-20' : 'md:ml-64'} ml-0 h-screen p-4 md:p-6 relative z-10 flex flex-col transition-all duration-300`}
         translate="no"
       >
         {/* 移动端汉堡按钮：仅小屏显示，用于唤出侧边栏抽屉 */}
-        <button
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          aria-label="打开菜单"
-          className="md:hidden self-start mb-3 p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 transition-colors -ml-1 glass-panel"
-        >
-          <FiMenu className="w-5 h-5" />
-        </button>
-        {/* ★ 大屏路由下不放 max-w-7xl，让 SmartDashboard 网格铺满 main 容器（消除左右空白带） */}
-        <div className={`${isWideRoute ? 'w-full' : 'max-w-7xl mx-auto'} w-full flex-1 page-enter notranslate`}>
+        <div className="md:hidden flex items-center justify-between gap-2 mb-3 -ml-1">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            aria-label="打开菜单"
+            className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 transition-colors glass-panel"
+          >
+            <FiMenu className="w-5 h-5" />
+          </button>
+          <AuthButton />
+        </div>
+        {/* 桌面端右上角登录按钮 */}
+        <div className="hidden md:flex absolute top-4 right-6 z-20">
+          <AuthButton />
+        </div>
+        <div className="max-w-7xl mx-auto w-full flex-1 page-enter notranslate">
           <ErrorBoundary>
             <Outlet />
           </ErrorBoundary>

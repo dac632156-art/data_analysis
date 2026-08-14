@@ -421,3 +421,33 @@ export interface AICleanStatusResponse {
   datasets: Record<string, DatasetAICleanStatus>;
   error?: string;
 }
+
+/* ===== 认证 / 用户 / 历史类型 ===== */
+
+export interface AuthUser {
+  id: number;
+  username: string;
+}
+
+export interface AuthResult {
+  token: string;
+  user: AuthUser;
+}
+
+export interface HistoryDataset {
+  dataset_id: string;
+  file_name?: string;
+  original_path?: string;
+  created_at?: number;
+  package_count?: number;
+  [key: string]: unknown;
+}
+
+export interface HistoryPackage {
+  package_id: string;
+  title?: string;
+  description?: string;
+  saved_at?: string;
+  created_at?: number;
+  [key: string]: unknown;
+}
