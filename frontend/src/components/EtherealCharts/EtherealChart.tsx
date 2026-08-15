@@ -115,8 +115,9 @@ export const EtherealChart: React.FC<Props> = ({ slot, chartType, chartNode, dat
     }
   }
 
-  // ★ 默认让组件继承父容器高度（parent 自适应，'100%'），仅在调用方显式传 height 时硬编码。
-  const wrapperHeight: number | string = height ?? '100%';
+  // ★ 调用方不传 height 时回落 undefined，让各子组件使用自身默认高度（如饼图 360、柱状图 360），
+  //   不再强制 '100%' 顶掉子组件默认值导致容器高度塌陷为 0（饼图空白根因）。显式传 height 时仍尊重调用方。
+  const wrapperHeight: number | string | undefined = height ?? undefined;
   switch (type) {
     case 'pie':
       return <EtherealPieChart option={chartNode as Record<string, unknown>} title={title} cardBgUrl={cardBgUrl} sliceTextureUrl={sliceTextureUrl} height={wrapperHeight} />;

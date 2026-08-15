@@ -60,6 +60,16 @@ function ToolResultRow({ tr }: { tr: ToolResult }) {
     return <BigScreenCard bigscreen={tr.data.bigscreen} />;
   }
 
+  // 图表：直接渲染图表本体，不显示工具名小标签（badge），让图干净呈现
+  if (chart) {
+    return (
+      <div className="mt-2">
+        <EtherealChart chartType={chart.chart_type || chart.series?.[0]?.type || tr.data?.packages?.[0]?.type} chartNode={adaptChartToNode(chart)} />
+      </div>
+    );
+  }
+
+  // 纯文字结果：保留 badge 文字框（工具名 + 摘要），用于折叠区内的提示展示
   const badge = isOk ? 'bg-emerald-500/15 border border-emerald-400/40 text-emerald-700'
                      : 'bg-rose-500/15 border border-rose-400/40 text-rose-700';
   return (
@@ -68,11 +78,6 @@ function ToolResultRow({ tr }: { tr: ToolResult }) {
         <span className="font-medium shrink-0">{tr.tool}</span>
         <span className="opacity-80">{tr.summary || (isOk ? '执行成功' : '执行失败')}</span>
       </div>
-      {chart && (
-        <div className="mt-2">
-          <EtherealChart chartType={chart.chart_type || chart.series?.[0]?.type || tr.data?.packages?.[0]?.type} chartNode={adaptChartToNode(chart)} />
-        </div>
-      )}
     </div>
   );
 }
@@ -312,23 +317,38 @@ export default function ChatPage() {
                 <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }} />
               )}
 
-              {/* 工具执行结果（含图表/报告/大屏时默认展开，不遮挡内容） */}
+              {/* 工具执行结果：可视化结果（图表/报告/大屏）平铺为正文，纯文字结果收进折叠区 */}
               {m.toolResults && m.toolResults.length > 0 && (() => {
-                const hasVisual = m.toolResults.some(
+                const ok = m.toolResults.filter((tr: ToolResult) => tr.status !== 'fail');
+                const visualResults = ok.filter(
                   (tr: ToolResult) => tr.data?.chart || tr.data?.report || tr.data?.bigscreen,
                 );
+                const otherResults = ok.filter(
+                  (tr: ToolResult) => !(tr.data?.chart || tr.data?.report || tr.data?.bigscreen),
+                );
                 return (
-                <details className="mt-3 group" open={hasVisual}>
-                  <summary className="cursor-pointer select-none text-xs text-slate-500 hover:text-violet-600 flex items-center gap-1.5">
-                    <span className="text-emerald-500">✓</span>
-                    已分析 · 点开看执行过程
-                  </summary>
-                  <div className="mt-2 space-y-1.5">
-                    {m.toolResults.filter((tr) => tr.status !== 'fail').map((tr, ti) => (
-                      <ToolResultRow key={ti} tr={tr} />
-                    ))}
-                  </div>
-                </details>
+                  <>
+                    {visualResults.length > 0 && (
+                      <div className="mt-3">
+                        {visualResults.map((tr, ti) => (
+                          <ToolResultRow key={ti} tr={tr} />
+                        ))}
+                      </div>
+                    )}
+                    {otherResults.length > 0 && (
+                      <details className="mt-3 group">
+                        <summary className="cursor-pointer select-none text-xs text-slate-500 hover:text-violet-600 flex items-center gap-1.5">
+                          <span className="text-emerald-500">✓</span>
+                          已分析 · 点开看执行过程
+                        </summary>
+                        <div className="mt-2 space-y-1.5">
+                          {otherResults.map((tr, ti) => (
+                            <ToolResultRow key={ti} tr={tr} />
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </>
                 );
               })()}
 
