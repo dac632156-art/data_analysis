@@ -56,7 +56,7 @@ function ToolResultRow({ tr }: { tr: ToolResult }) {
   if (tr.tool === 'generate_report' && tr.data?.report) {
     return <ReportCard report={tr.data.report} />;
   }
-  if (tr.tool === 'generate_bigscreen' && tr.data?.bigscreen) {
+  if (tr.tool === 'build_dashboard' && tr.data?.bigscreen) {
     return <BigScreenCard bigscreen={tr.data.bigscreen} />;
   }
 
