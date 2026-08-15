@@ -7,6 +7,7 @@ function calling 循环，支持多轮 choice 选择、工具执行、清洗后�
 → 结构化响应 {kind, content, choices, tool_results, data_preview}
 → 前端渲染（text / choice 按钮 / 工具执行状态 / 数据预览）
 """
+import traceback
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -50,6 +51,11 @@ class ChatRequest(BaseModel):
     choice: Optional[str] = None   # 用户点击的清洗方案 id（多轮续接时带）
 
 
+# 合法清洗方法集合，必须与 src/tools_registry.py 的 _FIVE_METHODS_META[].method 及
+# clean_data 工具 schema 的 enum 保持一致；新增清洗方法时需同步更新此处。
+LEGAL_METHODS = {"fill_mean", "fill_median", "fill_mode", "fill_0"}
+
+
 @router.post("/chat/send")
 async def api_chat_send(req: ChatRequest):
     """聊天接口：POST /api/chat/send {session_id, message, choice?}
@@ -81,14 +87,19 @@ async def api_chat_send(req: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
     # 多轮：若用户点了 choice，把选择拼进消息；并恢复历史
-    message = req.message
-    if req.choice:
-        message = f"我选择执行：{req.choice}（请调用 clean_data 工具执行该清洗方法）"
+    # 防御：只有属于 LEGAL_METHODS 的合法 method 才走"选择续接 + 执行清洗"分支；
+    # 其余（含 [object Object] 等垃圾字符串）一律当普通消息处理，避免误执行清洗。
+    choice = req.choice if (isinstance(req.choice, str) and req.choice in LEGAL_METHODS) else None
+    message = req.message or '分析'
+    if choice:
+        message = f"我选择执行：{choice}（请调用 clean_data 工具执行该清洗方法）"
     history = session.messages if session.messages else None
 
     try:
         result = agent.agentic_chat(message, req.session_id, history=history)
     except Exception as e:
+        print("[chat/send] EXCEPTION traceback:")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"AI 调用失败：{str(e)}")
 
     # 写回对话历史，供下一轮续接。

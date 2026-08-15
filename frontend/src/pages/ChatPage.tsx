@@ -199,8 +199,10 @@ export default function ChatPage() {
   };
 
   const send = useCallback(async (choiceId?: string) => {
+  // 防御：choiceId 必须是字符串，否则（如对象/undefined 经异常路径传入）
+  // 会被 String() 成 "[object Object]" 发给后端导致误执行清洗。非字符串一律视为无选择。
+  if (typeof choiceId !== 'string') choiceId = '';
   // choiceId 非空：复用上一条助手消息的原文作为提问，回传用户选择
-  // 防御：choiceId 可能是对象（后端 LLM 返回不规范时），强制转字符串
   const safeChoiceId = choiceId ? String(choiceId) : '';
   const text = safeChoiceId ? '' : input.trim();
   // 上一轮请求还在跑：静默忽略会让用户困惑（文字卡在框里），给出轻量提示后返回
@@ -251,6 +253,8 @@ export default function ChatPage() {
 
   // 用户点击清洗方案按钮
   const onChoose = useCallback((choiceId: string, msgIndex: number) => {
+    // 防御：choiceId 非字符串则直接忽略，绝不把对象传入 send（避免 [object Object]）
+    if (typeof choiceId !== 'string') return;
     // 标记该条助手消息已解决，避免重复点
     setMessages((m) => m.map((msg, i) =>
       i === msgIndex ? { ...msg, choiceResolved: true } : msg));

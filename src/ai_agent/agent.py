@@ -14,7 +14,7 @@ import openai
 import threading
 import unicodedata
 import difflib
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 logger = logging.getLogger("agent")
 
@@ -91,6 +91,34 @@ def _has_clean_intent(text: str) -> bool:
         return False
     t = text.lower()
     return any(kw in t for kw in _CLEAN_INTENT_KEYWORDS)
+
+
+def _parse_clean_method_from_message(text: str) -> Optional[str]:
+    """从用户「我选择执行：xxx」消息中解析出清洗 method。
+
+    匹配顺序：method 枚举字面量（fill_mean 等）优先，其次中文 label（均值填充等）。
+    命中返回 method 字符串，未命中返回 None（交给 LLM 自行判断，不强制）。
+    """
+    if not text or "我选择执行" not in text:
+        return None
+    # method 字面量（含下划线写法）
+    for m in ("fill_mean", "fill_median", "fill_mode", "fill_0"):
+        if m in text:
+            return m
+    # 中文 label 映射
+    label_map = {
+        "均值填充": "fill_mean",
+        "平均数填充": "fill_mean",
+        "中位数填充": "fill_median",
+        "众数填充": "fill_mode",
+        "填0": "fill_0",
+        "填零": "fill_0",
+        "填充0": "fill_0",
+    }
+    for label, method in label_map.items():
+        if label in text:
+            return method
+    return None
 
 from src.ai_agent.prompts import (
     SYSTEM_PROMPT, REPORT_SYSTEM_PROMPT, REPORT_USER_PROMPT_TEMPLATE,
@@ -377,9 +405,11 @@ class DataAnalysisAgent:
             # 若 LLM 在第一轮就自行带 method 调用（未经用户从弹窗选择），视为跳过体检态，
             # 忽略 method、强制退回体检态，让系统先把可选项弹给用户。
             is_choice_continuation = "我选择执行" in (user_message or "")
+            print(f"[DEBUG 门禁] method={method!r} type={type(method).__name__} | is_choice_continuation={is_choice_continuation} | user_message={user_message!r}")
             if method and not is_choice_continuation:
                 logger.warning("clean_data 门禁：LLM 未经用户选择就带 method=%s 调用，强制退回体检态", method)
                 method = None
+            print(f"[DEBUG 门禁] after method={method!r}")
 
             # 体检态（无 method）→ 直接对当前 df 扫描建议
             if not method:
@@ -436,9 +466,12 @@ class DataAnalysisAgent:
             preview_rows = int(cleaned_df.shape[0]) if cleaned_df is not None else 0
             preview_cols = list(cleaned_df.columns) if cleaned_df is not None else []
 
-            # 清洗完成后仅返回清洗结果。不再代码硬串联三分析（方案X已废弃）：
-            # 完整分析交由 LLM 在后续轮次按用户意图调用业务模型分析/通用统计/自由写码工具，
-            # 三个工具会把完整 AnalysisPackage 写入 session.analysis_packages，供产出工具消费。
+            # 清洗完成后仅返回清洗结果。不在此处代码硬串联三分析（方案X已废弃）：
+            # 改法1（最小闭环）：清洗执行态成功后，agentic_chat 会在本轮 tool_results 检测
+            # 到 clean_data=ok，置 _need_inject_clean_prompt 标志；下一轮循环顶部据此向
+            # messages 注入一条"请立即调用三分析工具"的 user 提示（并立即清标志防死循环），
+            # 由 LLM 自动调用 run_analysis_model / run_general_statistics / execute_python，
+            # 三个工具把完整 AnalysisPackage 写入 session.analysis_packages，供产出工具消费。
 
             return {
                 "tool": name, "status": "ok",
@@ -574,6 +607,37 @@ class DataAnalysisAgent:
 
         messages.append({"role": "user", "content": message})
 
+        # 确定性兜底（符合用户设计：用户选完清洗后必须接着执行并自动三分析，
+        # 不能赌 LLM 自己调 clean_data 执行态——实测证明 LLM 会偷懒只回文字）。
+        # 当本轮用户消息表达「我选择执行 xxx」且数据尚未清洗完成时，后端直接以
+        # 执行态跑 clean_data（从用户消息里解析 method 关键词），不依赖 LLM 发 tool_calls。
+        # 跑成功后置 _need_inject_clean_prompt，下一轮顶部注入提示驱动三分析。
+        tool_results: List[Dict[str, Any]] = []
+        # 改法1 标志：本轮若检测到 clean_data 执行态成功，置为 True；
+        # 下一轮循环顶部据此注入"请立即调用三分析工具"提示后立即清为 False。
+        # 作用域仅限本次 agentic_chat 调用，不持久化到 session，避免跨请求串状态。
+        # ★ 必须在「确定性执行清洗」逻辑之前初始化，否则下方置 True 后又被此处
+        #   （若误放在后面）的 =False 覆盖，导致三分析提示永远注入不了（历史 bug）。
+        _need_inject_clean_prompt = False
+        _choice_method = _parse_clean_method_from_message(message)
+        if _choice_method and not self._is_dataset_cleaned(manager, session_id):
+            print(f"[agentic_chat] 检测到用户选择清洗方式={_choice_method}，后端确定性执行 clean_data 执行态")
+            _exec_res = self._resolve_tool_call(
+                "clean_data", {"method": _choice_method}, manager, session_id,
+                user_message=message,
+            )
+            tool_results.append({
+                "tool": _exec_res.get("tool"),
+                "status": _exec_res.get("status"),
+                "summary": _exec_res.get("summary"),
+                "await_choice": _exec_res.get("await_choice", False),
+                "data": _exec_res.get("data", {}),
+            })
+            if _exec_res.get("tool") == "clean_data" and _exec_res.get("status") == "ok" \
+                    and not _exec_res.get("await_choice"):
+                _need_inject_clean_prompt = True
+                print(f"[agentic_chat] 确定性执行 clean_data 成功 -> set _need_inject_clean_prompt")
+
         function_defs = None
         try:
             # 注意：tools_registry 位于 src/ 包下，需用 src. 前缀 import
@@ -586,7 +650,6 @@ class DataAnalysisAgent:
             print(f"[agentic_chat] WARN get_function_definitions failed: {type(e).__name__}: {e}")
             function_defs = None
 
-        tool_results: List[Dict[str, Any]] = []
         max_rounds = 8
         # 本轮对话工具调用计数（函数内局部变量，每轮 agentic_chat 重建，不持久化到 session）。
         # 用于重复调用熔断：防止 LLM 在 function calling 循环里对同一工具反复调用、
@@ -603,8 +666,23 @@ class DataAnalysisAgent:
             "generate_bigscreen": 3,
             "clean_data": 3,
         }
+        # 注入提示文案（一次性，逼 LLM 主动发三分析 tool_calls）
+        _CLEAN_DONE_PROMPT = (
+            "数据已清洗完成。请立即依次调用以下三个分析工具对清洗后数据进行分析，"
+            "不要再询问用户是否要分析："
+            "①run_analysis_model（业务模型分析）"
+            "②run_general_statistics（通用统计分析）"
+            "③execute_python（自由写码分析）。"
+            "三者都调用完成后，写一段完整中文总结，必须覆盖每一个工具的结论。"
+        )
 
         for _round in range(max_rounds):
+            # 改法1：清洗完成后下一轮顶部注入提示，逼 LLM 自动调三分析工具。
+            # 注入后立即清标志——即便本轮 LLM 未发 tool_calls 直接返回，下下轮也绝不再注入，彻底无死循环。
+            if _need_inject_clean_prompt:
+                messages.append({"role": "user", "content": _CLEAN_DONE_PROMPT})
+                _need_inject_clean_prompt = False
+                print(f"[agentic_chat] round={_round} injected clean-done prompt -> auto-run 3 analysis tools")
             try:
                 create_kwargs: Dict[str, Any] = {
                     "model": self.model,
@@ -624,9 +702,24 @@ class DataAnalysisAgent:
                     def _names_eq(t, n):
                         return t.get("function", {}).get("name") == n
                     is_cleaned = self._is_dataset_cleaned(manager, session_id)
-                    if (not is_cleaned) and _has_clean_intent(message):
+                    # 按用户设计：未清洗时直接把 clean_data 交给 LLM 自主判断。
+                    # 由 LLM 读数据侦察输出、自行判断是否有缺失值、决定是否调 clean_data 体检态弹框，
+                    # 不再用 _has_clean_intent 关键词硬卡（那样会剥夺 LLM 的触发判断权）。
+                    if not is_cleaned:
                         tools_for_round = [t for t in function_defs if _names_eq(t, "clean_data")]
                     elif is_cleaned:
+                        # 防御性放开：只要上下文里已存在「清洗完成→请调三分析」注入提示
+                        # （该提示永久留在 messages 中，不像 _need_inject_clean_prompt 局部标志那样被清），
+                        # 就强制放开三分析工具，保证 LLM 即便首轮 message 不含分析词也能收到工具列表。
+                        # 注意：不能依赖 _need_inject_clean_prompt（顶部注入后已立即清为 False，本轮回看为 False），
+                        # 只能靠 messages 中是否含注入提示来判定「已进入自动三分析阶段」。
+                        _clean_prompt_in_ctx = any(
+                            m.get("role") == "user" and _CLEAN_DONE_PROMPT in (m.get("content") or "")
+                            for m in messages
+                        )
+                        # 顺序很重要：明确的用户意图（分析/图表/报告/大屏）必须先于兜底判定，
+                        # 否则「刚清洗完」的 _clean_prompt_in_ctx 永久为 True 会把所有后续消息都吞成三分析，
+                        # 导致生成大屏/报告/出图永远收不到工具（表现为点了没反应）。
                         if _has_analysis_intent(message):
                             tools_for_round = [t for t in function_defs
                                                if _names_eq(t, "run_analysis_model")
@@ -638,6 +731,13 @@ class DataAnalysisAgent:
                             tools_for_round = [t for t in function_defs if _names_eq(t, "generate_report")]
                         elif _has_bigscreen_intent(message):
                             tools_for_round = [t for t in function_defs if _names_eq(t, "generate_bigscreen")]
+                        elif _clean_prompt_in_ctx:
+                            # 兜底：刚清洗完且用户本轮没说任何明确意图词 → 放开三分析（驱动自动补跑）。
+                            # 仅作最后兜底，不抢占上面的明确意图。
+                            tools_for_round = [t for t in function_defs
+                                               if _names_eq(t, "run_analysis_model")
+                                               or _names_eq(t, "run_general_statistics")
+                                               or _names_eq(t, "execute_python")]
                         else:
                             tools_for_round = []
                     else:
@@ -757,6 +857,13 @@ class DataAnalysisAgent:
                     "await_choice": result.get("await_choice", False),
                     "data": result.get("data", {}),
                 })
+                # 改法1：仅当「本轮执行的 tool」是 clean_data 执行态成功时才置位。
+                # 关键：必须用 result（本轮这一个工具的结果），不能用累积的 tool_results，
+                # 否则 clean_data=ok 会永远留在 tool_results 里，导致后续每一轮末尾都重新置位 → 重复注入三分析。
+                if result.get("tool") == "clean_data" and result.get("status") == "ok" \
+                        and not result.get("await_choice"):
+                    _need_inject_clean_prompt = True
+                    print(f"[agentic_chat] round={_round} clean_data ok (exec) -> set _need_inject_clean_prompt")
                 # 工具结果回灌给 LLM
                 # 规范：注入「总结义务」+ 从 data 抽出的结论文字，让 LLM 最终必须覆盖该工具结果
                 tool_name = tc.function.name
@@ -948,13 +1055,17 @@ class DataAnalysisAgent:
             if tr.get("tool") == "clean_data" and tr.get("status") == "ok":
                 data = tr.get("data") or {}
                 alts = data.get("available_alternatives") or data.get("recommendation", {}).get("alternatives")
+                print(f"[DEBUG _extract_choices] raw alts={alts!r}")
                 if alts:
-                    return [
+                    result = [
                         {"id": a["method"], "label": a.get("label"),
                          "description": a.get("description", "")}
                         for a in alts
                         if isinstance(a.get("method"), str) and a.get("method")
                     ]
+                    print(f"[DEBUG _extract_choices] produced ids={[r['id'] for r in result]} types={[type(r['id']).__name__ for r in result]}")
+                    return result
+        print(f"[DEBUG _extract_choices] no clean_data ok result -> return []")
         return []
 
     def _build_data_preview(self, tool_results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -1241,6 +1352,13 @@ def _execute_code_structured(code: str, df, timeout_sec: int = 18) -> Dict[str, 
     - 超时使用 daemon 线程 join，不建子进程、不碰 syscall；
     - 使用 df.copy() 防止污染原始数据。
     """
+    # 0) 预处理：剥离 LLM 冗余写出的 import（pd/np 已由沙箱注入，写 import 只会触发误拦）。
+    #    危险模块的 import（os/sys/subprocess 等）仍在此拦截，不降低安全性。
+    code, strip_err = _strip_imports(code)
+    if strip_err is not None:
+        logger.warning("execute_python 沙箱拦截(import): 原因=%s | 代码=\n%s", strip_err, code)
+        return {"error": f"[沙箱拦截] {strip_err}"}
+
     # 1) AST 预检（exec 前拦截）
     pre = _SAFE_EXEC_AST_CHECK(code)
     if pre is not None:
@@ -1303,6 +1421,70 @@ def _execute_code_structured(code: str, df, timeout_sec: int = 18) -> Dict[str, 
     if result_container["error"]:
         return {"error": result_container["error"]}
     return {"text": result_container["text"], "chart": result_container["chart"]}
+
+
+def _strip_imports(code: str) -> Tuple[str, Optional[str]]:
+    """剥离 LLM 冗余写出的 import 语句，返回 (清理后代码, 错误)。
+
+    沙箱已注入 df/pd/np，LLM 习惯写 `import pandas as pd` / `import numpy as np`，
+    原逻辑一律硬拦 → 每次自动三分析都先 fail 一次再重试，浪费一轮。
+
+    改为：非危险模块的 import 直接剥掉（删 AST 节点后重编译），代码照常执行；
+    危险模块的 import（os/sys/subprocess/shutil/socket/requests/urllib 等）仍拦截，
+    安全性不降。
+
+    返回 (code, None) 表示成功（可能原样返回），(原code, 错误串) 表示拦截。
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        # 语法错误留给后续 AST 预检/exec 报，这里不动
+        return code, None
+
+    DANGEROUS_MODULES = {
+        "os", "sys", "subprocess", "shutil", "pathlib", "socket",
+        "requests", "urllib", "http", "ctypes", "multiprocessing",
+        "threading", "pickle", "shelve", "tempfile", "glob",
+    }
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                top = alias.name.split(".")[0]
+                if top in DANGEROUS_MODULES:
+                    return code, (
+                        f"沙箱禁止导入危险模块：{alias.name}。"
+                        "仅允许使用已注入的 df/pd/np 做数据分析。"
+                    )
+        elif isinstance(node, ast.ImportFrom):
+            mod = (node.module or "").split(".")[0]
+            if mod in DANGEROUS_MODULES:
+                return code, (
+                    f"沙箱禁止从危险模块导入：{node.module}。"
+                    "仅允许使用已注入的 df/pd/np 做数据分析。"
+                )
+
+    # 非危险 import：从 AST 中删除顶层 import 节点（不碰函数/类内部的 import）
+    stripped = [
+        n for n in tree.body
+        if not isinstance(n, (ast.Import, ast.ImportFrom))
+    ]
+    if len(stripped) == len(tree.body):
+        # 无 import，原样返回
+        return code, None
+    new_tree = ast.Module(body=stripped, type_ignores=[])
+    try:
+        return _ast_to_code(new_tree), None
+    except Exception:
+        # 重编译失败则回退原代码（交给后续预检/exec 报错）
+        return code, None
+
+
+def _ast_to_code(tree: ast.AST) -> str:
+    """把 AST 模块还原成源码字符串（用 ast.unparse，Python3.9+）。"""
+    try:
+        return ast.unparse(tree)
+    except Exception:
+        return ast.dump(tree)
 
 
 def _SAFE_EXEC_AST_CHECK(code: str) -> Optional[str]:
