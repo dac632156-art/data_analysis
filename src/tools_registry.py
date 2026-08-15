@@ -4,16 +4,17 @@
 每个工具都返回统一的 ToolResult 契约，供大脑方 Agent 后续串联成智能体工作流。
 本次只实现 clean_data（数据清洗）一个工具，其余工具后续按同样契约补。
 
-ToolResult 字段（与大脑方约定一致）：
+ToolResult 字段（以 TOOLS_CONTRACT 契约为准）：
 - ok: bool                        工具是否成功执行
 - data: Any                       成功时的返回数据
-- reason: str                     失败/跳过原因说明
-- missing_columns: List[str]      数据不足时缺失的列名
+- error: str                      失败/跳过原因说明
+- missing_columns: List[str]      数据不足时缺失的列名（如业务模型因缺列被跳过时收集所缺列）
+- skipped_models: List[Dict[str, Any]]  因条件不足跳过的分析模型，每项 {model: str, missing_columns: List[str]}
+- message: str                    给用户的建议文案
+- （以下 3 个字段为契约外、仅供 clean_data 弹窗所需，保留不删）
 - available_alternatives: List[Dict[str, Any]]  4 种可选填充方法（每项为 {method,label,description}）
-- suggestion: str                 给用户的建议文案
 - needs_orientation: bool         是否需要追问（数据/取向类）
 - orientation_hint: str           追问提示语
-- skipped_models: List[str]       因条件不足跳过的分析模型
 
 clean_data 的设计（方案X + 兜底甲）：
 - 体检态：先用确定性函数扫缺失值 + 类型问题，再调 Agnes 生成【一个全局缺失填充
@@ -53,13 +54,14 @@ logger = logging.getLogger(__name__)
 class ToolResult:
     ok: bool = True
     data: Any = None
-    reason: str = ""
+    error: str = ""
     missing_columns: List[str] = field(default_factory=list)
+    skipped_models: List[Dict[str, Any]] = field(default_factory=list)  # 每项: {"model": str, "missing_columns": List[str]}
+    message: str = ""
+    # 以下 3 个字段为契约外、仅供 clean_data 弹窗所需，保留不删
     available_alternatives: List[Dict[str, Any]] = field(default_factory=list)
-    suggestion: str = ""
     needs_orientation: bool = False
     orientation_hint: str = ""
-    skipped_models: List[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +414,7 @@ def clean_data(df: pd.DataFrame, actions: Optional[List[Dict[str, Any]]] = None)
     """
     # ---- 边界：空 df ----
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        return ToolResult(ok=False, reason="无数据：请先上传数据后再调用清洗工具")
+        return ToolResult(ok=False, error="无数据：请先上传数据后再调用清洗工具")
 
     # ---- 执行态 ----
     if actions is not None:
@@ -423,15 +425,15 @@ def clean_data(df: pd.DataFrame, actions: Optional[List[Dict[str, Any]]] = None)
             method = actions
         elif isinstance(actions, list):
             if not actions:
-                return ToolResult(ok=False, reason="执行态未提供任何 action（需含 method）")
+                return ToolResult(ok=False, error="执行态未提供任何 action（需含 method）")
             first = actions[0]
             method = first.get("method") if isinstance(first, dict) else first
         else:
-            return ToolResult(ok=False, reason="执行态入参格式错误：method 应为字符串或 [{'method': ...}]")
+            return ToolResult(ok=False, error="执行态入参格式错误：method 应为字符串或 [{'method': ...}]")
         if method not in USER_MISSING_METHODS:
             return ToolResult(
                 ok=False,
-                reason=f"不支持的填充方法：{method}。仅支持 {USER_MISSING_METHODS}",
+                error=f"不支持的填充方法：{method}。仅支持 {USER_MISSING_METHODS}",
             )
 
         df_new = df.copy()
@@ -477,7 +479,7 @@ def clean_data(df: pd.DataFrame, actions: Optional[List[Dict[str, Any]]] = None)
         return ToolResult(
             ok=True,
             data={"cleaned_df": df_new, "summary": summary},
-            suggestion=(
+            message=(
                 f"已对所有缺失列统一应用「{MISSING_METHODS[method]['label']}」，"
                 f"成功 {len(applied)} 列、失败 {len(failed)} 列；"
                 f"类型转换（{type_source}）成功 {len(type_applied)} 列、失败 {len(type_failed)} 列。"
@@ -529,7 +531,7 @@ def clean_data(df: pd.DataFrame, actions: Optional[List[Dict[str, Any]]] = None)
         },
         missing_columns=missing_cols,
         available_alternatives=recommendation["alternatives"],
-        suggestion=suggestion,
+        message=suggestion,
     )
 
 
@@ -537,49 +539,70 @@ def clean_data(df: pd.DataFrame, actions: Optional[List[Dict[str, Any]]] = None)
 # Chat 智能体专用工具（df 由 agent._resolve_tool_call 注入，不直接走 dispatch）
 # ---------------------------------------------------------------------------
 
-def get_data_profile(df: pd.DataFrame) -> ToolResult:
+def profile_data(df: pd.DataFrame) -> ToolResult:
     """返回当前 df 的数据侦察快照（列名/类型/缺失值/数值统计/行数）。
 
     实际侦察走 data_recon.scan；若会话已存 snapshot 可直接复用，但本函数
     始终对传入 df 实时扫描，保证与当前 session 数据一致。
     """
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        return ToolResult(ok=False, reason="无数据：请先上传数据后再调用该工具")
+        return ToolResult(ok=False, error="无数据：请先上传数据后再调用该工具")
     from data_recon import scan
     snapshot = scan(df)
     return ToolResult(
         ok=True,
         data={"profile": snapshot},
-        suggestion=f"共 {snapshot['rows']} 行 × {snapshot['column_count']} 列，"
+        message=f"共 {snapshot['rows']} 行 × {snapshot['column_count']} 列，"
                    f"{snapshot['missing_overview']['cols_with_missing']} 列存在缺失值。",
     )
 
 
-def run_analysis_model(df: pd.DataFrame, intents: Optional[List[str]] = None,
-                       manager=None, session_id: Optional[str] = None) -> ToolResult:
+def run_template(df: pd.DataFrame, intents: Optional[List[str]] = None,
+                  manager=None, session_id: Optional[str] = None) -> ToolResult:
     """运行后端分析引擎匹配到的分析模型，返回 AnalysisPackage 摘要，并把完整包写入 session。
 
     注意：列名映射(required_columns 匹配)由调用方在注入 df 前完成，本函数
     仅负责跑 run_analysis。
 
     当传入 manager / session_id 时，把每个包的完整 dict 写入
-    session.analysis_packages（key=pkg_id），供 generate_chart / generate_bigscreen /
+    session.analysis_packages（key=pkg_id），供 generate_chart / build_dashboard /
     generate_report 产出工具读取（思路甲：分析输出存 ctx，LLM 不手传大 JSON）。
     """
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        return ToolResult(ok=False, reason="无数据：请先上传数据后再调用分析工具")
+        return ToolResult(ok=False, error="无数据：请先上传数据后再调用分析工具")
     try:
         from analysis_engine.engine import run_analysis
+        from analysis_engine.registry import get_models
         packages = run_analysis(df, intents)
     except Exception as e:
-        return ToolResult(ok=False, reason=f"分析执行异常：{str(e)}")
+        return ToolResult(ok=False, error=f"分析执行异常：{str(e)}")
+
+    # ⚠️契约缺口补全：业务模型分析会遍历模型、对缺列模型静默跳过，
+    # 此处确定性比对 registry，把被跳过模型与其所缺列回填 skipped_models / missing_columns，
+    # 让大脑方/前端可知「为什么某些模型没跑」。intents 非空时只判定指定模型，避免无关模型假阳性。
+    skipped_models: List[Dict[str, Any]] = []
+    missing_set: set = set()
+    try:
+        intent_set = set(intents or [])
+        for m in get_models():
+            if intent_set and m.name not in intent_set:
+                continue
+            if not m.can_run(df):
+                miss = [c for c in (m.required_columns or []) if c not in set(df.columns)]
+                skipped_models.append({"model": m.name, "missing_columns": miss})
+                missing_set.update(miss)
+    except Exception:
+        pass
+    missing_columns = sorted(missing_set)
 
     if not packages:
         return ToolResult(
             ok=True,
             data={"packages": [], "full_packages": []},
-            suggestion="未匹配到任何分析模型（当前数据列名可能不满足模型的 required_columns）。"
-                      "可尝试先清洗数据，或用 execute_python 做自定义分析。",
+            message="未匹配到任何分析模型（当前数据列名可能不满足模型的 required_columns）。"
+                      "可尝试先清洗数据，或用 run_python 做自定义分析。",
+            skipped_models=skipped_models,
+            missing_columns=missing_columns,
         )
 
     # 完整包 dict 列表：对象调 .to_api_dict()（AnalysisPackage 的序列化方法），
@@ -622,38 +645,40 @@ def run_analysis_model(df: pd.DataFrame, intents: Optional[List[str]] = None,
     return ToolResult(
         ok=True,
         data={"packages": summaries, "full_packages": full_packages, "package_count": len(summaries)},
-        suggestion=f"已运行 {len(summaries)} 个分析模型。",
+        message=f"已运行 {len(summaries)} 个分析模型。",
+        skipped_models=skipped_models,
+        missing_columns=missing_columns,
     )
 
 
-def execute_python(df: pd.DataFrame, code: str) -> ToolResult:
+def run_python(df: pd.DataFrame, code: str) -> ToolResult:
     """执行 LLM 生成的 Python 代码做自定义分析（代码中可用 df/pd/np）。
 
     实际执行走 agent._execute_code；为避免循环依赖，这里延迟导入 agent 模块。
     """
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        return ToolResult(ok=False, reason="无数据：请先上传数据后再调用该工具")
+        return ToolResult(ok=False, error="无数据：请先上传数据后再调用该工具")
     if not code or not code.strip():
-        return ToolResult(ok=False, reason="未提供要执行的代码")
+        return ToolResult(ok=False, error="未提供要执行的代码")
     try:
         from ai_agent.agent import _execute_code_structured
         result = _execute_code_structured(code, df, timeout_sec=18)
     except Exception as e:
-        return ToolResult(ok=False, reason=f"代码执行异常：{str(e)}")
+        return ToolResult(ok=False, error=f"代码执行异常：{str(e)}")
 
     if not isinstance(result, dict):
         result = {"text": str(result), "chart": None}
     if "error" in result:
         return ToolResult(
             ok=False,
-            reason=result.get("error", "代码执行失败。"),
-            suggestion="请检查代码后重试，避免危险调用或白名单外的导入。",
+            error=result.get("error", "代码执行失败。"),
+            message="请检查代码后重试，避免危险调用或白名单外的导入。",
         )
 
     text = result.get("text", "") or "代码执行成功，但无结论文本。"
     chart = result.get("chart") or None
 
-    # 对齐 run_analysis_model 的 data 结构（packages 摘要），并把 chart 提升到顶层供前端直接取
+    # 对齐 run_template 的 data 结构（packages 摘要），并把 chart 提升到顶层供前端直接取
     data = {
         "packages": [{
             "type": "custom_python",
@@ -666,18 +691,18 @@ def execute_python(df: pd.DataFrame, code: str) -> ToolResult:
     return ToolResult(
         ok=True,
         data=data,
-        suggestion="代码已执行，结论见 packages[0].conclusion。",
+        message="代码已执行，结论见 packages[0].conclusion。",
     )
 
 
-def run_general_statistics(df: pd.DataFrame) -> ToolResult:
+def run_analysis(df: pd.DataFrame) -> ToolResult:
     """通用统计分析：自动识别数值列并返回每列的 7 项基础统计指标。
 
     LLM 无需指定哪些列要统计——工具内部通过 identify_fields 自动识别数值指标列，
     然后对每一列计算：total/mean/median/max/min/std/count。
     """
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        return ToolResult(ok=False, reason="无数据：请先上传数据后再调用该工具")
+        return ToolResult(ok=False, error="无数据：请先上传数据后再调用该工具")
     try:
         from report_analyzer import identify_fields, compute_basic_stats
         fields = identify_fields(df)
@@ -686,7 +711,7 @@ def run_general_statistics(df: pd.DataFrame) -> ToolResult:
             return ToolResult(
                 ok=True,
                 data={"basic_stats": {}, "columns_summary": {"numeric_count": 0, "numeric_columns": []}},
-                suggestion="当前数据中未识别到数值列，无法做基础统计。",
+                message="当前数据中未识别到数值列，无法做基础统计。",
             )
         stats = compute_basic_stats(df, metrics)
         summary_lines = []
@@ -701,10 +726,10 @@ def run_general_statistics(df: pd.DataFrame) -> ToolResult:
                 "basic_stats": stats,
                 "columns_summary": {"numeric_count": len(metrics), "numeric_columns": metrics},
             },
-            suggestion=suggestion,
+            message=suggestion,
         )
     except Exception as e:
-        return ToolResult(ok=False, reason=f"通用统计执行异常：{str(e)}")
+        return ToolResult(ok=False, error=f"通用统计执行异常：{str(e)}")
 
 
 def generate_chart(df: pd.DataFrame, chart_type: str, **kwargs) -> ToolResult:
@@ -717,9 +742,9 @@ def generate_chart(df: pd.DataFrame, chart_type: str, **kwargs) -> ToolResult:
     工具底层调用 echart_generator.create_chart 生成前端可渲染的 ECharts option。
     """
     if df is None or (isinstance(df, pd.DataFrame) and df.empty):
-        return ToolResult(ok=False, reason="无数据：请先上传数据后再调用该工具")
+        return ToolResult(ok=False, error="无数据：请先上传数据后再调用该工具")
     if not chart_type or not chart_type.strip():
-        return ToolResult(ok=False, reason="未指定图表类型（chart_type）")
+        return ToolResult(ok=False, error="未指定图表类型（chart_type）")
     try:
         from echart_generator import create_chart, CHART_FUNCTIONS
         chart_type = chart_type.strip().lower()
@@ -731,7 +756,7 @@ def generate_chart(df: pd.DataFrame, chart_type: str, **kwargs) -> ToolResult:
             )
             return ToolResult(
                 ok=False,
-                reason=f"不支持的图表类型：{chart_type}。可选：{', '.join(supported)}",
+                error=f"不支持的图表类型：{chart_type}。可选：{', '.join(supported)}",
             )
         option = create_chart(df, chart_type, **kwargs)
         if option is None:
@@ -741,9 +766,9 @@ def generate_chart(df: pd.DataFrame, chart_type: str, **kwargs) -> ToolResult:
             )
             return ToolResult(
                 ok=False,
-                reason=f"图表类型 '{chart_type}' 在当前数据上无法生成（数据列不匹配或数据量不足）。",
+                error=f"图表类型 '{chart_type}' 在当前数据上无法生成（数据列不匹配或数据量不足）。",
             )
-        # 与 execute_python 保持一致：data.chart 顶层提升 + data.packages[0].chart 嵌套
+        # 与 run_python 保持一致：data.chart 顶层提升 + data.packages[0].chart 嵌套
         data = {
             "packages": [{
                 "type": chart_type,
@@ -756,12 +781,12 @@ def generate_chart(df: pd.DataFrame, chart_type: str, **kwargs) -> ToolResult:
         return ToolResult(
             ok=True,
             data=data,
-            suggestion=f"已生成 {chart_type} 图表。",
+            message=f"已生成 {chart_type} 图表。",
         )
     except Exception as e:
         logger.exception("generate_chart 异常 chart_type=%s kwargs=%s df列=%s",
                          chart_type, kwargs, list(df.columns) if df is not None else None)
-        return ToolResult(ok=False, reason=f"图表生成异常：{str(e)}")
+        return ToolResult(ok=False, error=f"图表生成异常：{str(e)}")
 
 
 def _collect_analysis_packages(manager, session_id: str) -> List[Dict[str, Any]]:
@@ -801,9 +826,9 @@ def generate_report(manager, session_id: str) -> ToolResult:
     if not packages:
         return ToolResult(
             ok=False,
-            reason="暂无分析数据：请先调用业务模型分析/通用统计/自由写码等分析工具，"
+            error="暂无分析数据：请先调用业务模型分析/通用统计/自由写码等分析工具，"
                    "待分析结果写入后我再生成报告。",
-            suggestion="请先让我对数据做分析（例如「分析一下这份数据的趋势和排行」），再要报告。",
+            message="请先让我对数据做分析（例如「分析一下这份数据的趋势和排行」），再要报告。",
         )
     try:
         # generate_report_from_packages 在 agent.py 内，延迟导入避免循环依赖。
@@ -830,14 +855,14 @@ def generate_report(manager, session_id: str) -> ToolResult:
                     "warning": result.get("warning"),
                 }
             },
-            suggestion=f"已生成报告《{title}》，共 {len(sections)} 个章节。",
+            message=f"已生成报告《{title}》，共 {len(sections)} 个章节。",
         )
     except Exception as e:
         logger.exception("generate_report 异常")
-        return ToolResult(ok=False, reason=f"报告生成异常：{str(e)}")
+        return ToolResult(ok=False, error=f"报告生成异常：{str(e)}")
 
 
-def generate_bigscreen(manager, session_id: str) -> ToolResult:
+def build_dashboard(manager, session_id: str) -> ToolResult:
     """生成数据大屏：读取 session.analysis_packages 的完整分析包，调 widget_generator 生成 Widget 列表预览。
 
     适合在用户表达「生成大屏」「可视化大屏」「驾驶舱」等意图时由 LLM 调用。大屏是确定性
@@ -847,9 +872,9 @@ def generate_bigscreen(manager, session_id: str) -> ToolResult:
     if not packages:
         return ToolResult(
             ok=False,
-            reason="暂无分析数据：请先调用业务模型分析/通用统计/自由写码等分析工具，"
+            error="暂无分析数据：请先调用业务模型分析/通用统计/自由写码等分析工具，"
                    "待分析结果写入后我再生成大屏。",
-            suggestion="请先让我对数据做分析（例如「分析一下这份数据的结构」），再要大屏。",
+            message="请先让我对数据做分析（例如「分析一下这份数据的结构」），再要大屏。",
         )
     try:
         from src.dashboard.widget_generator import WidgetGenerator
@@ -865,11 +890,11 @@ def generate_bigscreen(manager, session_id: str) -> ToolResult:
         return ToolResult(
             ok=True,
             data={"bigscreen": {"widgets": widget_dicts, "widget_count": len(widget_dicts)}},
-            suggestion=f"已生成数据大屏，共 {len(widget_dicts)} 个组件。",
+            message=f"已生成数据大屏，共 {len(widget_dicts)} 个组件。",
         )
     except Exception as e:
-        logger.exception("generate_bigscreen 异常")
-        return ToolResult(ok=False, reason=f"大屏生成异常：{str(e)}")
+        logger.exception("build_dashboard 异常")
+        return ToolResult(ok=False, error=f"大屏生成异常：{str(e)}")
 
 
 # ---------------------------------------------------------------------------
@@ -877,13 +902,13 @@ def generate_bigscreen(manager, session_id: str) -> ToolResult:
 # ---------------------------------------------------------------------------
 _TOOLS = {
     "clean_data": clean_data,
-    "get_data_profile": get_data_profile,
-    "run_analysis_model": run_analysis_model,
-    "run_general_statistics": run_general_statistics,
+    "profile_data": profile_data,
+    "run_template": run_template,
+    "run_analysis": run_analysis,
     "generate_chart": generate_chart,
-    "execute_python": execute_python,
+    "run_python": run_python,
     "generate_report": generate_report,
-    "generate_bigscreen": generate_bigscreen,
+    "build_dashboard": build_dashboard,
 }
 
 
@@ -895,9 +920,9 @@ def get_function_definitions() -> List[Dict[str, Any]]:
 
     实际每轮下发的工具子集由 agent.py 的状态机（_is_dataset_cleaned / _has_clean_intent /
     _has_chart_intent / _has_report_intent / _has_bigscreen_intent / _has_analysis_intent）
-    筛选：get_data_profile 仅供上传时后端自动侦察使用，分析对话中不再下发给 LLM；其余工具
-    （clean_data / run_analysis_model / run_general_statistics / execute_python /
-    generate_chart / generate_report / generate_bigscreen）均由 LLM 按用户意图自行调用编排，
+    筛选：profile_data 仅供上传时后端自动侦察使用，分析对话中不再下发给 LLM；其余工具
+    （clean_data / run_template / run_analysis / run_python /
+    generate_chart / generate_report / build_dashboard）均由 LLM 按用户意图自行调用编排，
     其中三分析工具会把完整分析包写入会话，产出工具（图/大屏/报告）读取它作为输入。
     """
     from echart_generator import CHART_FUNCTIONS  # 延迟导入，避免循环依赖
@@ -905,7 +930,7 @@ def get_function_definitions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "get_data_profile",
+                "name": "profile_data",
                 "description": "获取当前数据的结构快照（列名、类型、缺失值、基本统计、行数）。"
                                "仅在确实未掌握数据列名/类型时调用；数据快照通常已附在上下文中，"
                                "不要重复调用。",
@@ -938,7 +963,7 @@ def get_function_definitions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "run_analysis_model",
+                "name": "run_template",
                 "description": "运行后端已有的分析模型（RFM/留存/漏斗/聚类/关联规则/趋势等），"
                                "返回匹配到的模型结论摘要。intents 为空数组时自动匹配所有可用模型。",
                 "parameters": {
@@ -957,7 +982,7 @@ def get_function_definitions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "execute_python",
+                "name": "run_python",
                 "description": "执行 Python 代码进行自定义数据分析。代码中可用 df（当前数据）、"
                                "pd（pandas）、np（numpy）。仅用于分析，不要做破坏性操作。",
                 "parameters": {
@@ -972,7 +997,7 @@ def get_function_definitions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "run_general_statistics",
+                "name": "run_analysis",
                 "description": "通用统计分析：自动识别数据中的数值列，对每列计算总和/均值/中位数/"
                                "最大值/最小值/标准差/有效值数量共 7 项基础指标。无需传参，工具自动完成。"
                                "适合在用户问「这个数据的整体情况」「均值方差」等基础统计问题时调用。",
@@ -1030,7 +1055,7 @@ def get_function_definitions() -> List[Dict[str, Any]]:
         {
             "type": "function",
             "function": {
-                "name": "generate_bigscreen",
+                "name": "build_dashboard",
                 "description": "生成数据大屏：基于前面已运行的分析（业务模型分析/通用统计/自由写码）"
                                "写入会话的分析结果，把分析结论渲染为数据大屏组件预览（图表/KPI/表格网格）。"
                                "无需传参，工具自动读取会话中的分析输出。适合在用户要求「生成大屏」「可视化大屏」"
@@ -1041,17 +1066,22 @@ def get_function_definitions() -> List[Dict[str, Any]]:
     ]
 
 
-def dispatch(name: str, args: Dict[str, Any], ctx: Optional[Dict[str, Any]] = None) -> ToolResult:
-    """按名称分发到对应工具。"""
+def get_tool(name: str, args: Dict[str, Any], ctx: Optional[Dict[str, Any]] = None) -> ToolResult:
+    """按名称分发到对应工具（契约接口名 get_tool）。"""
     tool = _TOOLS.get(name)
     if tool is None:
-        return ToolResult(ok=False, reason=f"未注册的工具：{name}")
+        return ToolResult(ok=False, error=f"未注册的工具：{name}")
     try:
         return tool(**(args or {}))
     except TypeError as e:
-        return ToolResult(ok=False, reason=f"工具 {name} 参数错误：{str(e)}")
+        return ToolResult(ok=False, error=f"工具 {name} 参数错误：{str(e)}")
     except Exception as e:
-        return ToolResult(ok=False, reason=f"工具 {name} 执行异常：{str(e)}")
+        return ToolResult(ok=False, error=f"工具 {name} 执行异常：{str(e)}")
+
+
+# 过渡别名：保留以避免其它地方漏改导致调用失败（grep 确认无真实调用后可删）
+def dispatch(*args, **kwargs):
+    return get_tool(*args, **kwargs)
 
 
 def list_tools() -> List[str]:

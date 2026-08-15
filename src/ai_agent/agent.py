@@ -383,11 +383,11 @@ class DataAnalysisAgent:
                            user_message: str = "") -> Dict[str, Any]:
         """执行单个工具调用，返回 {tool, status, summary, data}。
 
-        df 由这里注入（不依赖 tools_registry.dispatch，避免缺 df 报错）。
+        df 由这里注入（不依赖 tools_registry.get_tool，避免缺 df 报错）。
         user_message 用于判断 clean_data 的 method 是否来自用户 choice 续接（防 LLM 跳过弹窗）。
         """
         llm_cfg = self._get_llm_cfg()
-        # 注：数据侦察（get_data_profile）在分析对话中不再对 LLM 开放——
+        # 注：数据侦察（profile_data）在分析对话中不再对 LLM 开放——
         # 上传时后端已自动侦察并存入 session.data_profile，且数据快照由
         # _snapshot_for_prompt 注入上下文，LLM 不需要也不能再调用侦察工具。
 
@@ -417,8 +417,8 @@ class DataAnalysisAgent:
                 cur = self._current_df(manager, session_id)
                 res = _clean_data(cur, None)
                 return {"tool": name, "status": "ok" if res.ok else "fail",
-                        "summary": res.suggestion or "",
-                        "data": res.data if res.ok else {"error": res.reason},
+                        "summary": res.message or "",
+                        "data": res.data if res.ok else {"error": res.error},
                         "await_choice": True}
 
             # 执行态：单表直接取，多表先合并
@@ -453,7 +453,7 @@ class DataAnalysisAgent:
             actions = [{"method": method}]
             res = _clean_data(mapped_df, actions)
             if not res.ok:
-                return {"tool": name, "status": "fail", "summary": res.reason or "清洗失败", "data": {}}
+                return {"tool": name, "status": "fail", "summary": res.error or "清洗失败", "data": {}}
             cleaned_df = res.data.get("cleaned_df")
             summary = res.data.get("summary", {})
 
@@ -470,46 +470,46 @@ class DataAnalysisAgent:
             # 改法1（最小闭环）：清洗执行态成功后，agentic_chat 会在本轮 tool_results 检测
             # 到 clean_data=ok，置 _need_inject_clean_prompt 标志；下一轮循环顶部据此向
             # messages 注入一条"请立即调用三分析工具"的 user 提示（并立即清标志防死循环），
-            # 由 LLM 自动调用 run_analysis_model / run_general_statistics / execute_python，
+            # 由 LLM 自动调用 run_template / run_analysis / run_python，
             # 三个工具把完整 AnalysisPackage 写入 session.analysis_packages，供产出工具消费。
 
             return {
                 "tool": name, "status": "ok",
-                "summary": res.suggestion or "清洗完成",
+                "summary": res.message or "清洗完成",
                 # preview_rows / preview_cols 由 cleaned_df 直接推导，不依赖 clean_data 内部键名
                 "data": {"summary": summary,
                          "preview_rows": preview_rows,
                          "preview_cols": preview_cols},
             }
 
-        if name == "run_analysis_model":
+        if name == "run_template":
             df = self._current_df(manager, session_id)
             from src.mapping.column_mapper import map_dataset_columns
             try:
                 mapped_df = map_dataset_columns(session_id, None, df, llm_cfg)
             except Exception:
                 mapped_df = df
-            from tools_registry import run_analysis_model
+            from tools_registry import run_template
             intents = args.get("intents") or []
-            # 传入 manager / session_id：run_analysis_model 会把完整 AnalysisPackage 写入
-            # session.analysis_packages，供 generate_chart / generate_bigscreen / generate_report 读取。
-            res = run_analysis_model(mapped_df, intents, manager=manager, session_id=session_id)
+            # 传入 manager / session_id：run_template 会把完整 AnalysisPackage 写入
+            # session.analysis_packages，供 generate_chart / build_dashboard / generate_report 读取。
+            res = run_template(mapped_df, intents, manager=manager, session_id=session_id)
             return {"tool": name, "status": "ok" if res.ok else "fail",
-                    "summary": res.suggestion or "",
-                    "data": res.data if res.ok else {"error": res.reason}}
+                    "summary": res.message or "",
+                    "data": res.data if res.ok else {"error": res.error}}
 
-        if name == "run_general_statistics":
+        if name == "run_analysis":
             df = self._current_df(manager, session_id)
             from src.mapping.column_mapper import map_dataset_columns
             try:
                 mapped_df = map_dataset_columns(session_id, None, df, llm_cfg)
             except Exception:
                 mapped_df = df
-            from tools_registry import run_general_statistics
-            res = run_general_statistics(mapped_df)
+            from tools_registry import run_analysis
+            res = run_analysis(mapped_df)
             return {"tool": name, "status": "ok" if res.ok else "fail",
-                    "summary": res.suggestion or "",
-                    "data": res.data if res.ok else {"error": res.reason}}
+                    "summary": res.message or "",
+                    "data": res.data if res.ok else {"error": res.error}}
 
         if name == "generate_chart":
             df = self._current_df(manager, session_id)
@@ -524,33 +524,33 @@ class DataAnalysisAgent:
             chart_kwargs = {k: v for k, v in args.items() if k not in ("df", "chart_type")}
             res = generate_chart(mapped_df, args.get("chart_type", ""), **chart_kwargs)
             return {"tool": name, "status": "ok" if res.ok else "fail",
-                    "summary": res.suggestion or "",
-                    "data": res.data if res.ok else {"error": res.reason}}
+                    "summary": res.message or "",
+                    "data": res.data if res.ok else {"error": res.error}}
 
-        if name == "execute_python":
+        if name == "run_python":
             df = self._current_df(manager, session_id)
-            from tools_registry import execute_python
-            logger.info("execute_python 入参 code=\n%s", args.get("code", ""))
-            res = execute_python(df, args.get("code", ""))
+            from tools_registry import run_python
+            logger.info("run_python 入参 code=\n%s", args.get("code", ""))
+            res = run_python(df, args.get("code", ""))
             return {"tool": name, "status": "ok" if res.ok else "fail",
-                    "summary": res.suggestion or "",
-                    "data": res.data if res.ok else {"error": res.reason}}
+                    "summary": res.message or "",
+                    "data": res.data if res.ok else {"error": res.error}}
 
         if name == "generate_report":
             from tools_registry import generate_report
             # 产出工具吃 session.analysis_packages（由三分析工具写入的完整 AnalysisPackage）。
             res = generate_report(manager, session_id)
             return {"tool": name, "status": "ok" if res.ok else "fail",
-                    "summary": res.suggestion or "",
-                    "data": res.data if res.ok else {"error": res.reason}}
+                    "summary": res.message or "",
+                    "data": res.data if res.ok else {"error": res.error}}
 
-        if name == "generate_bigscreen":
-            from tools_registry import generate_bigscreen
+        if name == "build_dashboard":
+            from tools_registry import build_dashboard
             # 产出工具吃 session.analysis_packages（由三分析工具写入的完整 AnalysisPackage）。
-            res = generate_bigscreen(manager, session_id)
+            res = build_dashboard(manager, session_id)
             return {"tool": name, "status": "ok" if res.ok else "fail",
-                    "summary": res.suggestion or "",
-                    "data": res.data if res.ok else {"error": res.reason}}
+                    "summary": res.message or "",
+                    "data": res.data if res.ok else {"error": res.error}}
 
         return {"tool": name, "status": "fail", "summary": f"未知工具：{name}", "data": {}}
 
@@ -657,22 +657,22 @@ class DataAnalysisAgent:
         # 只读快照类工具严格限 1 次；动手/出图类工具给少量冗余上限防失控。
         _tool_call_counts: Dict[str, int] = {}
         _TOOL_CALL_LIMITS: Dict[str, int] = {
-            "get_data_profile": 1,
-            "run_analysis_model": 3,
-            "run_general_statistics": 3,
-            "execute_python": 3,
+            "profile_data": 1,
+            "run_template": 3,
+            "run_analysis": 3,
+            "run_python": 3,
             "generate_chart": 3,
             "generate_report": 3,
-            "generate_bigscreen": 3,
+            "build_dashboard": 3,
             "clean_data": 3,
         }
         # 注入提示文案（一次性，逼 LLM 主动发三分析 tool_calls）
         _CLEAN_DONE_PROMPT = (
             "数据已清洗完成。请立即依次调用以下三个分析工具对清洗后数据进行分析，"
             "不要再询问用户是否要分析："
-            "①run_analysis_model（业务模型分析）"
-            "②run_general_statistics（通用统计分析）"
-            "③execute_python（自由写码分析）。"
+            "①run_template（业务模型分析）"
+            "②run_analysis（通用统计分析）"
+            "③run_python（自由写码分析）。"
             "三者都调用完成后，写一段完整中文总结，必须覆盖每一个工具的结论。"
         )
 
@@ -693,10 +693,10 @@ class DataAnalysisAgent:
                 if function_defs:
                     # 状态机下发（意图门禁版）：清洗是平等 LLM 工具，三分析/产出工具均由 LLM 按意图调用。
                     # ① 未清洗 + 用户原话含清洗意图词 → 只放开 clean_data（体检态弹选项框）
-                    # ② 已清洗 + 分析词 → 放开三分析工具（run_analysis_model / run_general_statistics / execute_python）
+                    # ② 已清洗 + 分析词 → 放开三分析工具（run_template / run_analysis / run_python）
                     # ③ 已清洗 + 图表词 → 放开 generate_chart
                     # ④ 已清洗 + 报告词 → 放开 generate_report
-                    # ⑤ 已清洗 + 大屏词 → 放开 generate_bigscreen
+                    # ⑤ 已清洗 + 大屏词 → 放开 build_dashboard
                     # ⑥ 其余（纯聊天/提问/无对应意图词）→ 不放任何动手工具，纯文字回答
                     #    注意：三个分析工具写入 session.analysis_packages，产出工具（图/大屏/报告）读它作为输入。
                     def _names_eq(t, n):
@@ -722,22 +722,22 @@ class DataAnalysisAgent:
                         # 导致生成大屏/报告/出图永远收不到工具（表现为点了没反应）。
                         if _has_analysis_intent(message):
                             tools_for_round = [t for t in function_defs
-                                               if _names_eq(t, "run_analysis_model")
-                                               or _names_eq(t, "run_general_statistics")
-                                               or _names_eq(t, "execute_python")]
+                                               if _names_eq(t, "run_template")
+                                               or _names_eq(t, "run_analysis")
+                                               or _names_eq(t, "run_python")]
                         elif _has_chart_intent(message):
                             tools_for_round = [t for t in function_defs if _names_eq(t, "generate_chart")]
                         elif _has_report_intent(message):
                             tools_for_round = [t for t in function_defs if _names_eq(t, "generate_report")]
                         elif _has_bigscreen_intent(message):
-                            tools_for_round = [t for t in function_defs if _names_eq(t, "generate_bigscreen")]
+                            tools_for_round = [t for t in function_defs if _names_eq(t, "build_dashboard")]
                         elif _clean_prompt_in_ctx:
                             # 兜底：刚清洗完且用户本轮没说任何明确意图词 → 放开三分析（驱动自动补跑）。
                             # 仅作最后兜底，不抢占上面的明确意图。
                             tools_for_round = [t for t in function_defs
-                                               if _names_eq(t, "run_analysis_model")
-                                               or _names_eq(t, "run_general_statistics")
-                                               or _names_eq(t, "execute_python")]
+                                               if _names_eq(t, "run_template")
+                                               or _names_eq(t, "run_analysis")
+                                               or _names_eq(t, "run_python")]
                         else:
                             tools_for_round = []
                     else:
@@ -900,7 +900,7 @@ class DataAnalysisAgent:
     def _truncate_tool_data(data: Any, max_chars: int = 4000) -> str:
         """将工具回灌 data 序列化为 JSON 字符串并做长度截断。
 
-        防止 get_data_profile 等工具的完整快照（含逐列统计）随每轮回灌不断
+        防止 profile_data 等工具的完整快照（含逐列统计）随每轮回灌不断
         累积进 messages 历史，导致历史膨胀、LLM 更易迷失而反复调工具（大类 D）。
         超限时截断并附提示，结论文字已由 _extract_conclusions 单独抽取回灌，截断不影响总结。
         """
@@ -1019,7 +1019,7 @@ class DataAnalysisAgent:
         if not content:
             return content
         import re
-        known = r"(?:get_data_profile|clean_data|run_analysis_model|execute_python)"
+        known = r"(?:profile_data|clean_data|run_template|run_python)"
         pattern = re.compile(
             r"<tool_call>\s*(" + known + r")\b.*?</tool_call>"
             r"|<tool_result>.*?</tool_result>",
@@ -1315,7 +1315,7 @@ class DataAnalysisAgent:
 
 
 def _chart_is_suspect(chart: Dict[str, Any]) -> bool:
-    """校验 execute_python 返回的 LLM 简单格式图表数据是否可疑（未聚合/结构错乱）。
+    """校验 run_python 返回的 LLM 简单格式图表数据是否可疑（未聚合/结构错乱）。
 
     LLM 约定 chart 结构（见 prompts.py）：
       bar/line:  {"chart_type": "bar"/"line", "x": [类目...], "y": [数值...]}
@@ -1344,7 +1344,7 @@ def _execute_code_structured(code: str, df, timeout_sec: int = 18) -> Dict[str, 
     """受限沙箱执行 LLM 生成的 Python 代码，返回结构化结果。
 
     返回 {"text": str, "chart": Optional[dict]} 或 {"error": str}。
-    这是模块级函数（不带 self），供 tools_registry.execute_python 跨模块调用。
+    这是模块级函数（不带 self），供 tools_registry.run_python 跨模块调用。
 
     安全策略（方案2，同进程受限 globals）：
     - AST 预检：禁危险名/危险方法、import 仅放行白名单库；
@@ -1356,13 +1356,13 @@ def _execute_code_structured(code: str, df, timeout_sec: int = 18) -> Dict[str, 
     #    危险模块的 import（os/sys/subprocess 等）仍在此拦截，不降低安全性。
     code, strip_err = _strip_imports(code)
     if strip_err is not None:
-        logger.warning("execute_python 沙箱拦截(import): 原因=%s | 代码=\n%s", strip_err, code)
+        logger.warning("run_python 沙箱拦截(import): 原因=%s | 代码=\n%s", strip_err, code)
         return {"error": f"[沙箱拦截] {strip_err}"}
 
     # 1) AST 预检（exec 前拦截）
     pre = _SAFE_EXEC_AST_CHECK(code)
     if pre is not None:
-        logger.warning("execute_python 沙箱拦截: 原因=%s | 代码=\n%s", pre, code)
+        logger.warning("run_python 沙箱拦截: 原因=%s | 代码=\n%s", pre, code)
         return {"error": f"[沙箱拦截] {pre}"}
 
     result_container: Dict[str, Any] = {"text": "", "chart": None, "error": None, "done": False}
@@ -1397,7 +1397,7 @@ def _execute_code_structured(code: str, df, timeout_sec: int = 18) -> Dict[str, 
                     #   文字结论 text 仍保留，用户仍能看到分析结论。
                     if _chart_is_suspect(chart):
                         logger.warning(
-                            "execute_python 返回可疑图表数据（x/y 长度不一致，疑似未聚合），"
+                            "run_python 返回可疑图表数据（x/y 长度不一致，疑似未聚合），"
                             "已丢弃该图：chart_type=%s x_len=%s y_len=%s",
                             chart.get("chart_type"),
                             len(chart.get("x")) if isinstance(chart.get("x"), (list, tuple)) else "?",
@@ -1512,11 +1512,11 @@ def _SAFE_EXEC_AST_CHECK(code: str) -> Optional[str]:
                               "rename", "rmtree", "chmod", "kill", "call"}:
                 return f"禁止调用的危险方法：{node.attr}"
         if isinstance(node, ast.Import):
-            logger.warning("execute_python import被拦截(一律禁止): %s | 代码=\n%s",
+            logger.warning("run_python import被拦截(一律禁止): %s | 代码=\n%s",
                            ", ".join(a.name for a in node.names), code)
             return f"[沙箱拦截] {IMPORT_BLOCK_MSG}"
         if isinstance(node, ast.ImportFrom):
-            logger.warning("execute_python import被拦截(一律禁止): %s | 代码=\n%s",
+            logger.warning("run_python import被拦截(一律禁止): %s | 代码=\n%s",
                            node.module, code)
             return f"[沙箱拦截] {IMPORT_BLOCK_MSG}"
     return None
