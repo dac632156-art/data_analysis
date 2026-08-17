@@ -482,29 +482,45 @@ export default function ChatPage() {
                 <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }} />
               )}
 
-              {/* 工具执行结果（含图表/报告/大屏时默认展开，不遮挡内容） */}
+              {/* 工具执行结果：可视化结果（图表/报告/大屏）平铺为正文，纯文字结果收进折叠区 */}
               {m.toolResults && m.toolResults.length > 0 && (() => {
-                const hasVisual = m.toolResults.some(
+                const ok = m.toolResults.filter((tr: ToolResult) => tr.status !== 'fail');
+                const visualResults = ok.filter(
                   (tr: ToolResult) =>
+                    // 图/报告/大屏平铺：含 data.chart、data.report、data.bigscreen，
+                    // 以及 run_template/run_analysis 包内 charts[*].option（funnel 等），剔除全 0/空系列空图
                     tr.data?.chart ||
                     tr.data?.report ||
                     tr.data?.bigscreen ||
-                    // run_template / run_analysis 包内的 charts[*].option 也是可渲染产物
-                    // （funnel 图典型情况就在这里），要让 details 默认展开而不是折叠
                     pickRenderableChart(tr) !== null,
                 );
+                const otherResults = ok.filter(
+                  (tr: ToolResult) => pickRenderableChart(tr) === null &&
+                    !(tr.data?.chart || tr.data?.report || tr.data?.bigscreen),
+                );
                 return (
-                <details className="mt-3 group" open={hasVisual}>
-                  <summary className="cursor-pointer select-none text-xs text-slate-500 hover:text-violet-600 flex items-center gap-1.5">
-                    <span className="text-emerald-500">✓</span>
-                    已分析 · 点开看执行过程
-                  </summary>
-                  <div className="mt-2 space-y-1.5">
-                    {m.toolResults.filter((tr) => tr.status !== 'fail').map((tr, ti) => (
-                      <ToolResultRow key={ti} tr={tr} />
-                    ))}
-                  </div>
-                </details>
+                  <>
+                    {visualResults.length > 0 && (
+                      <div className="mt-3">
+                        {visualResults.map((tr, ti) => (
+                          <ToolResultRow key={ti} tr={tr} />
+                        ))}
+                      </div>
+                    )}
+                    {otherResults.length > 0 && (
+                      <details className="mt-3 group">
+                        <summary className="cursor-pointer select-none text-xs text-slate-500 hover:text-violet-600 flex items-center gap-1.5">
+                          <span className="text-emerald-500">✓</span>
+                          已分析 · 点开看执行过程
+                        </summary>
+                        <div className="mt-2 space-y-1.5">
+                          {otherResults.map((tr, ti) => (
+                            <ToolResultRow key={ti} tr={tr} />
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </>
                 );
               })()}
 

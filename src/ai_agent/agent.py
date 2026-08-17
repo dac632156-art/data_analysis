@@ -758,11 +758,24 @@ class DataAnalysisAgent:
                         tools_for_round = []
                     else:
                         is_cleaned = self._is_dataset_cleaned(manager, session_id)
-                    # 按用户设计：未清洗时直接把 clean_data 交给 LLM 自主判断。
-                    # 由 LLM 读数据侦察输出、自行判断是否有缺失值、决定是否调 clean_data 体检态弹框，
-                    # 不再用 _has_clean_intent 关键词硬卡（那样会剥夺 LLM 的触发判断权）。
+                        # 确定性清洗前置门禁（按用户设计）：
+                        # 未清洗时，后端读数据侦察的缺失值结论来决定放行什么工具，
+                        # 不允许 LLM 自主越级调三分析工具。
+                        #   - 有缺失值 → 只放 clean_data，由 LLM 调体检态弹框供用户点选；
+                        #   - 无缺失值 → 直接跳过清洗，放开三分析工具。
+                        # 无论哪种，未清洗轮绝不放出图/大屏/报告工具。
                     if not is_cleaned:
-                        tools_for_round = [t for t in function_defs if _names_eq(t, "clean_data")]
+                        _dp = getattr(manager.get_session(session_id), "data_profile", None) or {}
+                        _overview = _dp.get("missing_overview") or {}
+                        _total_missing = _overview.get("total_missing", 0) or 0
+                        if _total_missing > 0:
+                            tools_for_round = [t for t in function_defs if _names_eq(t, "clean_data")]
+                        else:
+                            # 无缺失：跳过清洗，直接进入三分析阶段
+                            tools_for_round = [t for t in function_defs
+                                               if _names_eq(t, "run_template")
+                                               or _names_eq(t, "run_analysis")
+                                               or _names_eq(t, "run_python")]
                     elif is_cleaned:
                         # 防御性放开：只要上下文里已存在「清洗完成→请调三分析」注入提示
                         # （该提示永久留在 messages 中，不像 _need_inject_clean_prompt 局部标志那样被清），
@@ -891,6 +904,35 @@ class DataAnalysisAgent:
             # 执行每个 tool_call
             for tc in msg.tool_calls:
                 tool_name = tc.function.name
+                # —— 清洗前置硬卡 ——
+                # 仅当「未清洗 且 数据有缺失值」时，LLM 不得越级调用三分析/产出工具，
+                # 必须走 clean_data 弹框流程（用户点选后才洗）。
+                # 若「未清洗 但 无缺失值」，属于用户定义的「跳过清洗直接三分析」合法路径，
+                # 不拦截（门禁已在上一轮把三分析工具下放给 LLM）。
+                # 这是确定性门禁的兜底，根治「未清洗有缺失却直接分析」的日志 bug。
+                if not self._is_dataset_cleaned(manager, session_id):
+                    _dp = getattr(manager.get_session(session_id), "data_profile", None) or {}
+                    _ov = _dp.get("missing_overview") or {}
+                    _tm = _ov.get("total_missing", 0) or 0
+                    if _tm > 0:
+                        _ANALYSIS_TOOLS = {"run_template", "run_analysis", "run_python"}
+                        _OUTPUT_TOOLS = {"generate_chart", "generate_report", "build_dashboard"}
+                        if tool_name in _ANALYSIS_TOOLS or tool_name in _OUTPUT_TOOLS:
+                            print(f"[agentic_chat] BLOCK越级 tool={tool_name}（未清洗且有缺失，按门禁驳回）")
+                            tool_results.append({
+                                "tool": tool_name,
+                                "status": "ok",
+                                "summary": "数据尚未清洗（且存在缺失值），按既定流程须先完成清洗才能分析/出图。"
+                                           "请先调用 clean_data 进入清洗流程（或直接基于已有快照给出说明）。",
+                                "await_choice": False,
+                                "data": {},
+                            })
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tc.id,
+                                "content": "该操作被门禁拦截：数据尚未清洗且有缺失值。请先调用 clean_data 完成清洗流程。",
+                        })
+                        continue
                 try:
                     fn_args = json.loads(tc.function.arguments or "{}")
                 except Exception:
@@ -1122,19 +1164,37 @@ class DataAnalysisAgent:
             return self._snapshot_from_data_profile(manager, session_id)
 
     def _snapshot_from_data_profile(self, manager, session_id: str) -> str:
-        """兜底：把 session.data_profile（chat 路由已算好的侦察结果）转成文本快照。"""
+        """兜底：把 session.data_profile（chat 路由已算好的侦察结果）转成文本快照。
+
+        与 _snapshot_for_prompt 主路径保持字段一致：从 columns_detail 读取
+        name/kind/missing，并在首行附 missing_overview 总缺失数，使 LLM 能据
+        此判断「是否有缺失值」（这是清洗前置链路的前提）。注意 data_profile['columns']
+        是列名字符串列表，真正的列元数据在 columns_detail 里。
+        """
         try:
             session = manager.get_session(session_id)
             dp = getattr(session, "data_profile", None)
             if not dp:
                 return ""
             rows = dp.get("rows")
-            cols = dp.get("columns")
-            lines = [f"行数={rows}，列数={len(cols) if isinstance(cols, list) else cols}"]
-            for c in (cols or []):
-                name = c.get("name") if isinstance(c, dict) else c
-                kind = c.get("kind") if isinstance(c, dict) else ""
-                lines.append(f"- {name}（{kind}）")
+            col_count = dp.get("column_count")
+            overview = dp.get("missing_overview") or {}
+            total_missing = overview.get("total_missing", 0)
+            cols_with_missing = overview.get("cols_with_missing", 0)
+            cols_detail = dp.get("columns_detail") or []
+            lines = [
+                f"行数={rows}，列数={col_count}，"
+                f"总缺失值={total_missing}（涉及 {cols_with_missing} 列）"
+            ]
+            for c in cols_detail:
+                name = c.get("name", "?")
+                kind = c.get("kind", "")
+                missing = c.get("missing", 0)
+                missing_pct = c.get("missing_pct", 0.0)
+                if missing and missing > 0:
+                    lines.append(f"- {name}（{kind}，缺失{missing}，占比{missing_pct:.1f}%）")
+                else:
+                    lines.append(f"- {name}（{kind}，无缺失）")
             return "\n".join(lines)
         except Exception as e:
             print(f"[agentic_chat] _snapshot_from_data_profile failed: {type(e).__name__}: {e}")
