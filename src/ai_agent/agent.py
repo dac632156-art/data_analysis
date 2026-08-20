@@ -12,6 +12,7 @@ import pandas as pd
 import json
 import openai
 import threading
+import time
 import unicodedata
 import difflib
 from typing import List, Dict, Any, Optional, Tuple
@@ -40,6 +41,9 @@ _REPORT_INTENT_KEYWORDS = (
 )
 _BIGSCREEN_INTENT_KEYWORDS = (
     "大屏", "数据大屏", "可视化大屏", "驾驶舱", "看板大屏", "大屏展示", "大屏可视化",
+    "看板", "可视化看板", "监控大屏", "dashboard", "数据驾驶舱",
+    "仪表盘", "经营仪表盘", "业务仪表盘", "数据仪表盘", "可视化仪表盘", "分析仪表盘",
+    "经营大屏", "业务大屏", "分析大屏",
 )
 # 分析意图关键词：已清洗后，用户表达"分析/跑模型/趋势/排行"等意愿才放开三分析工具，
 # 避免用户随口聊天也被误放开动手工具。
@@ -153,11 +157,26 @@ class DataAnalysisAgent:
         # 前端先 ECONNABORTED 断开，后端还在重试，用户永远收不到降级报告。
         # 故关闭 SDK 重试（max_retries=0）：超时即抛错 → 立即走 fallback 降级报告，
         # 保证后端在 180s 内返回 200，前端不会再超时。
+        #
+        # Windows 上 httpx 默认 keepalive 连接复用偶发 OSError: [Errno 22] Invalid argument
+        # （socket.send 时收到 0 字节或解析器状态异常）。关闭 keepalive 让每个
+        # chat.completions 请求都建立新连接，避免复用损坏 socket 引发的瞬时错误。
+        import httpx as _httpx
+        _http_client = _httpx.Client(
+            timeout=_httpx.Timeout(240.0, connect=30.0, read=240.0, write=30.0),
+            limits=_httpx.Limits(
+                max_connections=10,
+                max_keepalive_connections=0,  # 关键：禁用 keepalive
+                keepalive_expiry=0.0,
+            ),
+            follow_redirects=True,
+        )
         self.client = openai.OpenAI(
             api_key=api_key,
             base_url=base_url,
             timeout=240.0,
             max_retries=0,
+            http_client=_http_client,
         )
 
     def _get_data_summary(self, df: pd.DataFrame) -> str:
@@ -602,19 +621,29 @@ class DataAnalysisAgent:
         return {"tool": name, "status": "fail", "summary": f"未知工具：{name}", "data": {}}
 
     def _is_dataset_cleaned(self, manager, session_id: str) -> bool:
-        """状态位：session 中是否已存在 is_merged 清洗宽表（clean_data 执行态写过）。
+        """状态位：session 中数据集是否已清洗。
 
-        上传时后端只写 session.data_profile、不建 is_merged 宽表，故初始为 False；
-        清洗完成后置 True，主循环据此判定「已清洗」并决定是否放开 generate_chart。
+        兼容两种清洗结果：
+        1) 多表 merge：存在 is_merged 宽表；
+        2) 单表 clean：存在 cleaned=True 的数据集，或 data_profile 已生成。
+        上传时后端只写 session.data_profile（不代表已清洗），故初始为 False；
+        clean_data / merge_tables 执行完成后置 True，主循环据此决定放开 generate_chart。
         """
         try:
             session = manager.get_session(session_id)
             if session is None:
                 return False
-            return any(
-                getattr(d, "is_merged", False)
-                for d in session.datasets.values()
-            )
+            # 多表 merge 的清洗结果
+            if any(getattr(d, "is_merged", False) for d in session.datasets.values()):
+                return True
+            # 单表 clean 的清洗结果：任一数据集标记为 cleaned
+            if any(getattr(d, "cleaned", False) for d in session.datasets.values()):
+                return True
+            # 兜底：data_profile 有"清洗后"标记（clean_data 完成后会写 cleaned_at）
+            dp = getattr(session, "data_profile", None) or {}
+            if isinstance(dp, dict) and (dp.get("cleaned_at") or dp.get("last_cleaned_at")):
+                return True
+            return False
         except Exception:
             return False
 
@@ -660,6 +689,9 @@ class DataAnalysisAgent:
         # 执行态跑 clean_data（从用户消息里解析 method 关键词），不依赖 LLM 发 tool_calls。
         # 跑成功后置 _need_inject_clean_prompt，下一轮顶部注入提示驱动三分析。
         tool_results: List[Dict[str, Any]] = []
+        # 大屏是否已生成过（无论 LLM 主动调还是守卫强制调）：只生成一次，
+        # 避免 BIGSCREEN GUARD 每轮都重复 append 一份 bigscreen → 前端视觉上"重复 N 次"。
+        _bigscreen_done = False
         # 改法1 标志：本轮若检测到 clean_data 执行态成功，置为 True；
         # 下一轮循环顶部据此注入"请立即调用三分析工具"提示后立即清为 False。
         # 作用域仅限本次 agentic_chat 调用，不持久化到 session，避免跨请求串状态。
@@ -702,6 +734,8 @@ class DataAnalysisAgent:
         # 用于重复调用熔断：防止 LLM 在 function calling 循环里对同一工具反复调用、
         # 撑满 max_rounds 被强制截断（切断大类 A 死循环源：循环无重复调用上限）。
         # 只读快照类工具严格限 1 次；动手/出图类工具给少量冗余上限防失控。
+        # build_dashboard 是终态工具，产物会内联渲染在对话里；同一会话执行 1 次即可，
+        # 多次执行会让前端把同一份大屏渲染多份（视觉上"重复"）。
         _tool_call_counts: Dict[str, int] = {}
         _TOOL_CALL_LIMITS: Dict[str, int] = {
             "profile_data": 1,
@@ -710,9 +744,12 @@ class DataAnalysisAgent:
             "run_python": 3,
             "generate_chart": 3,
             "generate_report": 3,
-            "build_dashboard": 3,
+            "build_dashboard": 1,
             "clean_data": 3,
         }
+        # 内联渲染类工具（产物会出现在对话流里）：熔断时不向 tool_results 追加 fake 记录，
+        # 否则前端会按 visualResults 把同一份产物渲染多份造成"重复"。
+        _INLINE_RENDER_TOOLS = {"build_dashboard", "generate_report"}
         # 注入提示文案（一次性，逼 LLM 主动发三分析 tool_calls）
         _CLEAN_DONE_PROMPT = (
             "数据已清洗完成。请立即依次调用以下三个分析工具对清洗后数据进行分析，"
@@ -776,6 +813,32 @@ class DataAnalysisAgent:
                                                if _names_eq(t, "run_template")
                                                or _names_eq(t, "run_analysis")
                                                or _names_eq(t, "run_python")]
+                            # ★ 大屏意图特批：单表场景下 is_cleaned 永远 False（无 is_merged 宽表、
+                            # 也无 cleaned 标记），若只在"已跑过三分析"时才补 build_dashboard，
+                            # 则「首轮直接说要大屏」会因 messages 从未跑过三分析而永远拿不到
+                            # build_dashboard 工具 → 大屏彻底不触发（历史"依然没有大屏"根因）。
+                            # 因此改为与已清洗分支一致：无论是否已跑分析，都发放四件套 +
+                            # pipeline 提示，让 LLM 首轮即可「先分析 → 后大屏」闭环。
+                            if _has_bigscreen_intent(message):
+                                tools_for_round = list(tools_for_round) + [
+                                    t for t in function_defs if _names_eq(t, "build_dashboard")
+                                ]
+                                # 注入大屏四件套调用顺序提示（复用已清洗分支的常量）。
+                                _BIGSCREEN_PIPELINE_PROMPT = (
+                                    "用户要求生成大屏。请按以下顺序串行调用：\n"
+                                    "  1) run_template（业务模型分析）\n"
+                                    "  2) run_analysis（通用统计分析）\n"
+                                    "  3) run_python（自由写码分析）\n"
+                                    "  4) build_dashboard（生成大屏，依赖前 3 步的分析包）\n"
+                                    "不要用文字伪造大屏。最终视觉产物（KPI/图表网格/表格）必须由 "
+                                    "build_dashboard 工具调用产生。文字气泡里最多一句过渡话。"
+                                )
+                                if not any(
+                                    m.get("role") == "user"
+                                    and _BIGSCREEN_PIPELINE_PROMPT in (m.get("content") or "")
+                                    for m in messages
+                                ):
+                                    messages.append({"role": "user", "content": _BIGSCREEN_PIPELINE_PROMPT})
                     elif is_cleaned:
                         # 防御性放开：只要上下文里已存在「清洗完成→请调三分析」注入提示
                         # （该提示永久留在 messages 中，不像 _need_inject_clean_prompt 局部标志那样被清），
@@ -799,7 +862,34 @@ class DataAnalysisAgent:
                         elif _has_report_intent(message):
                             tools_for_round = [t for t in function_defs if _names_eq(t, "generate_report")]
                         elif _has_bigscreen_intent(message):
-                            tools_for_round = [t for t in function_defs if _names_eq(t, "build_dashboard")]
+                            # 大屏意图（已清洗）：让 LLM 一次性拥有 [三分析 + build_dashboard] 四件套，
+                            # 用 system 提示强制 LLM 按"先分析 → 后大屏"顺序调用。
+                            # 关键：不要只给 build_dashboard 一个工具，否则 LLM 在 packages 缺失时会
+                            # 跑偏去"先调分析"——而它跑分析时又发现没工具，被绕回纯文字总结。
+                            # 给齐四件套 + 明确顺序，让 LLM 一次完成闭环。
+                            tools_for_round = [t for t in function_defs
+                                               if _names_eq(t, "run_template")
+                                               or _names_eq(t, "run_analysis")
+                                               or _names_eq(t, "run_python")
+                                               or _names_eq(t, "build_dashboard")]
+                            # 在 messages 顶端注入一次性 user 提示（不污染 system，只作为
+                            # 当轮的最高优先级指令），告诉 LLM 大屏四件套调用顺序。
+                            _BIGSCREEN_PIPELINE_PROMPT = (
+                                "用户要求生成大屏。请按以下顺序串行调用：\n"
+                                "  1) run_template（业务模型分析）\n"
+                                "  2) run_analysis（通用统计分析）\n"
+                                "  3) run_python（自由写码分析）\n"
+                                "  4) build_dashboard（生成大屏，依赖前 3 步的分析包）\n"
+                                "不要用文字伪造大屏。最终视觉产物（KPI/图表网格/表格）必须由 "
+                                "build_dashboard 工具调用产生。文字气泡里最多一句过渡话。"
+                            )
+                            # 避免重复注入：仅在最近一次 user 消息中不含此提示时插入
+                            if not any(
+                                m.get("role") == "user"
+                                and _BIGSCREEN_PIPELINE_PROMPT in (m.get("content") or "")
+                                for m in messages
+                            ):
+                                messages.append({"role": "user", "content": _BIGSCREEN_PIPELINE_PROMPT})
                         elif _clean_prompt_in_ctx:
                             # 兜底：刚清洗完且用户本轮没说任何明确意图词 → 放开三分析（驱动自动补跑）。
                             # 仅作最后兜底，不抢占上面的明确意图。
@@ -817,9 +907,50 @@ class DataAnalysisAgent:
                         create_kwargs.pop("tool_choice", None)
                     else:
                         create_kwargs["tools"] = tools_for_round
+                        # 大屏分支保持 auto：4 件套让 LLM 自由按顺序串行调用，system 提示
+                        # 已经明示顺序。如果 LLM 在跑完三分析后还想用纯文字总结"补刀"，
+                        # 下面的 _bigscreen_post_dash_guard 会程序兜底：强制它再调一次 build_dashboard。
                         create_kwargs["tool_choice"] = "auto"
-                response = self.client.chat.completions.create(**create_kwargs)
+                # ★ 手动重试：针对 ConnectionError / APIConnectionError / Timeout / OSError
+                # 这类上游或本地 socket 瞬时错误，最多 3 次退避重试。
+                # - apihub.agnes-ai.com 偶尔 ConnectError（境外网络抖动）
+                # - Windows + httpx 在 chunked 解析时偶发 OSError: [Errno 22] Invalid argument
+                #   （socket.send 收到 0 字节或 http_parser 状态异常）
+                # 单次失败大概率是瞬时问题，重试可恢复。
+                # 业务/参数错误（auth/bad_request）不在重试范围，立即抛回。
+                _TRANSIENT_ERRORS = (
+                    openai.APIConnectionError,
+                    openai.APITimeoutError,
+                    ConnectionError,
+                    TimeoutError,
+                    OSError,  # Windows httpx/socket 瞬时错误（Errno 22 等）
+                )
+                response = None
+                _create_attempts = 0
+                _MAX_ATTEMPTS = 3
+                while True:
+                    try:
+                        response = self.client.chat.completions.create(**create_kwargs)
+                        if _create_attempts > 0:
+                            print(f"[agentic_chat] LLM call recovered after {_create_attempts} retry/retries")
+                        break
+                    except _TRANSIENT_ERRORS as e:
+                        _create_attempts += 1
+                        if _create_attempts >= _MAX_ATTEMPTS:
+                            # 最后一次仍失败：抛回给 outer except 走"AI 服务调用失败"分支
+                            print(f"[agentic_chat] transient {type(e).__name__} exhausted after {_create_attempts} attempts")
+                            raise
+                        wait = 1.5 * _create_attempts  # 1.5s / 3.0s 退避
+                        print(f"[agentic_chat] transient {type(e).__name__}: {e!r}, retry {_create_attempts}/{_MAX_ATTEMPTS - 1} in {wait:.1f}s")
+                        time.sleep(wait)
+                    except Exception:
+                        # 非瞬时错误直接抛回上层
+                        raise
             except Exception as e:
+                # 记录完整 traceback 到 dev_err.txt 便于排查（Agent 再返降级报告给前端）
+                import traceback
+                print(f"[agentic_chat] LLM call failed: {type(e).__name__}: {e}")
+                traceback.print_exc()
                 return {
                     "kind": "text",
                     "content": f"AI 服务调用失败：{str(e)}",
@@ -844,6 +975,58 @@ class DataAnalysisAgent:
 
             # 没有工具调用 → 可能是「完整最终回答」或「已执行工具但未总结完整」
             if not msg.tool_calls:
+                # ★ 大屏意图程序兜底（Bug根除）：
+                # 当本轮 LLM 在大屏意图下没有调 build_dashboard 而是直接文字总结时，
+                # 后端代码层强制程序调一次 build_dashboard 并把 tool 结果回灌到 messages，
+                # 下一轮 LLM 收到 tool 消息后必须给文字收尾（最终输出含 tool 消息的总结），
+                # 物理根除"用文字伪造大屏"。
+                if _has_bigscreen_intent(message):
+                    # 取消 is_cleaned 限制：单表场景下 is_cleaned 永远为 False（没有 is_merged 宽表），
+                    # 大屏兜底必须不依赖它。改用"LLM 已跑过至少 1 个三分析工具"作为包非空的判断。
+                    _already_ran_analysis = any(
+                        tc.get("function", {}).get("name") in {"run_template", "run_analysis", "run_python"}
+                        for prior in messages
+                        for tc in (prior.get("tool_calls") or [])
+                    )
+                    if _already_ran_analysis and not _bigscreen_done:
+                        print(f"[agentic_chat] round={_round} BIGSCREEN GUARD: 强制程序调 build_dashboard")
+                        _forced = self._resolve_tool_call(
+                            "build_dashboard", {}, manager, session_id,
+                            user_message=message,
+                        )
+                        tool_results.append({
+                            "tool": _forced.get("tool"),
+                            "status": _forced.get("status"),
+                            "summary": _forced.get("summary"),
+                            "await_choice": _forced.get("await_choice", False),
+                            "data": _forced.get("data", {}),
+                        })
+                        if _forced.get("status") == "ok":
+                            _bigscreen_done = True
+                        # 把 build_dashboard 包装为 LLM "自己调"的 tool_call + tool 消息，
+                        # 让 messages 历史里出现正常的 tool_call 链路，下一轮 LLM 自然收尾。
+                        import uuid as _uuid
+                        _fake_tc_id = "call_guard_" + _uuid.uuid4().hex[:12]
+                        messages.append({
+                            "role": "assistant",
+                            "content": msg.content or "",
+                            "tool_calls": [{
+                                "id": _fake_tc_id,
+                                "type": "function",
+                                "function": {"name": "build_dashboard", "arguments": "{}"},
+                            }],
+                        })
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": _fake_tc_id,
+                            "content": json.dumps({
+                                "ok": _forced.get("status") == "ok",
+                                "summary": _forced.get("summary") or "",
+                                "data": _forced.get("data", {}),
+                            }, ensure_ascii=False),
+                        })
+                        # 进入下一轮：下一轮 LLM 看到 tool 消息后会用 final text 收尾
+                        continue
                 content = msg.content or ""
                 content = self._strip_tool_tags(content)  # 兜底：剥离可能泄露的工具标签
 
@@ -946,14 +1129,17 @@ class DataAnalysisAgent:
                 _limit = _TOOL_CALL_LIMITS.get(tool_name, 3)
                 if _tool_call_counts[tool_name] > _limit:
                     print(f"[agentic_chat] circuit-break tool={tool_name} count={_tool_call_counts[tool_name]} limit={_limit}")
-                    tool_results.append({
-                        "tool": tool_name,
-                        "status": "ok",
-                        "summary": "数据快照已在上下文中，无需重复调用；请基于已有信息直接给出分析结论或调用其他工具。",
-                        "await_choice": False,
-                        "data": {},
-                    })
-                    # 把熔断提示作为 tool 消息回灌，让 LLM 看到"该工具已饱和"，促其收口
+                    # 终态工具（产物会内联渲染的）熔断时不向 tool_results 追加 fake 记录，
+                    # 避免前端 visualResults 把同一份大屏/报告渲染多份造成"重复"。
+                    # 仅把"已饱和"提示回灌给 LLM，让其不再尝试。
+                    if tool_name not in _INLINE_RENDER_TOOLS:
+                        tool_results.append({
+                            "tool": tool_name,
+                            "status": "ok",
+                            "summary": "数据快照已在上下文中，无需重复调用；请基于已有信息直接给出分析结论或调用其他工具。",
+                            "await_choice": False,
+                            "data": {},
+                        })
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
@@ -994,6 +1180,10 @@ class DataAnalysisAgent:
                     "await_choice": result.get("await_choice", False),
                     "data": result.get("data", {}),
                 })
+                # 大屏/报告等终态工具成功生成后标记，避免守卫或后续轮次重复生成。
+                if result.get("tool") in _INLINE_RENDER_TOOLS and result.get("status") == "ok" \
+                        and not result.get("await_choice"):
+                    _bigscreen_done = True
                 # 改法1：仅当「本轮执行的 tool」是 clean_data 执行态成功时才置位。
                 # 关键：必须用 result（本轮这一个工具的结果），不能用累积的 tool_results，
                 # 否则 clean_data=ok 会永远留在 tool_results 里，导致后续每一轮末尾都重新置位 → 重复注入三分析。
@@ -1201,7 +1391,8 @@ class DataAnalysisAgent:
             return ""
 
     @staticmethod
-    def _is_complete_summary(content: str, ok_results: List[Dict[str, Any]]) -> bool:        """启发式判断 LLM 的 content 是否已覆盖全部已执行工具的结论。
+    def _is_complete_summary(content: str, ok_results: List[Dict[str, Any]]) -> bool:
+        """启发式判断 LLM 的 content 是否已覆盖全部已执行工具的结论。
 
         判断依据（任一满足即认为不完整，需要续接）：
           1. content 过短（< 80 字）—— 明显只是建议/截断，没写完整总结；
@@ -1222,7 +1413,7 @@ class DataAnalysisAgent:
         # 3) 关键结论关键词覆盖检查：从工具结果抽几个代表 token，看 content 是否提及
         missing = 0
         for tr in ok_results:
-            toks = _extract_key_tokens(tr.get("data", {}))
+            toks = DataAnalysisAgent._extract_key_tokens(tr.get("data", {}))
             if toks:
                 # 该工具的前 3 个 token 中至少命中 1 个，才算被覆盖
                 hits = sum(1 for t in toks[:3] if t and t in text)

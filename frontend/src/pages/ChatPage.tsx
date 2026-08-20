@@ -17,7 +17,12 @@ import { AI_PROVIDERS } from '../contexts/DataContext';
 
 // 与 AnalysisPage / VisualizationRenderer 一致：后端 AI 输出为 Markdown（可信源），渲染成富文本
 function renderMarkdown(text: string): string {
-  return marked.parse(text || '') as string;
+  // LLM 偶尔不听话，把"用户消费分层分布"写成 Markdown 图片语法 `![alt](url)`。
+  // 这些图片 URL 必然失效（LLM 编的），渲染出来会变成"裂图占位符"——既丑又让用户误以为图没出来。
+  // 真实图表由工具跑出来挂在 toolResults 里、由 [[CHART:N]] 锚点精确插入，无需 LLM 再写图片。
+  // 因此在 markdown 渲染前先剥离所有 ![alt](url)（以及带 title 的变体），避免破损图占位。
+  const cleaned = (text || '').replace(/!\[([^\]]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g, '');
+  return marked.parse(cleaned) as string;
 }
 
 
@@ -249,6 +254,8 @@ export default function ChatPage() {
           // 最多重试 8 次：刚恢复的会话里 session_manager 仍在 hydrate（从 DB 重建），
           // 第一次调 /chat/messages 拿到空时不要直接放弃，否则用户进入历史会话
           // 却看不到自己之前问过的对话。每次间隔 700ms，整体 ~5.6s 窗口。
+          // 后端真历史优先于 sessionStorage 缓存：缓存可能是旧/部分数据，
+          // 若后端返回条数更多，以「后端为准」避免对话被截断（Bug2 防护）。
           for (let attempt = 0; attempt < 8; attempt++) {
             if (!alive) return;
             try {
@@ -257,8 +264,13 @@ export default function ChatPage() {
                 .filter((m: any) => m.role === 'user' || m.role === 'assistant')
                 .map((m: any) => ({ role: m.role, content: m.content || '' }));
               if (hist.length) {
-                setMessages(hist);
-                return;
+                // 仅当后端历史比当前缓存/内存更完整时才覆盖，
+                // 避免覆盖用户正在编辑中的新对话。
+                setMessages((prev) => (hist.length >= prev.length ? hist : prev));
+                // 即使命中缓存也继续重试，确保最终以完整后端历史为准
+                if (attempt >= 7) return;
+                await new Promise((r) => setTimeout(r, 700));
+                continue;
               }
               // 拿到空结果：等 hydrate 完成再重试。
               if (attempt < 7) await new Promise((r) => setTimeout(r, 700));
@@ -478,17 +490,13 @@ export default function ChatPage() {
                 </div>
               ) : m.role === 'user' ? (
                 m.content
-              ) : (
-                <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }} />
-              )}
-
-              {/* 工具执行结果：可视化结果（图表/报告/大屏）平铺为正文，纯文字结果收进折叠区 */}
-              {m.toolResults && m.toolResults.length > 0 && (() => {
-                const ok = m.toolResults.filter((tr: ToolResult) => tr.status !== 'fail');
+              ) : (() => {
+                // 助手消息：按 content 里的 [[CHART:N]] 占位符把对应编号的图表精确插入对应位置。
+                // 视觉上形成"解读段 1 → 图1 → 解读段 2 → 图2 → … → 综合建议"的交错结构。
+                // 无占位符时（LLM 没写或图表数为 0），回退到原行为（markdown 后再追加图表列表）。
+                const ok = (m.toolResults || []).filter((tr: ToolResult) => tr.status !== 'fail');
                 const visualResults = ok.filter(
                   (tr: ToolResult) =>
-                    // 图/报告/大屏平铺：含 data.chart、data.report、data.bigscreen，
-                    // 以及 run_template/run_analysis 包内 charts[*].option（funnel 等），剔除全 0/空系列空图
                     tr.data?.chart ||
                     tr.data?.report ||
                     tr.data?.bigscreen ||
@@ -498,12 +506,109 @@ export default function ChatPage() {
                   (tr: ToolResult) => pickRenderableChart(tr) === null &&
                     !(tr.data?.chart || tr.data?.report || tr.data?.bigscreen),
                 );
+                const rawContent = m.content || '';
+                // 归一化：把 LLM 可能写的多种"图占位标识"统一为 [[CHART:n]]，再交给下方的切分。
+                // 这样无论 LLM 是否听话写 [[CHART:1]]，还是回落到 markdown 图片语法 `![alt](url)`，
+                // 甚至混入其它零碎写法，前端都能按出现顺序把图插到对应位置。
+                // 注意：自动归一化仅当本轮确实有图（visualResults.length > 0）才生效，
+                // 否则 LLM 只是写了普通的 markdown 图片说明、并不是想放图——保留原文。
+                let normalizedContent = rawContent;
+                if (visualResults.length > 0) {
+                  // 用闭包计数器易出错，改成显式自增一次匹配：
+                  let idx = 0;
+                  normalizedContent = rawContent.replace(
+                    /!\[([^\]]*)\]\([^)\s]*(?:\s+"[^"]*")?\)/g,
+                    (_full, _alt) => `\n\n[[CHART:${++idx}]]\n\n`,
+                  );
+                  // 如果归一化后 [[CHART:N]] 数量超过 visualResults，截到 visualResults 长度；
+                  // 多余的占位符变成普通文字（不会致命，反正下方 pickRenderableChart 会兜底）。
+                  if (idx > 0) {
+                    let k = 0;
+                    normalizedContent = normalizedContent.replace(
+                      /\[\[CHART:(\d+)\]\]/g,
+                      (m, n) => {
+                        const num = parseInt(n, 10);
+                        k += 1;
+                        if (num <= visualResults.length) return `[[CHART:${num}]]`;
+                        return ''; // 越界的占位符清掉，避免渲染出 "[[CHART:99]]" 字面量
+                      },
+                    );
+                  }
+                }
+                // 切分：以 [[CHART:N]]（前后空白可选）为锚点拆成段；段按出现顺序对应编号 1,2,3…
+                // 同时清掉锚点本身（避免渲染出 "[[CHART:1]]" 字面量）。
+                const segs = normalizedContent.split(/\s*\[\[CHART:(\d+)\]\]\s*/);
+                // split 后形态：[前文本, '1', 段2文本, '2', 段3文本, …]
+                // 即偶数下标为文本块，奇数下标为图表编号字符串；最后一个文本块在 segs.length -1 处。
+                const hasAnchors = segs.length > 1;
+                if (!hasAnchors) {
+                  // 无锚点：原行为 —— 全部 markdown 渲染完后追加图表列表
+                  return (
+                    <>
+                      <div className="md-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(rawContent) }} />
+                      {visualResults.length > 0 && (
+                        <div className="mt-3">
+                          {visualResults.map((tr, ti) => (
+                            <ToolResultRow key={ti} tr={tr} />
+                          ))}
+                        </div>
+                      )}
+                      {otherResults.length > 0 && (
+                        <details className="mt-3 group">
+                          <summary className="cursor-pointer select-none text-xs text-slate-500 hover:text-violet-600 flex items-center gap-1.5">
+                            <span className="text-emerald-500">✓</span>
+                            已分析 · 点开看执行过程
+                          </summary>
+                          <div className="mt-2 space-y-1.5">
+                            {otherResults.map((tr, ti) => (
+                              <ToolResultRow key={ti} tr={tr} />
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </>
+                  );
+                }
+                // 有锚点：按 segs 顺序交错插入对应编号的图表（1-based → visualResults[idx-1]）
+                const pieces: any[] = [];
+                for (let i = 0; i < segs.length; i++) {
+                  if (i % 2 === 0) {
+                    const text = segs[i];
+                    if (text && text.trim()) {
+                      pieces.push(
+                        <div
+                          key={`t-${i}`}
+                          className="md-body"
+                          dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
+                        />,
+                      );
+                    }
+                  } else {
+                    const n = parseInt(segs[i], 10);
+                    const tr = visualResults[n - 1];
+                    if (tr) {
+                      pieces.push(<ToolResultRow key={`c-${n}-${i}`} tr={tr} />);
+                    }
+                    // 编号越界（LLM 写的编号大于 visualResults 数量）就跳过：避免插入未匹配的空块
+                  }
+                }
+                // 收尾：如果 visualResults 数量 > 锚点中出现的编号（LLM 漏占位符），
+                // 把剩余图表追加到末尾；同时把 otherResults 折叠区放到最末。
+                const used = new Set<number>();
+                for (let i = 0; i < segs.length; i++) {
+                  if (i % 2 === 1) {
+                    const n = parseInt(segs[i], 10);
+                    if (Number.isFinite(n) && n >= 1 && n <= visualResults.length) used.add(n);
+                  }
+                }
+                const leftovers = visualResults.filter((_, idx) => !used.has(idx + 1));
                 return (
                   <>
-                    {visualResults.length > 0 && (
+                    {pieces}
+                    {leftovers.length > 0 && (
                       <div className="mt-3">
-                        {visualResults.map((tr, ti) => (
-                          <ToolResultRow key={ti} tr={tr} />
+                        {leftovers.map((tr, ti) => (
+                          <ToolResultRow key={`l-${ti}`} tr={tr} />
                         ))}
                       </div>
                     )}

@@ -377,7 +377,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const check = () => {
       const cur = localStorage.getItem(TOKEN_KEY);
       if (prevToken && !cur && !didDispatch) {
-        // 从有 token → 无 token：等价于本设备登出
+        // 从有 token → 无 token：等价于本设备登出。
+        // 但若是"刚保存过 API 配置"的短时间内（5s 内），跳过本次清空：
+        // saveApiConfig 在某些刷新/重放路径下可能引起 token 短暂抖动，
+        // 误判为登出会 CLEAR_DATA 并重建会话，导致切回对话页历史会话丢失（Bug2）。
+        try {
+          const savedAt = Number(localStorage.getItem('dm_recently_saved') || '0');
+          if (savedAt && Date.now() - savedAt < 5000) {
+            prevToken = cur;
+            return;
+          }
+        } catch { /* ignore */ }
         dispatch({ type: 'CLEAR_DATA' });
         didDispatch = true;
       }

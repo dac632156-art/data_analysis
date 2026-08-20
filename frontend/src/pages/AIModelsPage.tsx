@@ -21,6 +21,9 @@ export default function AIModelsPage() {
         custom_model: state.customModel,
         custom_base_url: state.customBaseUrl,
       });
+      // 写入"刚保存过"标记：防止 saveApiConfig 引起的 token 抖动触发 DataContext
+      // 的 token 守卫误判为登出而 CLEAR_DATA（会导致切回对话页历史会话丢失）。
+      try { localStorage.setItem('dm_recently_saved', String(Date.now())); } catch { /* ignore */ }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {

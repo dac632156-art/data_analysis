@@ -1008,7 +1008,8 @@ def get_function_definitions() -> List[Dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "generate_chart",
-                "description": "根据指定图表类型和数据列生成 ECharts 图表。支持 30+ 种图表类型。"
+                "description": "根据指定图表类型和数据列生成【单张】ECharts 图表。支持 30+ 种图表类型（bar/line/pie/funnel/heatmap/graph/cohort_heatmap 等）。"
+                               "【不支持】'dashboard'/'大屏'/'驾驶舱' 等聚合大屏类型——出大屏请改用 build_dashboard 工具。"
                                "用户提到「漏斗/转化/流失路径/逐级流失」时，优先尝试 `chart_type=\"funnel\"`；"
                                "若 funnel 生成失败（如无递进数值列），可降级用 `ranking`/`hbar`（按流失量排序的条形图）或 `bar`/`line` 体现流失，并向用户说明。"
                                "传参方式：①列名（x=\"维度列\", y=\"数值列\"），引擎自动聚合；"

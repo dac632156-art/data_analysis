@@ -198,6 +198,34 @@ ANALYSIS_TO_WIDGET_MAPPING: Dict[str, Dict[str, Any]] = {
         "cross_filter": False,
         "filter_dimension_keywords": ["time", "时间", "日期", "月"],
     },
+
+    # ===== 同期群分析（cohort_heatmap） =====
+    "cohort": {
+        "widget_type": "chart",
+        "business_topic": "同期群",
+        "chart_type": "cohort_heatmap",
+        "display_role": "main",
+        "default_title": "同期群分析",
+        "description": "下三角热力图展示用户留存与跃迁",
+        "tags": ["cohort", "同期群", "留存矩阵"],
+        "drill_down": False,
+        "cross_filter": False,
+        "filter_dimension_keywords": ["time", "时间", "月份", "首单月"],
+    },
+
+    # ===== 关联规则（force-directed graph） =====
+    "association_rules": {
+        "widget_type": "chart",
+        "business_topic": "商品关联",
+        "chart_type": "graph",
+        "display_role": "main",
+        "default_title": "商品关联规则",
+        "description": "商品-商品共现关系网络图",
+        "tags": ["association", "graph", "商品关联"],
+        "drill_down": False,
+        "cross_filter": False,
+        "filter_dimension_keywords": ["category", "分类", "商品"],
+    },
 }
 
 

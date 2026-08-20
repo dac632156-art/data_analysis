@@ -1,9 +1,10 @@
-import React, { memo, useRef, useEffect, useState } from 'react';
+import React, { memo } from 'react';
 import * as echarts from 'echarts';
 import type { WidgetSlot } from '../../../types/dashboard';
 import { useDashboardTheme } from '../ThemeProvider';
 import { buildSparklineConfig } from '../ChartConfigBuilder';
 import { useWidgetAnimation } from '../hooks';
+import { EtherealMetricCard } from '../../EtherealCharts/EtherealMetricCard';
 import { FiTrendingUp, FiTrendingDown, FiMinus } from 'react-icons/fi';
 
 interface KPIWidgetProps {
@@ -16,41 +17,82 @@ interface KPIWidgetProps {
   onDrillDown?: (widgetId: string, dimension: string, nextLevel: string) => void;
 }
 
+/**
+ * KPIWidget —— 核心数字指标
+ *
+ * 渲染策略：
+ * 1. 默认走仙气粉彩渐变卡片 EtherealMetricCard（项目标准大屏风格）
+ * 2. hasSparkline 为 true 时，在 EtherealMetricCard 下方追加 ECharts mini sparkline
+ *    （这样能保留趋势小图的同时享受渐变背景，不丢任何视觉特性）
+ */
 export const KPIWidget: React.FC<KPIWidgetProps> = memo(({ widget, onClick, highlightLabel }) => {
   const theme = useDashboardTheme();
-  const chartRef = useRef<HTMLDivElement>(null);
+  const chartRef = React.useRef<HTMLDivElement>(null);
 
-  // Animation
   const { ref: animRef, animationClass, animationStyle } = useWidgetAnimation({
     type: 'scale-in',
     delay: (widget.importance_score % 5) * 50,
   });
 
-  const data = widget.chart_config?.data as number[] | undefined;
+  const data = (widget.chart_config?.data as number[] | undefined);
   const change = (widget.metadata?.change as number) ?? 0;
   const label = (widget.metadata?.kpi_label as string) ?? '';
-  const value = (widget.metadata?.formatted as string) ?? (widget.metadata?.value as string) ?? '';
+  const value =
+    (widget.metadata?.formatted as string) ||
+    (widget.metadata?.value as string) ||
+    '';
 
   const TrendIcon = change > 0 ? FiTrendingUp : change < 0 ? FiTrendingDown : FiMinus;
   const trendColor = change > 0 ? 'text-emerald-500' : change < 0 ? 'text-rose-500' : 'text-slate-600';
 
-  // 是否应该高亮（如果 highlightLabel 匹配 KPI 名称）
   const isHighlighted = highlightLabel === widget.title || highlightLabel === label;
 
-  // ★ 修复：value 兜底不要回退到 title（之前会把"客户复购率如何"当 value 显示）
-  // 无数据时显示 "—"，有数据时显示数值 + 副标签（label 仅作副标题）
+  // ★ 兜底：value 不要回退到 title（之前会把"客户复购率如何"当 value 显示）
   const hasValue = value && value !== '0' && value !== '0%' && value !== '0.0' && value !== '0.0%';
-  const hasSparkline = data && data.length > 0;
+  const hasSparkline = Array.isArray(data) && data.length > 0;
+  const numericValue = hasValue ? Number(String(value).replace(/[^\d.\-]/g, '')) : NaN;
 
-  useEffect(() => {
+  // Sparkline（ECharts mini，保留趋势小图）
+  React.useEffect(() => {
     if (!chartRef.current || !hasSparkline) return;
     const chart = echarts.init(chartRef.current);
-    chart.setOption(buildSparklineConfig(theme, data, change >= 0 ? theme.palette.success : theme.palette.danger));
+    chart.setOption(
+      buildSparklineConfig(
+        theme,
+        data!,
+        change >= 0 ? theme.palette.success : theme.palette.danger,
+      ),
+    );
     const ro = new ResizeObserver(() => chart.resize());
     ro.observe(chartRef.current);
-    return () => { chart.dispose(); ro.disconnect(); };
+    return () => {
+      chart.dispose();
+      ro.disconnect();
+    };
   }, [data, theme, change, hasSparkline]);
 
+  // 走仙气粉彩渐变卡片（与 Ethereal*Chart 风格一致）
+  if (!hasSparkline) {
+    return (
+      <div ref={animRef}
+        className={`${animationClass} ${isHighlighted ? 'ring-1 ring-[var(--db-accent)]/30' : ''}`}
+        style={animationStyle}
+        onClick={() => onClick?.(widget.widget_id, {})}
+      >
+        <EtherealMetricCard
+          metricData={{
+            title: widget.title,
+            label: label || undefined,
+            value: hasValue ? (Number.isFinite(numericValue) ? numericValue : String(value)) : '--',
+            change: change ? (change >= 0 ? `+${change.toFixed(1)}%` : `${change.toFixed(1)}%`) : undefined,
+            unit: (widget.metadata?.unit as string | undefined),
+          }}
+        />
+      </div>
+    );
+  }
+
+  // 保留 Sparkline：外层主题色 + 仙气卡（兼容趋势型 KPI）
   return (
     <div ref={animRef}
       className={`${theme.cardBg} ${theme.cardBorder} border rounded-xl p-4
